@@ -176,17 +176,24 @@ fn gen_node(node: &Node, cfg: &Config, d: usize) -> Result<String, CodegenError>
             let (msg, mspan) =
                 on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
             let label = gen_text_content(children, cfg, *span, d + 1)?;
-            // `let _ = &Msg::X;` — a typo'd handler is a rustc error at
-            // the line carrying the .lx span (§6.5).
+            // `let _ = &Action::X;` — a typo'd handler is a rustc error
+            // at the line carrying the .lx span (§6.5). The variant
+            // reference is PascalCased from the markup name (§3.3: a
+            // no-op for already-PascalCase legacy handlers, and the
+            // inverse of #[libra::actions]'s camelCase mapping for new
+            // ones) — the *stored* handler name (`name_lit`) stays the
+            // markup's own text, matching what the interpreter's
+            // ReflectAction-based resolution compares against.
             Ok(format!(
                 "{i}::libra_components::ViewNode::Button {{ {at}\n\
                  {i}    label: {label},\n\
                  {i}    variant: ::libra_components::Variant::{variant},\n\
-                 {i}    on_press: {{ let _ = &{msg_ty}::{msg}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_press: {{ let _ = &{msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
                 msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = opt_str(&test_id),
@@ -249,19 +256,22 @@ fn gen_node(node: &Node, cfg: &Config, d: usize) -> Result<String, CodegenError>
                 on_change.ok_or_else(|| err(*span, "<Input> requires onChange={someAction}"))?;
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Input> requires testId=\"…\" (focus identity)"))?;
-            // The `let _: fn(String) -> Msg` coercion makes "not a
+            // The `let _: fn(String) -> Action` coercion makes "not a
             // String-payload variant" a type error at the .lx line.
+            // Variant reference PascalCased from the markup name, same
+            // as Button's onPress above.
             Ok(format!(
                 "{i}::libra_components::ViewNode::Input {{ {at}\n\
                  {i}    value: ::std::string::ToString::to_string(&state.{path}), {vat}\n\
                  {i}    placeholder: {ph}.to_string(),\n\
-                 {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{msg}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
                  {i}    test_id: {tid}.to_string(),\n\
                  {i}}}",
                 at = at(cfg, *span),
                 vat = at(cfg, vspan),
                 ph = str_lit(&placeholder),
                 msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = str_lit(&test_id),
@@ -337,6 +347,23 @@ fn opt_str(s: &Option<String>) -> String {
     }
 }
 
+/// Markup handler name → Rust variant identifier (ARCHITECTURE.md
+/// §3.3). `#[libra::actions]` names variants by uppercasing a
+/// snake_case method name's first letter per word (`filter_changed` →
+/// `FilterChanged`) and exposes the camelCase form (`filterChanged`)
+/// as the public markup name — so recovering the variant from the
+/// markup text only ever needs the *first* character uppercased; the
+/// rest of the identifier is already correctly cased. This is a no-op
+/// for legacy PascalCase handler names (`Increment` → `Increment`),
+/// which is what keeps this backward compatible.
+fn pascalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,6 +388,29 @@ mod tests {
         assert!(code.contains("crate::TestAction::Increment"), "handlers become real Action refs");
         assert!(code.contains("// test.lx:2:"), "expressions carry .lx spans");
         assert!(code.starts_with("// @generated"));
+    }
+
+    #[test]
+    fn camelcase_handler_names_resolve_to_pascalcase_variants() {
+        // §3.3: markup keeps the camelCase public name (stored as the
+        // handler string) while the Rust-level reference is
+        // PascalCased to match what #[libra::actions] actually names
+        // the variant — this is the codegen half of that mapping; the
+        // interpreter needs no equivalent change (§6.4 note in the
+        // module doc comment).
+        let ast = libra_markup::parse(
+            "<Column><Button onPress={filterChanged}>Go</Button></Column>",
+        )
+        .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(
+            code.contains("crate::TestAction::FilterChanged"),
+            "camelCase markup name resolves to the PascalCase variant: {code}"
+        );
+        assert!(
+            code.contains("\"filterChanged\".to_string()"),
+            "the stored handler name stays the original camelCase text: {code}"
+        );
     }
 
     #[test]

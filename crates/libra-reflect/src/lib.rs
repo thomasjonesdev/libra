@@ -20,6 +20,8 @@
 //! variants from snake_case method names) is MIGRATION-NAMING.md
 //! Stage 4 scope, landed in both view engines together per §6.4.
 
+mod attrs;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
@@ -37,6 +39,23 @@ pub fn derive_libra_reflect(input: TokenStream) -> TokenStream {
         .to_compile_error()
         .into(),
     }
+}
+
+/// `#[libra::state]` (ARCHITECTURE.md §5.1): a struct attribute that
+/// bundles the derive set §5.1 assumes plus the `ReflectState` impl —
+/// sugar over `#[derive(Debug, Clone, PartialEq, Serialize,
+/// Deserialize, LibraReflect)]`.
+#[proc_macro_attribute]
+pub fn state(attr: TokenStream, item: TokenStream) -> TokenStream {
+    attrs::state(attr, item)
+}
+
+/// `#[libra::actions]` (ARCHITECTURE.md §5.2): turns `&mut self`
+/// methods into a generated `Action` enum + `reduce` function. See
+/// `attrs` module docs for the exact scope of what it generates.
+#[proc_macro_attribute]
+pub fn actions(attr: TokenStream, item: TokenStream) -> TokenStream {
+    attrs::actions(attr, item)
 }
 
 fn has_skip(attrs: &[syn::Attribute]) -> bool {
@@ -57,18 +76,35 @@ fn has_skip(attrs: &[syn::Attribute]) -> bool {
 }
 
 fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
-    let name = &input.ident;
-    let Fields::Named(fields) = &data.fields else {
+    if !matches!(&data.fields, Fields::Named(_)) {
         return syn::Error::new_spanned(
-            name,
+            &input.ident,
             "LibraReflect on a State struct requires named fields",
         )
         .to_compile_error()
         .into();
+    }
+    derive_model_impl(&input.ident, &input.generics, &data.fields).into()
+}
+
+/// Shared by `#[derive(LibraReflect)]` (struct side) and
+/// `#[libra::state]` — both need the same `ReflectState` impl, one
+/// wrapping a `DeriveInput`, the other an `ItemStruct` directly.
+pub(crate) fn derive_model_impl(
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    fields: &Fields,
+) -> proc_macro2::TokenStream {
+    let Fields::Named(named) = fields else {
+        return syn::Error::new_spanned(
+            name,
+            "LibraReflect on a State struct requires named fields",
+        )
+        .to_compile_error();
     };
 
     let bindable: Vec<&syn::Field> =
-        fields.named.iter().filter(|f| !has_skip(&f.attrs)).collect();
+        named.named.iter().filter(|f| !has_skip(&f.attrs)).collect();
 
     let arms = bindable.iter().map(|f| {
         let ident = f.ident.as_ref().expect("named field");
@@ -79,7 +115,7 @@ fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
     });
     let names = bindable.iter().map(|f| f.ident.as_ref().expect("named field").to_string());
 
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
         impl #impl_generics ::libra_core::ReflectState for #name #ty_generics #where_clause {
             fn field(&self, path: &str) -> ::core::option::Option<::std::string::String> {
@@ -93,7 +129,6 @@ fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
             }
         }
     }
-    .into()
 }
 
 fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {

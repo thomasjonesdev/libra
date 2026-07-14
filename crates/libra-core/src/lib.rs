@@ -253,6 +253,40 @@ impl<M> Effect<M> {
 #[deprecated(note = "renamed to Effect")]
 pub type Cmd<M> = Effect<M>;
 
+/// What an `#[libra::actions]` method may return (ARCHITECTURE.md
+/// §5.1): `()`, a single `Effect`, an optional one, or several. The
+/// generated `reduce` calls `.into_effects()` uniformly — a plain
+/// local trait rather than `std::convert::Into`, because `Vec<Effect<M>>`
+/// is a foreign type and orphan rules block `impl From<()> for
+/// Vec<Effect<M>>` directly.
+pub trait IntoEffects<M> {
+    fn into_effects(self) -> Vec<Effect<M>>;
+}
+
+impl<M> IntoEffects<M> for () {
+    fn into_effects(self) -> Vec<Effect<M>> {
+        vec![]
+    }
+}
+
+impl<M> IntoEffects<M> for Effect<M> {
+    fn into_effects(self) -> Vec<Effect<M>> {
+        vec![self]
+    }
+}
+
+impl<M> IntoEffects<M> for Option<Effect<M>> {
+    fn into_effects(self) -> Vec<Effect<M>> {
+        self.into_iter().collect()
+    }
+}
+
+impl<M> IntoEffects<M> for Vec<Effect<M>> {
+    fn into_effects(self) -> Vec<Effect<M>> {
+        self
+    }
+}
+
 /// Async-state type (Appendix C, via Elm's RemoteData): makes
 /// loading/error impossible-states unrepresentable on the Model.
 /// Serde-derived because Models are serializable (§5.1) — snapshots,
@@ -572,6 +606,18 @@ mod tests {
         let msg = on_done(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() });
         m.update(msg);
         assert_eq!(m.quote.success().map(String::as_str), Some("Mind the gap."));
+    }
+
+    #[test]
+    fn into_effects_covers_the_four_action_return_shapes() {
+        let e: Effect<Msg> = Effect::http(HttpRequest::get("x"), Msg::Got);
+        let empty: Vec<Effect<Msg>> = ().into_effects();
+        assert_eq!(empty, Vec::<Effect<Msg>>::new());
+        assert_eq!(e.clone().into_effects(), vec![e.clone()]);
+        assert_eq!(Some(e.clone()).into_effects(), vec![e.clone()]);
+        let none: Vec<Effect<Msg>> = None::<Effect<Msg>>.into_effects();
+        assert_eq!(none, Vec::<Effect<Msg>>::new());
+        assert_eq!(vec![e.clone(), e.clone()].into_effects(), vec![e.clone(), e]);
     }
 
     #[test]
