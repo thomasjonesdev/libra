@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "cli/libra", "conformance"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+libra-core = { path = "crates/libra-core" }
+libra-reflect = { path = "crates/libra-reflect" }
+libra-markup = { path = "crates/libra-markup" }
+libra-interp = { path = "crates/libra-interp" }
+libra-widgets = { path = "crates/libra-widgets" }
+libra-draw = { path = "crates/libra-draw" }
+libra-raster = { path = "crates/libra-raster" }
+libra-test = { path = "crates/libra-test" }
+libra-platform = { path = "crates/libra-platform" }
+libra-kv = { path = "crates/libra-kv" }
+libra-effects = { path = "crates/libra-effects" }
+libra-data = { path = "crates/libra-data" }
+libra-text = { path = "crates/libra-text" }
+libra-codegen = { path = "crates/libra-codegen" }
+libra-query = { path = "crates/libra-query" }
+taffy = "=0.5.2"
+tiny-skia = "=0.11.4"
+fontdue = "=0.8.0"

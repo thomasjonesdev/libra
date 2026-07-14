@@ -1,0 +1,15 @@
+[package]
+name = "libra-effects"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-core.workspace = true
+libra-kv.workspace = true
+libra-data.workspace = true
+ureq = "2"
+getrandom = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

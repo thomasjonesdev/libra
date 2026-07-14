@@ -1,0 +1,18 @@
+[package]
+name = "libra-reflect"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+
+# Dev-only cycle (permitted by cargo): the integration tests exercise the
+# derive against the real traits.
+[dev-dependencies]
+libra-core.workspace = true

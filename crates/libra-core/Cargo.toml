@@ -1,0 +1,9 @@
+[package]
+name = "libra-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-reflect.workspace = true
+serde = { version = "1", features = ["derive"] }

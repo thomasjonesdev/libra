@@ -1,0 +1,12 @@
+# A sample custom theme table (§11) — pass to any example:
+#   cargo run -p gallery -- themes/solarized.toml
+# Unspecified tokens inherit from libra-dark.
+name = "solarized-dark"
+bg = "#002B36"
+surface = "#073642"
+text = "#EEE8D5"
+text_muted = "#93A1A1"
+accent = "#268BD2"
+accent_text = "#FDF6E3"
+secondary = "#0A4552"
+selection = "#264663"

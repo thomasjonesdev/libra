@@ -1,0 +1,10 @@
+[package]
+name = "libra-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Depends on libra-markup ONLY (§21): interp and codegen both fold the
+# same AST — the no-drift guarantee is structural.
+[dependencies]
+libra-markup.workspace = true

@@ -1,0 +1,4 @@
+/target
+*.actual.png
+*.diff.png
+.DS_Store

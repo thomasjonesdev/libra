@@ -1,0 +1,11 @@
+[package]
+name = "libra-data"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-core.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,14 @@
+[package]
+name = "fetcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-core.workspace = true
+libra-platform.workspace = true
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+libra-test.workspace = true
+libra-widgets.workspace = true

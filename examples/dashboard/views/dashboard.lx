@@ -1,0 +1,31 @@
+<Column gap={8} padding={12}>
+  <Row gap={8} cross="center">
+    <Text bold grow>Telemetry — 16 series @ 10 kHz</Text>
+    <Text size="sm" muted testId="status">{status}</Text>
+    <Button variant="secondary" onPress={Toggle} testId="toggle">Pause</Button>
+  </Row>
+  <Row gap={8} grow>
+    <Chart series={s0} height={130} testId="c0" />
+    <Chart series={s1} height={130} />
+    <Chart series={s2} height={130} />
+    <Chart series={s3} height={130} />
+  </Row>
+  <Row gap={8} grow>
+    <Chart series={s4} height={130} />
+    <Chart series={s5} height={130} />
+    <Chart series={s6} height={130} />
+    <Chart series={s7} height={130} />
+  </Row>
+  <Row gap={8} grow>
+    <Chart series={s8} height={130} />
+    <Chart series={s9} height={130} />
+    <Chart series={s10} height={130} />
+    <Chart series={s11} height={130} />
+  </Row>
+  <Row gap={8} grow>
+    <Chart series={s12} height={130} />
+    <Chart series={s13} height={130} />
+    <Chart series={s14} height={130} />
+    <Chart series={s15} height={130} />
+  </Row>
+</Column>

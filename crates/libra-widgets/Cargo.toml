@@ -1,0 +1,11 @@
+[package]
+name = "libra-widgets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-draw.workspace = true
+libra-core.workspace = true
+libra-data.workspace = true
+taffy.workspace = true

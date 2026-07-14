@@ -1,0 +1,13 @@
+[package]
+name = "gallery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-core.workspace = true
+libra-platform.workspace = true
+
+[dev-dependencies]
+libra-test.workspace = true
+libra-data.workspace = true

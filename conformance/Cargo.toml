@@ -1,0 +1,17 @@
+[package]
+name = "conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libra-core.workspace = true
+libra-widgets.workspace = true
+
+[dev-dependencies]
+libra-markup.workspace = true
+libra-interp.workspace = true
+
+[build-dependencies]
+libra-markup.workspace = true
+libra-codegen.workspace = true
