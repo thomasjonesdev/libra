@@ -69,6 +69,36 @@ fn state_derives_are_bundled_and_reflect_state_works() {
     assert_eq!(CounterState::field_names(), &["count"]);
 }
 
+#[state]
+struct DashboardState {
+    series: Vec<libra_core::SeriesHandle>,
+}
+
+#[test]
+fn vec_fields_route_to_collection_not_field() {
+    use libra_core::{SeriesHandle, SeriesId};
+    let s = DashboardState {
+        series: vec![
+            SeriesHandle::new(SeriesId(0), 3000.0),
+            SeriesHandle::new(SeriesId(1), 3000.0),
+        ],
+    };
+    // A Vec field has no Display, so it must not appear in field()'s
+    // path space at all — this is what makes it compile in the first
+    // place (Vec<SeriesHandle>: !Display).
+    assert_eq!(s.field("series"), None);
+    assert!(DashboardState::field_names().is_empty());
+
+    let items = s.collection("series").expect("series is an iterable path");
+    assert_eq!(items.len(), 2);
+    // Each element's own Display form (round-trips via FromStr, same
+    // as a scalar SeriesHandle field already does).
+    assert_eq!(items[0].parse::<SeriesHandle>().unwrap(), s.series[0]);
+    assert_eq!(items[1].parse::<SeriesHandle>().unwrap(), s.series[1]);
+
+    assert_eq!(s.collection("nonexistent"), None);
+}
+
 #[test]
 fn zero_arg_methods_become_unit_variants_dispatchable_by_camelcase_name() {
     assert_eq!(Action::action_by_name("increment"), Some(Action::Increment));

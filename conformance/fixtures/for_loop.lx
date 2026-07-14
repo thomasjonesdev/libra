@@ -1,0 +1,8 @@
+<Column gap={8} padding={12}>
+  <Text bold>Series</Text>
+  <Row gap={8}>
+    <for each={series} as="s" key={s}>
+      <Chart series={s} height={90} />
+    </for>
+  </Row>
+</Column>

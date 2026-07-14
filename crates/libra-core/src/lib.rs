@@ -329,6 +329,18 @@ pub trait ReflectState {
 
     /// Every bindable field name (diagnostics, automation schema).
     fn field_names() -> &'static [&'static str];
+
+    /// Resolve an iterable binding path (`<for each={path}>`, §6.2) to
+    /// each element's display text, in order. `None` means the path
+    /// doesn't name a collection field — same load-time-error contract
+    /// as `field`. Default `None` keeps every existing `ReflectState`
+    /// implementor (hand-written or `#[derive(LibraReflect)]`-only)
+    /// source-compatible; `#[libra::state]`/the derive override this
+    /// for `Vec<T>`-typed fields.
+    fn collection(&self, path: &str) -> Option<Vec<String>> {
+        let _ = path;
+        None
+    }
 }
 
 /// Deprecated alias for `ReflectState`, kept as a standalone trait

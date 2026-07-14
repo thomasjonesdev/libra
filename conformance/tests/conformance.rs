@@ -6,13 +6,20 @@ use conformance::{generated, TestAction, TestState};
 use libra_core::{ReflectAction, ReflectState, SeriesHandle, SeriesId};
 
 const KITCHEN_SINK: &str = include_str!("../fixtures/kitchen_sink.lx");
+const FOR_LOOP: &str = include_str!("../fixtures/for_loop.lx");
 
-fn interp_tree(state: &TestState) -> libra_components::ViewNode {
-    let ast = libra_markup::parse(KITCHEN_SINK).expect("fixture parses");
+fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
+    let ast = libra_markup::parse(src).expect("fixture parses");
     let field = |p: &str| state.field(p);
     let has_action = |m: &str| TestAction::action_by_name(m).is_some();
     let has_str_action = |m: &str| TestAction::action_with_str(m, String::new()).is_some();
-    let scope = libra_interp::Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
+    let collection = |p: &str| state.collection(p);
+    let scope = libra_interp::Scope {
+        field: &field,
+        has_action: &has_action,
+        has_str_action: &has_str_action,
+        collection: &collection,
+    };
     libra_interp::resolve(&ast, &scope).expect("fixture resolves")
 }
 
@@ -26,6 +33,7 @@ fn state_variants() -> Vec<TestState> {
             name: "with \"quotes\" and \\ backslashes".into(),
             status: String::new(),
             s0: SeriesHandle::new(SeriesId(9), 500.0),
+            ..TestState::default()
         },
     ]
 }
@@ -33,7 +41,7 @@ fn state_variants() -> Vec<TestState> {
 #[test]
 fn interp_and_codegen_produce_identical_trees() {
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree(&state);
+        let interp = interp_tree_src(KITCHEN_SINK, &state);
         let compiled = generated::build_kitchen_sink(&state);
         assert_eq!(
             interp, compiled,
@@ -48,4 +56,32 @@ fn interp_and_codegen_produce_identical_trees() {
 fn compiled_view_is_pure() {
     let state = state_variants().remove(1);
     assert_eq!(generated::build_kitchen_sink(&state), generated::build_kitchen_sink(&state));
+}
+
+/// §6.2's `<for each={series} as="s" key={s}>` — the real E2 proof:
+/// interp's runtime iteration and codegen's `.iter().flat_map(...)`
+/// must produce byte-for-byte identical trees, across zero, one, and
+/// several items (the loop-count boundary is exactly where engine
+/// drift would show up first).
+#[test]
+fn for_loop_produces_identical_trees_across_series_counts() {
+    let variants = [
+        Vec::<SeriesHandle>::new(),
+        vec![SeriesHandle::new(SeriesId(1), 1000.0)],
+        vec![
+            SeriesHandle::new(SeriesId(1), 1000.0),
+            SeriesHandle::new(SeriesId(2), 2000.0),
+            SeriesHandle::new(SeriesId(3), 3000.0),
+        ],
+    ];
+    for (i, series) in variants.into_iter().enumerate() {
+        let state = TestState { series, ..TestState::default() };
+        let interp = interp_tree_src(FOR_LOOP, &state);
+        let compiled = generated::build_for_loop(&state);
+        assert_eq!(
+            interp, compiled,
+            "engine drift on for_loop fixture with {} series (variant #{i})",
+            state.series.len()
+        );
+    }
 }

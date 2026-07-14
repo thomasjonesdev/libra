@@ -115,14 +115,31 @@ pub(crate) fn derive_model_impl(
     let bindable: Vec<&syn::Field> =
         named.named.iter().filter(|f| !has_skip(&f.attrs)).collect();
 
-    let arms = bindable.iter().map(|f| {
+    // Vec<T> fields can't go through `field()` — Vec has no Display —
+    // so they route to `collection()` instead (§6.2: <for each={...}>
+    // iteration). Everything else keeps the existing whole-value
+    // Display binding.
+    let (collection_fields, scalar_fields): (Vec<&syn::Field>, Vec<&syn::Field>) =
+        bindable.iter().copied().partition(|f| is_vec_type(&f.ty));
+
+    let arms = scalar_fields.iter().map(|f| {
         let ident = f.ident.as_ref().expect("named field");
         let path = ident.to_string();
         quote! {
             #path => ::core::option::Option::Some(::std::string::ToString::to_string(&self.#ident)),
         }
     });
-    let names = bindable.iter().map(|f| f.ident.as_ref().expect("named field").to_string());
+    let names = scalar_fields.iter().map(|f| f.ident.as_ref().expect("named field").to_string());
+
+    let collection_arms = collection_fields.iter().map(|f| {
+        let ident = f.ident.as_ref().expect("named field");
+        let path = ident.to_string();
+        quote! {
+            #path => ::core::option::Option::Some(
+                self.#ident.iter().map(::std::string::ToString::to_string).collect()
+            ),
+        }
+    });
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
@@ -136,8 +153,25 @@ pub(crate) fn derive_model_impl(
             fn field_names() -> &'static [&'static str] {
                 &[#(#names),*]
             }
+            fn collection(&self, path: &str) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
+                match path {
+                    #(#collection_arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
         }
     }
+}
+
+/// Syntactic `Vec<...>` detection — a macro can't resolve types, so
+/// (like the derive's existing single-`String`-tuple-variant check)
+/// this matches by the last path segment's identifier. A type alias
+/// named `Vec` that isn't `std::vec::Vec` is a false positive that
+/// fails to compile, which is the same tradeoff `is_string_type`
+/// already makes in `attrs.rs`.
+fn is_vec_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(tp) = ty else { return false };
+    tp.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
 }
 
 fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {

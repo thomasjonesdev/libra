@@ -548,7 +548,13 @@ fn rebuild<A: App>(
     let field = |p: &str| app.field(p);
     let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
     let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
-    let scope = Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
+    let collection = |p: &str| app.collection(p);
+    let scope = Scope {
+        field: &field,
+        has_action: &has_action,
+        has_str_action: &has_str_action,
+        collection: &collection,
+    };
     let view = libra_interp::resolve(ast, &scope)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
     libra_components::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)

@@ -305,7 +305,13 @@ where
         let field = |p: &str| self.app.field(p);
         let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
         let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
-        let scope = Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
+        let collection = |p: &str| self.app.collection(p);
+        let scope = Scope {
+            field: &field,
+            has_action: &has_action,
+            has_str_action: &has_str_action,
+            collection: &collection,
+        };
         match libra_interp::resolve(&self.ast, &scope) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {

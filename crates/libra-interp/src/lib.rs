@@ -34,10 +34,108 @@ pub struct Scope<'a> {
     /// Does this name resolve to a String-payload handler
     /// (`onChange={TitleChanged}`)? See `ReflectAction::action_with_str`.
     pub has_str_action: &'a dyn Fn(&str) -> bool,
+    /// Resolve an iterable binding path to each element's display
+    /// text (§6.2's `<for each={path}>`). `None` means the top-level
+    /// resolve() call site doesn't support iteration (e.g. hand-built
+    /// scopes in tests that never construct a `<for>`) — every real
+    /// Scope built from `ReflectState::collection` supplies this.
+    pub collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
 }
 
 pub fn resolve(ast: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
     element(ast, scope)
+}
+
+/// Resolve a list of children into a flat list of ViewNodes — `<for>`
+/// expands to zero or more siblings, everything else to exactly one.
+/// Bare text between elements is an error here (matches Column/Row's
+/// existing contract: text must be wrapped in `<Text>`); `parent_name`
+/// and `parent_span` are only for that error message.
+fn resolve_children(
+    children: &[Node],
+    scope: &Scope,
+    parent_name: &str,
+    parent_span: Span,
+) -> Result<Vec<ViewNode>, InterpError> {
+    if children.iter().any(|c| matches!(c, Node::Text(_))) {
+        return Err(err(
+            parent_span,
+            format!("<{parent_name}> cannot contain bare text; wrap it in <Text>"),
+        ));
+    }
+    let mut out = Vec::new();
+    for c in children {
+        match c {
+            Node::Element { name, .. } if name == "for" => out.extend(resolve_for(c, scope)?),
+            _ => out.push(element(c, scope)?),
+        }
+    }
+    Ok(out)
+}
+
+/// `<for each={path} as="name" key={...}>` (§6.2): iterate a
+/// `Vec`-typed state field, binding `name` in the body to each
+/// element's display text — the same Display/FromStr round-trip a
+/// scalar binding already uses (works today for anything `Chart`/
+/// `Sparkline` already round-trip via `SeriesHandle`).
+///
+/// v1 scope: `key` must be the loop variable itself (`key={name}`),
+/// not a dot-path into it (`key={name.id}`) — there's no reconciler
+/// consuming identity yet (CLAUDE.md: full tree rebuild per dispatch),
+/// and dot-path access into a loop-bound Display string would need
+/// structured (non-Display) reflection this doesn't have. For a type
+/// like `SeriesHandle` whose Display already embeds its id, `key={name}`
+/// is already a unique identity per element.
+fn resolve_for(node: &Node, scope: &Scope) -> Result<Vec<ViewNode>, InterpError> {
+    let Node::Element { attrs, children, span, .. } = node else { unreachable!() };
+
+    let mut each: Option<(String, Span)> = None;
+    let mut as_name: Option<String> = None;
+    let mut key: Option<(String, Span)> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("each", AttrValue::Ident(path)) => each = Some((path.clone(), a.span)),
+            ("as", AttrValue::Str(s)) => as_name = Some(s.clone()),
+            ("key", AttrValue::Ident(k)) => key = Some((k.clone(), a.span)),
+            _ => return Err(unknown_attr("for", a)),
+        }
+    }
+    let (path, espan) = each.ok_or_else(|| err(*span, "<for> requires each={someCollection}"))?;
+    let as_name =
+        as_name.ok_or_else(|| err(*span, "<for> requires as=\"name\" (the loop variable)"))?;
+    let (key_path, kspan) = key
+        .ok_or_else(|| err(*span, "<for> requires key={...} — identity for reordering (§6.2)"))?;
+    if key_path != as_name {
+        return Err(err(
+            kspan,
+            format!(
+                "<for>: key={{{key_path}}} — only key={{{as_name}}} (the loop variable itself) is \
+                 supported today; per-field keys into loop-bound values aren't implemented yet"
+            ),
+        ));
+    }
+
+    let items = (scope.collection)(&path)
+        .ok_or_else(|| err(espan, format!("no collection '{path}' on State")))?;
+
+    let mut out = Vec::new();
+    for item in &items {
+        let item_field = |p: &str| -> Option<String> {
+            if p == as_name {
+                Some(item.clone())
+            } else {
+                (scope.field)(p)
+            }
+        };
+        let iter_scope = Scope {
+            field: &item_field,
+            has_action: scope.has_action,
+            has_str_action: scope.has_str_action,
+            collection: scope.collection,
+        };
+        out.extend(resolve_children(children, &iter_scope, "for", *span)?);
+    }
+    Ok(out)
 }
 
 fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
@@ -61,14 +159,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = children
-                .iter()
-                .filter(|c| !matches!(c, Node::Text(_)))
-                .map(|c| element(c, scope))
-                .collect::<Result<Vec<_>, _>>()?;
-            if children.iter().any(|c| matches!(c, Node::Text(_))) {
-                return Err(err(*span, format!("<{name}> cannot contain bare text; wrap it in <Text>")));
-            }
+            let kids = resolve_children(children, scope, name, *span)?;
             Ok(if name == "Column" {
                 ViewNode::Column { style, children: kids }
             } else {
@@ -202,10 +293,12 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Input { value, placeholder, on_change: msg, test_id })
         }
 
+        "for" => Err(err(*span, "<for> is only allowed as a direct child of <Column>/<Row>")),
+
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, for"
             ),
         )),
     }
@@ -251,7 +344,7 @@ mod tests {
         field: &'a dyn Fn(&str) -> Option<String>,
         has_action: &'a dyn Fn(&str) -> bool,
     ) -> Scope<'a> {
-        Scope { field, has_action, has_str_action: &|_| false }
+        Scope { field, has_action, has_str_action: &|_| false, collection: &|_| None }
     }
 
     #[test]
@@ -306,5 +399,93 @@ mod tests {
         let has_action = |_: &str| true;
         let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
         assert!(e.message.contains("unknown element <Colunm>"));
+    }
+
+    fn scope_with_collection<'a>(
+        field: &'a dyn Fn(&str) -> Option<String>,
+        collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
+    ) -> Scope<'a> {
+        Scope { field, has_action: &|_| true, has_str_action: &|_| false, collection }
+    }
+
+    #[test]
+    fn for_loop_expands_into_one_node_per_item_bound_to_the_loop_variable() {
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={x}><Text>{x}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let view = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(children.len(), 3);
+        for (i, expected) in ["a", "b", "c"].iter().enumerate() {
+            let ViewNode::Text { content, .. } = &children[i] else { panic!() };
+            assert_eq!(content, expected);
+        }
+    }
+
+    #[test]
+    fn for_loop_body_still_resolves_outer_state_fields() {
+        // §6.2's join rule (unrelated to <for>) spaces adjacent inline
+        // parts, hence "a - 7" not "a-7" — this test's actual point is
+        // that {count} still resolves via the outer scope while {x}
+        // resolves via the loop-local one, in the same Text.
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={x}><Text>{x}-{count}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |p: &str| (p == "count").then(|| "7".to_string());
+        let items = vec!["a".to_string()];
+        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let view = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        assert_eq!(content, "a - 7");
+    }
+
+    #[test]
+    fn for_requires_each() {
+        let ast = parse(r#"<Column><for as="x" key={x}><Text>{x}</Text></for></Column>"#).unwrap();
+        let field = |_: &str| None;
+        let collection = |_: &str| None;
+        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        assert!(e.message.contains("requires each="));
+    }
+
+    #[test]
+    fn for_requires_key() {
+        let ast = parse(r#"<Column><for each={items} as="x"><Text>{x}</Text></for></Column>"#).unwrap();
+        let field = |_: &str| None;
+        let items = vec!["a".to_string()];
+        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        assert!(e.message.contains("requires key="));
+    }
+
+    #[test]
+    fn for_key_must_be_the_loop_variable_itself() {
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={x.id}><Text>{x}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = vec!["a".to_string()];
+        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        assert!(e.message.contains("only key={x}"), "{}", e.message);
+    }
+
+    #[test]
+    fn for_names_a_real_collection_or_it_is_a_load_time_error() {
+        let ast = parse(
+            r#"<Column><for each={nonexistent} as="x" key={x}><Text>{x}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let collection = |_: &str| None;
+        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        assert!(e.message.contains("no collection 'nonexistent' on State"));
     }
 }

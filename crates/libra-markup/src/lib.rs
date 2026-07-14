@@ -431,4 +431,15 @@ mod tests {
         // documented Phase 0 limitation; codegen phase will formalize comment syntax.
         assert!(children.len() >= 1);
     }
+
+    #[test]
+    fn index_expressions_in_bindings_are_a_span_diagnosed_error_not_a_panic() {
+        // ARCHITECTURE.md §6.2: "no index expressions" — `path()` only
+        // ever accepts `ident(.ident)*`, so `series[3]` was never valid
+        // syntax; this pins that down as the grammar grows (§6.2's <for>
+        // work, in particular) so it can't regress into a panic.
+        let e = parse("<Column><Text>{series[3]}</Text></Column>").unwrap_err();
+        assert!(e.message.contains("expected '}'"), "{}", e.message);
+        assert_eq!(e.span, Span { line: 1, col: 22 });
+    }
 }

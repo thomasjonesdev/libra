@@ -50,7 +50,13 @@ fn bench() {
     let field = |p: &str| libra_core::ReflectState::field(&model, p);
     let has_action = |m: &str| <Dashboard as App>::Msg::action_by_name(m).is_some();
     let has_str_action = |m: &str| <Dashboard as App>::Msg::action_with_str(m, String::new()).is_some();
-    let scope = libra_interp::Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
+    let collection = |p: &str| libra_core::ReflectState::collection(&model, p);
+    let scope = libra_interp::Scope {
+        field: &field,
+        has_action: &has_action,
+        has_str_action: &has_str_action,
+        collection: &collection,
+    };
 
     let mut cache = None;
     let mut layout_ms = Vec::with_capacity(frames);

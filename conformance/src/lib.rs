@@ -11,6 +11,10 @@ pub struct TestState {
     pub name: String,
     pub status: String,
     pub s0: SeriesHandle,
+    /// §6.2's `<for each={series} as="s" key={s}>` — exercised by the
+    /// for_loop fixture, not kitchen_sink (kept separate so this
+    /// addition can't disturb kitchen_sink's existing tree shape).
+    pub series: Vec<SeriesHandle>,
 }
 
 impl Default for TestState {
@@ -20,6 +24,11 @@ impl Default for TestState {
             name: String::new(),
             status: "ok".into(),
             s0: SeriesHandle::new(SeriesId(0), 3000.0),
+            series: vec![
+                SeriesHandle::new(SeriesId(1), 1000.0),
+                SeriesHandle::new(SeriesId(2), 2000.0),
+                SeriesHandle::new(SeriesId(3), 3000.0),
+            ],
         }
     }
 }
@@ -39,4 +48,5 @@ pub enum TestAction {
 pub mod generated {
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/kitchen_sink.rs"));
+    include!(concat!(env!("OUT_DIR"), "/for_loop.rs"));
 }
