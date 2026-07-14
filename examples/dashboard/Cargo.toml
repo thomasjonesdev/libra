@@ -9,7 +9,7 @@ libra-core.workspace = true
 libra-platform.workspace = true
 libra-markup = { workspace = true }
 libra-interp = { workspace = true }
-libra-widgets = { workspace = true }
+libra-components = { workspace = true }
 libra-raster = { workspace = true }
 libra-draw = { workspace = true }
 libra-data = { workspace = true }

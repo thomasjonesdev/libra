@@ -5,7 +5,7 @@
 use counter::{Counter, Msg, VIEW};
 use libra_core::App;
 use libra_test::{by, Harness};
-use libra_widgets::Role;
+use libra_components::Role;
 
 // ---------------------------------------------------------------------------
 // Tier 1 — pure logic. No harness, no rendering, no framework.

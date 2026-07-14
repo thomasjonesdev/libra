@@ -16,7 +16,7 @@
 //! Liberation Sans Regular/Bold for the spike.
 
 use libra_draw::{Color, DrawCmd, FontStyle, Rect};
-use libra_widgets::TextMeasurer;
+use libra_components::TextMeasurer;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 pub struct Renderer {

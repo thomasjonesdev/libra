@@ -7,4 +7,4 @@ license.workspace = true
 [dependencies]
 libra-markup.workspace = true
 libra-core.workspace = true
-libra-widgets.workspace = true
+libra-components.workspace = true

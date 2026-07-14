@@ -23,7 +23,7 @@ use libra_markup::Node;
 use libra_raster::Renderer;
 use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_widgets::{InputFocus, LaidTree, Role};
+use libra_components::{InputFocus, LaidTree, Role};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -57,7 +57,7 @@ pub enum Selector {
 
 pub mod by {
     use super::Selector;
-    use libra_widgets::Role;
+    use libra_components::Role;
 
     pub fn test_id(id: &str) -> Selector {
         Selector::TestId(id.to_string())
@@ -389,7 +389,7 @@ impl<A: App> Harness<A> {
         NodeRef { text: item.semantics.text.clone(), _life: std::marker::PhantomData }
     }
 
-    fn find(&self, sel: &Selector) -> Option<&libra_widgets::Item> {
+    fn find(&self, sel: &Selector) -> Option<&libra_components::Item> {
         self.laid.items.iter().find(|i| match sel {
             Selector::TestId(id) => i.semantics.test_id.as_deref() == Some(id.as_str()),
             Selector::Text(t) => i.semantics.text == *t,
@@ -513,6 +513,6 @@ fn rebuild<A: App>(
     let scope = Scope { field: &field, has_msg: &has_msg, has_str_msg: &has_str_msg };
     let view = libra_interp::resolve(ast, &scope)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
-    libra_widgets::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)
+    libra_components::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)
         .unwrap_or_else(|e| panic!("{e}"))
 }

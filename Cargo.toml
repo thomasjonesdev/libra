@@ -12,7 +12,7 @@ libra-core = { path = "crates/libra-core" }
 libra-reflect = { path = "crates/libra-reflect" }
 libra-markup = { path = "crates/libra-markup" }
 libra-interp = { path = "crates/libra-interp" }
-libra-widgets = { path = "crates/libra-widgets" }
+libra-components = { path = "crates/libra-components" }
 libra-draw = { path = "crates/libra-draw" }
 libra-raster = { path = "crates/libra-raster" }
 libra-test = { path = "crates/libra-test" }

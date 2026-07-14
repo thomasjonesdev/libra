@@ -39,7 +39,7 @@ use libra_interp::Scope;
 use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::Renderer;
-use libra_widgets::{InputFocus, LaidTree, Role};
+use libra_components::{InputFocus, LaidTree, Role};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -307,7 +307,7 @@ where
         let has_str_msg = |m: &str| A::Msg::msg_with_str(m, String::new()).is_some();
         let scope = Scope { field: &field, has_msg: &has_msg, has_str_msg: &has_str_msg };
         match libra_interp::resolve(&self.ast, &scope) {
-            Ok(view) => match libra_widgets::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
+            Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
                     self.laid = Some(laid);
                     self.overlay = None;

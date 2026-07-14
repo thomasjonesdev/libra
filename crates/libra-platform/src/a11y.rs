@@ -7,7 +7,7 @@
 //! Click on a Button dispatches the same msg a pointer click would,
 //! via the effects sink (main-thread delivery through the event loop).
 
-use libra_widgets::{LaidTree, Role};
+use libra_components::{LaidTree, Role};
 
 /// The flat semantic snapshot the adapter serves: rebuilt on every
 /// relayout, cloned into TreeUpdates on demand.
@@ -121,7 +121,7 @@ pub fn action_for(snap: &A11ySnapshot, node_id: u64) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libra_widgets::{Item, ItemKind, Semantics};
+    use libra_components::{Item, ItemKind, Semantics};
 
     fn laid() -> LaidTree {
         let item = |role, text: &str, on_press: Option<&str>, test_id: Option<&str>| Item {

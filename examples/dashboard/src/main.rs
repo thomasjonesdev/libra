@@ -76,7 +76,7 @@ fn bench() {
 
         let t0 = Instant::now();
         let view = libra_interp::resolve(&ast, &scope).expect("resolves");
-        let laid = libra_widgets::layout(&view, (w as f32, h as f32), &renderer, &theme).expect("lays out");
+        let laid = libra_components::layout(&view, (w as f32, h as f32), &renderer, &theme).expect("lays out");
         let t1 = Instant::now();
         let cmds = laid.paint(&renderer, &store, None, &theme);
         let t2 = Instant::now();

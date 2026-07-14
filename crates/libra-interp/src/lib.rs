@@ -7,7 +7,7 @@
 //! same diagnostics the release codegen turns into compile errors.
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
-use libra_widgets::{BoxStyle, TextSize, Variant, ViewNode};
+use libra_components::{BoxStyle, TextSize, Variant, ViewNode};
 
 #[derive(Debug, Clone)]
 pub struct InterpError {

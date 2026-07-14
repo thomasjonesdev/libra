@@ -7,7 +7,7 @@ use libra_core::{ReflectModel, ReflectMsg, SeriesHandle, SeriesId};
 
 const KITCHEN_SINK: &str = include_str!("../fixtures/kitchen_sink.lx");
 
-fn interp_tree(model: &TestModel) -> libra_widgets::ViewNode {
+fn interp_tree(model: &TestModel) -> libra_components::ViewNode {
     let ast = libra_markup::parse(KITCHEN_SINK).expect("fixture parses");
     let field = |p: &str| model.field(p);
     let has_msg = |m: &str| TestMsg::msg_by_name(m).is_some();

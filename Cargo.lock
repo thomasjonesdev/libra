@@ -546,10 +546,10 @@ name = "conformance"
 version = "0.0.1"
 dependencies = [
  "libra-codegen",
+ "libra-components",
  "libra-core",
  "libra-interp",
  "libra-markup",
- "libra-widgets",
 ]
 
 [[package]]
@@ -596,10 +596,10 @@ dependencies = [
 name = "counter"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-platform",
  "libra-test",
- "libra-widgets",
 ]
 
 [[package]]
@@ -636,6 +636,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 name = "dashboard"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-data",
  "libra-draw",
@@ -644,7 +645,6 @@ dependencies = [
  "libra-platform",
  "libra-raster",
  "libra-test",
- "libra-widgets",
  "tempfile",
 ]
 
@@ -852,10 +852,10 @@ dependencies = [
 name = "fetcher"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-platform",
  "libra-test",
- "libra-widgets",
  "serde",
 ]
 
@@ -1308,6 +1308,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libra-components"
+version = "0.0.1"
+dependencies = [
+ "libra-core",
+ "libra-data",
+ "libra-draw",
+ "taffy",
+]
+
+[[package]]
 name = "libra-core"
 version = "0.0.1"
 dependencies = [
@@ -1343,9 +1353,9 @@ dependencies = [
 name = "libra-interp"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-markup",
- "libra-widgets",
 ]
 
 [[package]]
@@ -1369,6 +1379,7 @@ dependencies = [
  "accesskit_winit",
  "arboard",
  "directories",
+ "libra-components",
  "libra-core",
  "libra-draw",
  "libra-effects",
@@ -1377,7 +1388,6 @@ dependencies = [
  "libra-markup",
  "libra-raster",
  "libra-text",
- "libra-widgets",
  "serde",
  "serde_json",
  "softbuffer",
@@ -1396,8 +1406,8 @@ name = "libra-raster"
 version = "0.0.1"
 dependencies = [
  "fontdue",
+ "libra-components",
  "libra-draw",
- "libra-widgets",
  "tiny-skia",
 ]
 
@@ -1415,6 +1425,7 @@ dependencies = [
 name = "libra-test"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-data",
  "libra-draw",
@@ -1422,23 +1433,12 @@ dependencies = [
  "libra-markup",
  "libra-raster",
  "libra-text",
- "libra-widgets",
  "tiny-skia",
 ]
 
 [[package]]
 name = "libra-text"
 version = "0.0.1"
-
-[[package]]
-name = "libra-widgets"
-version = "0.0.1"
-dependencies = [
- "libra-core",
- "libra-data",
- "libra-draw",
- "taffy",
-]
 
 [[package]]
 name = "libredox"
@@ -1559,11 +1559,11 @@ dependencies = [
 name = "notes"
 version = "0.0.1"
 dependencies = [
+ "libra-components",
  "libra-core",
  "libra-platform",
  "libra-test",
  "libra-text",
- "libra-widgets",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-//! libra-widgets — the widget layer.
+//! libra-components — the component layer.
 //!
 //! ViewTree (typed output of a view engine) → taffy layout → a flattened,
 //! laid-out tree carrying geometry + semantics, which can paint itself

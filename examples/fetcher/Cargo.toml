@@ -11,4 +11,4 @@ serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 libra-test.workspace = true
-libra-widgets.workspace = true
+libra-components.workspace = true
