@@ -19,8 +19,8 @@ fn main() {
         let code = libra_codegen::generate(
             &ast,
             &libra_codegen::Config {
-                model: "crate::TestModel".into(),
-                msg: "crate::TestMsg".into(),
+                state: "crate::TestState".into(),
+                action: "crate::TestAction".into(),
                 fn_name: format!("build_{name}"),
                 source: path.display().to_string(),
             },

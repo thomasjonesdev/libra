@@ -1,19 +1,19 @@
 //! libra-effects — the effects runtime (ARCHITECTURE.md §12.3).
 //!
-//! `update` returns `Cmd`s (data); this runtime is the only I/O actor.
+//! Actions return `Effect`s (data); this runtime is the only I/O actor.
 //! A small worker pool executes http/kv/random; timers get dedicated
-//! sleeper threads. Results come back as msgs through the sink the
+//! sleeper threads. Results come back as actions through the sink the
 //! runtime was built with (the windowed shell passes a winit
 //! EventLoopProxy wrapper; tests pass an mpsc sender).
 //!
-//! Ordering: msgs from one effect arrive in causal order; cross-effect
-//! ordering is NOT guaranteed — models must tolerate reordering (§12.3),
-//! and Tier-3 tests exploit that deliberately.
+//! Ordering: actions from one effect arrive in causal order; cross-effect
+//! ordering is NOT guaranteed — state must tolerate reordering (§12.3),
+//! and integration tests exploit that deliberately.
 //!
 //! Cancellation: cancelled timer ids are dropped by the runtime after
-//! waking — `update` never sees zombies.
+//! waking — actions never see zombies.
 
-use libra_core::{Cmd, HttpRequest, HttpResult, KvResult, TimerId};
+use libra_core::{Effect, HttpRequest, HttpResult, KvResult, TimerId};
 use libra_data::SeriesStore;
 use libra_kv::Kv;
 use std::collections::HashSet;
@@ -22,7 +22,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Where effect-result msgs go. `Send + Sync` because workers call it.
+/// Where effect-result actions go. `Send + Sync` because workers call it.
 pub type Sink<M> = Arc<dyn Fn(M) + Send + Sync>;
 
 type Job = Box<dyn FnOnce() + Send>;
@@ -40,7 +40,7 @@ pub struct Effects<M> {
 const WORKERS: usize = 4;
 
 impl<M: Send + 'static> Effects<M> {
-    /// `kv`: None disables the Kv cmds (they resolve to errors) — used
+    /// `kv`: None disables the Kv effects (they resolve to errors) — used
     /// when an app has no manifest identity to store under.
     pub fn new(sink: Sink<M>, kv: Option<Kv>) -> Self {
         Self::with_store(sink, kv, Arc::new(SeriesStore::new()))
@@ -75,19 +75,19 @@ impl<M: Send + 'static> Effects<M> {
         &self.store
     }
 
-    pub fn execute_all(&self, cmds: Vec<Cmd<M>>) {
-        for cmd in cmds {
-            self.execute(cmd);
+    pub fn execute_all(&self, effects: Vec<Effect<M>>) {
+        for effect in effects {
+            self.execute(effect);
         }
     }
 
-    pub fn execute(&self, cmd: Cmd<M>) {
-        match cmd {
-            Cmd::Http { req, on_done } => {
+    pub fn execute(&self, effect: Effect<M>) {
+        match effect {
+            Effect::Http { req, on_done } => {
                 let sink = Arc::clone(&self.sink);
                 self.spawn(move || sink(on_done(do_http(&req))));
             }
-            Cmd::KvGet { key, on_done } => {
+            Effect::KvGet { key, on_done } => {
                 let (kv, sink) = (self.kv.clone(), Arc::clone(&self.sink));
                 self.spawn(move || {
                     let value = match &kv {
@@ -97,7 +97,7 @@ impl<M: Send + 'static> Effects<M> {
                     sink(on_done(value));
                 });
             }
-            Cmd::KvSet { key, value, on_done } => {
+            Effect::KvSet { key, value, on_done } => {
                 let (kv, sink) = (self.kv.clone(), Arc::clone(&self.sink));
                 self.spawn(move || {
                     let result = match &kv {
@@ -112,7 +112,7 @@ impl<M: Send + 'static> Effects<M> {
                     }
                 });
             }
-            Cmd::KvDelete { key } => {
+            Effect::KvDelete { key } => {
                 let kv = self.kv.clone();
                 self.spawn(move || {
                     if let Some(kv) = &kv {
@@ -120,7 +120,7 @@ impl<M: Send + 'static> Effects<M> {
                     }
                 });
             }
-            Cmd::KvScan { prefix, on_done } => {
+            Effect::KvScan { prefix, on_done } => {
                 let (kv, sink) = (self.kv.clone(), Arc::clone(&self.sink));
                 self.spawn(move || {
                     let hits = match &kv {
@@ -130,7 +130,7 @@ impl<M: Send + 'static> Effects<M> {
                     sink(on_done(hits));
                 });
             }
-            Cmd::Timer { id, after_ms, msg } => {
+            Effect::Timer { id, after_ms, action } => {
                 let sink = Arc::clone(&self.sink);
                 let cancelled = Arc::clone(&self.cancelled);
                 // Dedicated thread: a sleeping timer must not occupy a
@@ -142,13 +142,13 @@ impl<M: Send + 'static> Effects<M> {
                             return; // cancelled while sleeping: never delivered
                         }
                     }
-                    sink(msg);
+                    sink(action);
                 });
             }
-            Cmd::CancelTimer { id } => {
+            Effect::CancelTimer { id } => {
                 self.cancelled.lock().expect("cancel set").insert(id);
             }
-            Cmd::Random { bytes, on_done } => {
+            Effect::Random { bytes, on_done } => {
                 let sink = Arc::clone(&self.sink);
                 self.spawn(move || {
                     let mut buf = vec![0u8; bytes];
@@ -159,12 +159,12 @@ impl<M: Send + 'static> Effects<M> {
                     sink(on_done(out));
                 });
             }
-            Cmd::IngestOpen { source, series } => self.store.ingest_open(series, source),
-            Cmd::IngestClose { series } => self.store.ingest_close(series),
+            Effect::IngestOpen { source, series } => self.store.ingest_open(series, source),
+            Effect::IngestClose { series } => self.store.ingest_close(series),
             // Shell-handled: the windowed shell intercepts SetTheme
-            // before cmds reach the pool; reaching here means headless —
-            // nothing to restyle.
-            Cmd::SetTheme { .. } => {}
+            // before effects reach the pool; reaching here means
+            // headless — nothing to restyle.
+            Effect::SetTheme { .. } => {}
         }
     }
 
@@ -231,9 +231,9 @@ mod tests {
     #[test]
     fn kv_set_then_get_roundtrips_through_workers() {
         let (fx, rx, _dir) = runtime();
-        fx.execute(Cmd::kv_set_acked("k", b"v".to_vec(), Msg::Saved));
+        fx.execute(Effect::kv_set_acked("k", b"v".to_vec(), Msg::Saved));
         assert_eq!(recv(&rx), Msg::Saved(KvResult::Ok));
-        fx.execute(Cmd::kv_get("k", Msg::Loaded));
+        fx.execute(Effect::kv_get("k", Msg::Loaded));
         assert_eq!(recv(&rx), Msg::Loaded(Some(b"v".to_vec())));
     }
 
@@ -241,9 +241,9 @@ mod tests {
     fn timer_fires_and_cancelled_timer_never_delivers() {
         let (fx, rx, _dir) = runtime();
         let id = TimerId(7);
-        fx.execute(Cmd::Timer { id: Some(id), after_ms: 200, msg: Msg::Tick });
-        fx.execute(Cmd::CancelTimer { id });
-        fx.execute(Cmd::Timer { id: None, after_ms: 30, msg: Msg::Tick });
+        fx.execute(Effect::Timer { id: Some(id), after_ms: 200, action: Msg::Tick });
+        fx.execute(Effect::CancelTimer { id });
+        fx.execute(Effect::Timer { id: None, after_ms: 30, action: Msg::Tick });
         // The un-cancelled timer fires…
         assert_eq!(recv(&rx), Msg::Tick);
         // …and the cancelled one never does (wait past its deadline).
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn random_yields_requested_bytes() {
         let (fx, rx, _dir) = runtime();
-        fx.execute(Cmd::Random { bytes: 16, on_done: Msg::Entropy });
+        fx.execute(Effect::Random { bytes: 16, on_done: Msg::Entropy });
         match recv(&rx) {
             Msg::Entropy(b) => assert_eq!(b.len(), 16),
             other => panic!("unexpected: {other:?}"),
@@ -283,7 +283,7 @@ mod tests {
         });
 
         let (fx, rx, _dir) = runtime();
-        fx.execute(Cmd::http(HttpRequest::get(format!("http://{addr}/zen")), Msg::Fetched));
+        fx.execute(Effect::http(HttpRequest::get(format!("http://{addr}/zen")), Msg::Fetched));
         assert_eq!(
             recv(&rx),
             Msg::Fetched(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() })

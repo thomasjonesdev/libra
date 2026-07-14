@@ -1,9 +1,9 @@
 //! libra-interp — the dev engine: walk a parsed `.lx` AST against the
-//! live model's reflection to produce a ViewTree (ARCHITECTURE.md §6.4).
+//! live state's reflection to produce a ViewTree (ARCHITECTURE.md §6.4).
 //!
 //! Validation happens here, at load/rebuild time, with spans:
-//! unknown elements, unknown attributes, bindings that name no model
-//! field, and handlers that name no Msg variant are all errors — the
+//! unknown elements, unknown attributes, bindings that name no state
+//! field, and handlers that name no action are all errors — the
 //! same diagnostics the release codegen turns into compile errors.
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
@@ -26,14 +26,14 @@ fn err(span: Span, msg: impl Into<String>) -> InterpError {
     InterpError { message: msg.into(), span }
 }
 
-/// Model/Msg reflection the interpreter resolves against
+/// State/Action reflection the interpreter resolves against
 /// (`#[derive(LibraReflect)]` on the app side).
 pub struct Scope<'a> {
     pub field: &'a dyn Fn(&str) -> Option<String>,
-    pub has_msg: &'a dyn Fn(&str) -> bool,
+    pub has_action: &'a dyn Fn(&str) -> bool,
     /// Does this name resolve to a String-payload handler
-    /// (`onChange={TitleChanged}`)? See `ReflectMsg::msg_with_str`.
-    pub has_str_msg: &'a dyn Fn(&str) -> bool,
+    /// (`onChange={TitleChanged}`)? See `ReflectAction::action_with_str`.
+    pub has_str_action: &'a dyn Fn(&str) -> bool,
 }
 
 pub fn resolve(ast: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
@@ -133,9 +133,9 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                 }
             }
             let (msg, mspan) =
-                on_press.ok_or_else(|| err(*span, "<Button> requires onPress={SomeMsg}"))?;
-            if !(scope.has_msg)(&msg) {
-                return Err(err(mspan, format!("no variant '{msg}' on Msg — check the enum")));
+                on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
+            if !(scope.has_action)(&msg) {
+                return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
             }
             let label = text_content(children, scope, *span)?;
             Ok(ViewNode::Button { label, variant, on_press: msg, test_id })
@@ -158,7 +158,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             let (path, hspan) = handle
                 .ok_or_else(|| err(*span, format!("<{name}> requires series={{someHandle}}")))?;
             let text = (scope.field)(&path)
-                .ok_or_else(|| err(hspan, format!("no field '{path}' on Model")))?;
+                .ok_or_else(|| err(hspan, format!("no field '{path}' on State")))?;
             let handle: libra_core::SeriesHandle = text.parse().map_err(|e| {
                 err(hspan, format!("field '{path}' is not a series handle: {e}"))
             })?;
@@ -186,13 +186,13 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             let (path, vspan) =
                 value.ok_or_else(|| err(*span, "<Input> requires value={someField}"))?;
             let value = (scope.field)(&path)
-                .ok_or_else(|| err(vspan, format!("no field '{path}' on Model")))?;
+                .ok_or_else(|| err(vspan, format!("no field '{path}' on State")))?;
             let (msg, mspan) =
-                on_change.ok_or_else(|| err(*span, "<Input> requires onChange={SomeMsg}"))?;
-            if !(scope.has_str_msg)(&msg) {
+                on_change.ok_or_else(|| err(*span, "<Input> requires onChange={someAction}"))?;
+            if !(scope.has_str_action)(&msg) {
                 return Err(err(
                     mspan,
-                    format!("'{msg}' is not a String-payload Msg variant (need `{msg}(String)`)"),
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
                 ));
             }
             // Focus identity until structural IDs arrive with the
@@ -232,7 +232,7 @@ fn text_content(children: &[Node], scope: &Scope, span: Span) -> Result<String, 
                 Inline::Lit(s) => out.push_str(s),
                 Inline::Bind { path, span } => {
                     let v = (scope.field)(path)
-                        .ok_or_else(|| err(*span, format!("no field '{path}' on Model")))?;
+                        .ok_or_else(|| err(*span, format!("no field '{path}' on State")))?;
                     out.push_str(&v);
                 }
             }
@@ -249,9 +249,9 @@ mod tests {
 
     fn scope_ok<'a>(
         field: &'a dyn Fn(&str) -> Option<String>,
-        has_msg: &'a dyn Fn(&str) -> bool,
+        has_action: &'a dyn Fn(&str) -> bool,
     ) -> Scope<'a> {
-        Scope { field, has_msg, has_str_msg: &|_| false }
+        Scope { field, has_action, has_str_action: &|_| false }
     }
 
     #[test]
@@ -264,8 +264,8 @@ mod tests {
         )
         .unwrap();
         let field = |p: &str| (p == "count").then(|| "7".to_string());
-        let has_msg = |m: &str| m == "Increment";
-        let view = resolve(&ast, &scope_ok(&field, &has_msg)).unwrap();
+        let has_action = |m: &str| m == "Increment";
+        let view = resolve(&ast, &scope_ok(&field, &has_action)).unwrap();
         let ViewNode::Column { children, .. } = view else { panic!() };
         assert_eq!(
             children[0],
@@ -284,9 +284,9 @@ mod tests {
     fn typoed_handler_is_a_load_time_error_with_span() {
         let ast = parse("<Column>\n  <Button onPress={Incremnt}>+</Button>\n</Column>").unwrap();
         let field = |_: &str| None;
-        let has_msg = |m: &str| m == "Increment";
-        let e = resolve(&ast, &scope_ok(&field, &has_msg)).unwrap_err();
-        assert!(e.message.contains("no variant 'Incremnt' on Msg"));
+        let has_action = |m: &str| m == "Increment";
+        let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
+        assert!(e.message.contains("no action 'Incremnt' on Action"));
         assert_eq!(e.span.line, 2);
     }
 
@@ -294,17 +294,17 @@ mod tests {
     fn typoed_binding_is_a_load_time_error() {
         let ast = parse("<Column><Text>{cuont}</Text></Column>").unwrap();
         let field = |p: &str| (p == "count").then(|| "0".into());
-        let has_msg = |_: &str| true;
-        let e = resolve(&ast, &scope_ok(&field, &has_msg)).unwrap_err();
-        assert!(e.message.contains("no field 'cuont' on Model"));
+        let has_action = |_: &str| true;
+        let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
+        assert!(e.message.contains("no field 'cuont' on State"));
     }
 
     #[test]
     fn unknown_element_is_an_error() {
         let ast = parse("<Colunm></Colunm>").unwrap();
         let field = |_: &str| None;
-        let has_msg = |_: &str| true;
-        let e = resolve(&ast, &scope_ok(&field, &has_msg)).unwrap_err();
+        let has_action = |_: &str| true;
+        let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
         assert!(e.message.contains("unknown element <Colunm>"));
     }
 }

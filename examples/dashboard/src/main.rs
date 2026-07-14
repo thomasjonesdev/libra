@@ -7,7 +7,7 @@
 //! view→layout→paint→damage-render path at 1280×800.
 
 use dashboard::{Dashboard, RATE_HZ, SERIES, VIEW, WINDOW_MS};
-use libra_core::{App, ReflectMsg, SeriesId};
+use libra_core::{App, ReflectAction, SeriesId};
 use libra_data::{sine_sample, Sample, SeriesStore};
 use libra_platform::Options;
 use std::sync::Arc;
@@ -47,10 +47,10 @@ fn bench() {
         }
     }
 
-    let field = |p: &str| libra_core::ReflectModel::field(&model, p);
-    let has_msg = |m: &str| <Dashboard as App>::Msg::msg_by_name(m).is_some();
-    let has_str_msg = |m: &str| <Dashboard as App>::Msg::msg_with_str(m, String::new()).is_some();
-    let scope = libra_interp::Scope { field: &field, has_msg: &has_msg, has_str_msg: &has_str_msg };
+    let field = |p: &str| libra_core::ReflectState::field(&model, p);
+    let has_action = |m: &str| <Dashboard as App>::Msg::action_by_name(m).is_some();
+    let has_str_action = |m: &str| <Dashboard as App>::Msg::action_with_str(m, String::new()).is_some();
+    let scope = libra_interp::Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
 
     let mut cache = None;
     let mut layout_ms = Vec::with_capacity(frames);

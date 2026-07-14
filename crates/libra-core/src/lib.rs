@@ -1,22 +1,29 @@
-//! libra-core — the application contract: Model/Msg/update/Cmd.
+//! libra-core — the application contract: State/Action/reduce/Effect.
 //!
 //! Phase 1: the `App` trait is now just `init` + `update` (§5.1's
 //! shape). Reflection — binding paths and handler names — lives in the
-//! `ReflectModel`/`ReflectMsg` traits, normally implemented by
+//! `ReflectState`/`ReflectAction` traits, normally implemented by
 //! `#[derive(LibraReflect)]` (re-exported here from libra-reflect) and
 //! hand-implementable when an app needs a custom projection. Plus the
-//! Phase-1 subset of the §12.1 Cmd vocabulary (Http, Kv*, Timer,
+//! Phase-1 subset of the §12.1 Effect vocabulary (Http, Kv*, Timer,
 //! Random) and `Remote<T, E>` (Appendix C).
+//!
+//! Naming migration (ARCHITECTURE.md §3.2, MIGRATION-NAMING.md): the
+//! founding names `Cmd`/`ReflectModel`/`ReflectMsg`/`MsgCtor` survive as
+//! `#[deprecated]` aliases until Stage 8 removes them.
 
 pub use libra_reflect::LibraReflect;
 
-/// A msg constructor: how an effect result becomes a msg. Enum tuple
-/// variants coerce to this directly (`Msg::HttpDone` is a
-/// `fn(HttpResult) -> Msg`). Note: fn-pointer *equality* is unreliable
-/// across crates (codegen duplicates the shim), so `Cmd`'s `PartialEq`
-/// deliberately compares the effect's data and ignores ctor identity —
-/// effects are data; the ctor is routing.
-pub type MsgCtor<T, M> = fn(T) -> M;
+/// An action constructor: how an effect result becomes an action. Enum
+/// tuple variants coerce to this directly (`Action::HttpDone` is a
+/// `fn(HttpResult) -> Action`). Note: fn-pointer *equality* is
+/// unreliable across crates (codegen duplicates the shim), so
+/// `Effect`'s `PartialEq` deliberately compares the effect's data and
+/// ignores ctor identity — effects are data; the ctor is routing.
+pub type ActionCtor<T, M> = fn(T) -> M;
+
+#[deprecated(note = "renamed to ActionCtor")]
+pub type MsgCtor<T, M> = ActionCtor<T, M>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
@@ -98,15 +105,15 @@ impl FrameInfo {
 
 /// Ongoing event sources, declared by `App::subscriptions` and diffed
 /// by the runtime (§12.2). Phase 2 subset: frame ticks. Streams join
-/// with WebSocket/process cmds.
+/// with WebSocket/process effects.
 #[derive(Clone)]
 pub enum Sub<M> {
-    /// One msg per vsync-coalesced tick while subscribed.
-    Frames { on_frame: MsgCtor<FrameInfo, M> },
+    /// One action per vsync-coalesced tick while subscribed.
+    Frames { on_frame: ActionCtor<FrameInfo, M> },
 }
 
 impl<M> Sub<M> {
-    pub fn frames(on_frame: MsgCtor<FrameInfo, M>) -> Self {
+    pub fn frames(on_frame: ActionCtor<FrameInfo, M>) -> Self {
         Sub::Frames { on_frame }
     }
 }
@@ -140,7 +147,7 @@ impl HttpRequest {
     }
 }
 
-/// What comes back from `Cmd::Http`. Any HTTP status is `Response`
+/// What comes back from `Effect::Http`. Any HTTP status is `Response`
 /// (a 500 is an answer, not a transport failure); `Failed` is
 /// connect/DNS/timeout territory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,27 +163,27 @@ pub enum KvResult {
 }
 
 /// Effect descriptions (ARCHITECTURE.md §12.1, Phase-1 subset).
-/// `update` returns these; the runtime executes them; tests intercept
+/// Actions return these; the runtime executes them; tests intercept
 /// them and hand-feed results back. Closed and versioned — grows in
 /// later phases (Ws*, File*, Spawn, Interval, ingest…).
 #[derive(Debug, Clone)]
-pub enum Cmd<M> {
+pub enum Effect<M> {
     // Network
-    Http { req: HttpRequest, on_done: MsgCtor<HttpResult, M> },
+    Http { req: HttpRequest, on_done: ActionCtor<HttpResult, M> },
 
     // Persistence (§13, executed by libra-kv via the effects runtime)
-    KvGet { key: String, on_done: MsgCtor<Option<Vec<u8>>, M> },
-    KvSet { key: String, value: Vec<u8>, on_done: Option<MsgCtor<KvResult, M>> },
+    KvGet { key: String, on_done: ActionCtor<Option<Vec<u8>>, M> },
+    KvSet { key: String, value: Vec<u8>, on_done: Option<ActionCtor<KvResult, M>> },
     KvDelete { key: String },
-    KvScan { prefix: String, on_done: MsgCtor<Vec<(String, Vec<u8>)>, M> },
+    KvScan { prefix: String, on_done: ActionCtor<Vec<(String, Vec<u8>)>, M> },
 
-    // Time & entropy (keeping update pure)
-    Timer { id: Option<TimerId>, after_ms: u64, msg: M },
+    // Time & entropy (keeping actions pure)
+    Timer { id: Option<TimerId>, after_ms: u64, action: M },
     CancelTimer { id: TimerId },
-    Random { bytes: usize, on_done: MsgCtor<Vec<u8>, M> },
+    Random { bytes: usize, on_done: ActionCtor<Vec<u8>, M> },
 
     // Data plane (§14): ingest threads owned by the runtime; samples
-    // land in ring buffers, never in msgs.
+    // land in ring buffers, never in actions.
     IngestOpen { source: SourceSpec, series: SeriesId },
     IngestClose { series: SeriesId },
 
@@ -189,56 +196,62 @@ pub enum Cmd<M> {
 /// only (`Some` vs `None`), never by fn-pointer identity — that
 /// identity is not stable across crate boundaries, and the description
 /// of an effect doesn't include where its result is routed.
-impl<M: PartialEq> PartialEq for Cmd<M> {
+impl<M: PartialEq> PartialEq for Effect<M> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Cmd::Http { req: a, .. }, Cmd::Http { req: b, .. }) => a == b,
-            (Cmd::KvGet { key: a, .. }, Cmd::KvGet { key: b, .. }) => a == b,
+            (Effect::Http { req: a, .. }, Effect::Http { req: b, .. }) => a == b,
+            (Effect::KvGet { key: a, .. }, Effect::KvGet { key: b, .. }) => a == b,
             (
-                Cmd::KvSet { key: ka, value: va, on_done: da },
-                Cmd::KvSet { key: kb, value: vb, on_done: db },
+                Effect::KvSet { key: ka, value: va, on_done: da },
+                Effect::KvSet { key: kb, value: vb, on_done: db },
             ) => ka == kb && va == vb && da.is_some() == db.is_some(),
-            (Cmd::KvDelete { key: a }, Cmd::KvDelete { key: b }) => a == b,
-            (Cmd::KvScan { prefix: a, .. }, Cmd::KvScan { prefix: b, .. }) => a == b,
+            (Effect::KvDelete { key: a }, Effect::KvDelete { key: b }) => a == b,
+            (Effect::KvScan { prefix: a, .. }, Effect::KvScan { prefix: b, .. }) => a == b,
             (
-                Cmd::Timer { id: ia, after_ms: aa, msg: ma },
-                Cmd::Timer { id: ib, after_ms: ab, msg: mb },
+                Effect::Timer { id: ia, after_ms: aa, action: ma },
+                Effect::Timer { id: ib, after_ms: ab, action: mb },
             ) => ia == ib && aa == ab && ma == mb,
-            (Cmd::CancelTimer { id: a }, Cmd::CancelTimer { id: b }) => a == b,
-            (Cmd::Random { bytes: a, .. }, Cmd::Random { bytes: b, .. }) => a == b,
+            (Effect::CancelTimer { id: a }, Effect::CancelTimer { id: b }) => a == b,
+            (Effect::Random { bytes: a, .. }, Effect::Random { bytes: b, .. }) => a == b,
             (
-                Cmd::IngestOpen { source: sa, series: ia },
-                Cmd::IngestOpen { source: sb, series: ib },
+                Effect::IngestOpen { source: sa, series: ia },
+                Effect::IngestOpen { source: sb, series: ib },
             ) => sa == sb && ia == ib,
-            (Cmd::IngestClose { series: a }, Cmd::IngestClose { series: b }) => a == b,
-            (Cmd::SetTheme { name: a }, Cmd::SetTheme { name: b }) => a == b,
+            (Effect::IngestClose { series: a }, Effect::IngestClose { series: b }) => a == b,
+            (Effect::SetTheme { name: a }, Effect::SetTheme { name: b }) => a == b,
             _ => false,
         }
     }
 }
 
-impl<M> Cmd<M> {
+impl<M> Effect<M> {
     /// Convenience constructors mirroring §5.1's usage style.
-    pub fn http(req: HttpRequest, on_done: MsgCtor<HttpResult, M>) -> Self {
-        Cmd::Http { req, on_done }
+    pub fn http(req: HttpRequest, on_done: ActionCtor<HttpResult, M>) -> Self {
+        Effect::Http { req, on_done }
     }
-    pub fn kv_get(key: impl Into<String>, on_done: MsgCtor<Option<Vec<u8>>, M>) -> Self {
-        Cmd::KvGet { key: key.into(), on_done }
+    pub fn kv_get(key: impl Into<String>, on_done: ActionCtor<Option<Vec<u8>>, M>) -> Self {
+        Effect::KvGet { key: key.into(), on_done }
     }
     pub fn kv_set(key: impl Into<String>, value: Vec<u8>) -> Self {
-        Cmd::KvSet { key: key.into(), value, on_done: None }
+        Effect::KvSet { key: key.into(), value, on_done: None }
     }
     pub fn kv_set_acked(
         key: impl Into<String>,
         value: Vec<u8>,
-        on_done: MsgCtor<KvResult, M>,
+        on_done: ActionCtor<KvResult, M>,
     ) -> Self {
-        Cmd::KvSet { key: key.into(), value, on_done: Some(on_done) }
+        Effect::KvSet { key: key.into(), value, on_done: Some(on_done) }
     }
-    pub fn timer(after_ms: u64, msg: M) -> Self {
-        Cmd::Timer { id: None, after_ms, msg }
+    pub fn timer(after_ms: u64, action: M) -> Self {
+        Effect::Timer { id: None, after_ms, action }
     }
 }
+
+/// Deprecated alias for `Effect`. A type alias can't apply
+/// `#[deprecated]` to construction sites the way a struct/enum can, but
+/// this keeps existing `Cmd<M>` signatures compiling.
+#[deprecated(note = "renamed to Effect")]
+pub type Cmd<M> = Effect<M>;
 
 /// Async-state type (Appendix C, via Elm's RemoteData): makes
 /// loading/error impossible-states unrepresentable on the Model.
@@ -270,12 +283,12 @@ impl<T, E> Default for Remote<T, E> {
     }
 }
 
-/// Model reflection: how markup bindings resolve against the model.
-/// Implemented by `#[derive(LibraReflect)]` on the Model struct
+/// State reflection: how markup bindings resolve against the state.
+/// Implemented by `#[derive(LibraReflect)]` on the State struct
 /// (Display fields become bindable; `#[libra(skip)]` excludes one), or
 /// by hand for custom projections. Drives the interpreter's load-time
 /// validation and, later, the automation-server schema (§16).
-pub trait ReflectModel {
+pub trait ReflectState {
     /// Resolve a binding path (`count`) to display text.
     /// `None` makes the binding a load-time interp error.
     fn field(&self, path: &str) -> Option<String>;
@@ -284,23 +297,49 @@ pub trait ReflectModel {
     fn field_names() -> &'static [&'static str];
 }
 
-/// Msg reflection: how markup handler names resolve to msgs.
-/// Implemented by `#[derive(LibraReflect)]` on the Msg enum: unit
-/// variants are constructible by name; payload variants are effect
-/// results, not UI handlers, and resolve to `None`.
-pub trait ReflectMsg: Sized {
-    fn msg_by_name(name: &str) -> Option<Self>;
+/// Deprecated alias for `ReflectState`, kept as a standalone trait
+/// (not a blanket impl over `ReflectState`) so a type never ends up
+/// implementing both with the same method names in scope at once —
+/// that would make `.field(...)` ambiguous for its callers. Old code
+/// that hand-implements `ReflectModel` still compiles; it just doesn't
+/// automatically satisfy a `ReflectState` bound, and vice versa.
+#[deprecated(note = "renamed to ReflectState")]
+pub trait ReflectModel {
+    fn field(&self, path: &str) -> Option<String>;
+    fn field_names() -> &'static [&'static str];
+}
 
-    /// Resolve a handler name to a msg carrying a control-provided
-    /// String payload (§6.2's `onChange={FilterChanged}` — the control
+/// Action reflection: how markup handler names resolve to actions.
+/// Implemented by `#[derive(LibraReflect)]` on the Action enum: unit
+/// variants are constructible by name; payload variants are effect
+/// results, not UI handlers, and resolve to `None`. Public names are
+/// camelCase per §3.3; the derive maps them from the Rust identifier.
+pub trait ReflectAction: Sized {
+    fn action_by_name(name: &str) -> Option<Self>;
+
+    /// Resolve a handler name to an action carrying a control-provided
+    /// String payload (§6.2's `onChange={filterChanged}` — the control
     /// supplies the value). Derived for single-`String` tuple variants;
     /// anything else resolves to `None`.
-    fn msg_with_str(name: &str, value: String) -> Option<Self> {
+    fn action_with_str(name: &str, value: String) -> Option<Self> {
         let _ = (name, value);
         None
     }
 
     /// Every variant name (diagnostics, automation schema).
+    fn action_names() -> &'static [&'static str];
+}
+
+/// Deprecated alias for `ReflectAction` — standalone for the same
+/// ambiguity-avoidance reason as `ReflectModel` above.
+#[deprecated(note = "renamed to ReflectAction; msg_by_name/msg_with_str/msg_names \
+    renamed to action_by_name/action_with_str/action_names")]
+pub trait ReflectMsg: Sized {
+    fn msg_by_name(name: &str) -> Option<Self>;
+    fn msg_with_str(name: &str, value: String) -> Option<Self> {
+        let _ = (name, value);
+        None
+    }
     fn msg_names() -> &'static [&'static str];
 }
 
@@ -416,23 +455,28 @@ impl<S> NavStack<S> {
 }
 
 /// The application contract — `init` + `update`, nothing else (§5.1).
+/// This is runtime plumbing: `libra::app!` (§5.8) and the
+/// `#[libra::actions]` macro (§5.2) generate an impl of this trait from
+/// state + actions, so most apps never write one by hand. `Msg`/
+/// `update` keep their names here pending the Stage 4 macro work; the
+/// user-facing vocabulary is state/action/reduce (§3.1).
 ///
-/// Purity rules for `update` (ARCHITECTURE.md §5.2): no I/O, no clocks,
+/// Purity rules for `update` (ARCHITECTURE.md §5.3): no I/O, no clocks,
 /// no randomness, no threads, no blocking. Time and entropy arrive
-/// *inside* msgs. These rules are what make Tier-1 tests total.
-pub trait App: Sized + ReflectModel {
-    type Msg: Clone + std::fmt::Debug + ReflectMsg;
+/// *inside* actions. These rules are what make unit tests total.
+pub trait App: Sized + ReflectState {
+    type Msg: Clone + std::fmt::Debug + ReflectAction;
 
-    /// Initial model + startup effects.
-    fn init() -> (Self, Vec<Cmd<Self::Msg>>);
+    /// Initial state + startup effects.
+    fn init() -> (Self, Vec<Effect<Self::Msg>>);
 
     /// The only place state changes. Pure.
-    fn update(&mut self, msg: Self::Msg) -> Vec<Cmd<Self::Msg>>;
+    fn update(&mut self, msg: Self::Msg) -> Vec<Effect<Self::Msg>>;
 
-    /// Ambient event sources, derived from the model (§12.2). The
-    /// runtime diffs the result after every update: new subs start,
-    /// removed subs stop. Pure — so "tick while this screen is live"
-    /// is a testable function.
+    /// Ambient event sources, derived from state (§12.2). The runtime
+    /// diffs the result after every update: new subs start, removed
+    /// subs stop. Pure — so "tick while this screen is live" is a
+    /// testable function.
     fn subscriptions(&self) -> Vec<Sub<Self::Msg>> {
         vec![]
     }
@@ -456,7 +500,7 @@ mod tests {
 
     // Hand-implemented reflection (the derive is the normal path; this
     // proves custom projections stay possible).
-    impl ReflectModel for Counter {
+    impl ReflectState for Counter {
         fn field(&self, path: &str) -> Option<String> {
             match path {
                 "count" => Some(self.count.to_string()),
@@ -468,32 +512,32 @@ mod tests {
         }
     }
 
-    impl ReflectMsg for Msg {
-        fn msg_by_name(name: &str) -> Option<Msg> {
+    impl ReflectAction for Msg {
+        fn action_by_name(name: &str) -> Option<Msg> {
             match name {
-                "Inc" => Some(Msg::Inc),
+                "inc" => Some(Msg::Inc),
                 _ => None,
             }
         }
-        fn msg_names() -> &'static [&'static str] {
-            &["Inc", "Fetch", "Got"]
+        fn action_names() -> &'static [&'static str] {
+            &["inc", "fetch", "got"]
         }
     }
 
     impl App for Counter {
         type Msg = Msg;
-        fn init() -> (Self, Vec<Cmd<Msg>>) {
+        fn init() -> (Self, Vec<Effect<Msg>>) {
             (Counter { count: 0, quote: Remote::NotAsked }, vec![])
         }
-        fn update(&mut self, msg: Msg) -> Vec<Cmd<Msg>> {
+        fn update(&mut self, msg: Msg) -> Vec<Effect<Msg>> {
             match msg {
                 Msg::Inc => {
                     self.count += 1;
-                    vec![Cmd::kv_set("count", self.count.to_le_bytes().to_vec())]
+                    vec![Effect::kv_set("count", self.count.to_le_bytes().to_vec())]
                 }
                 Msg::Fetch => {
                     self.quote = Remote::Loading;
-                    vec![Cmd::http(HttpRequest::get("https://api.github.com/zen"), Msg::Got)]
+                    vec![Effect::http(HttpRequest::get("https://api.github.com/zen"), Msg::Got)]
                 }
                 Msg::Got(HttpResult::Response { status: 200, body }) => {
                     self.quote = Remote::Success(String::from_utf8_lossy(&body).into_owned());
@@ -512,7 +556,7 @@ mod tests {
         let (mut m, cmds) = Counter::init();
         assert!(cmds.is_empty());
         let cmds = m.update(Msg::Inc);
-        assert_eq!(cmds, vec![Cmd::kv_set("count", 1i64.to_le_bytes().to_vec())]);
+        assert_eq!(cmds, vec![Effect::kv_set("count", 1i64.to_le_bytes().to_vec())]);
         assert_eq!(m.field("count").as_deref(), Some("1"));
     }
 
@@ -521,13 +565,76 @@ mod tests {
         let (mut m, _) = Counter::init();
         let cmds = m.update(Msg::Fetch);
         assert!(m.quote.is_loading());
-        // The cmd is data: pull the ctor out and hand-feed a result —
-        // this is the whole Tier-3 mechanism in miniature.
-        let Cmd::Http { req, on_done } = &cmds[0] else { panic!("expected Http") };
+        // The effect is data: pull the ctor out and hand-feed a result —
+        // this is the whole integration-test mechanism in miniature.
+        let Effect::Http { req, on_done } = &cmds[0] else { panic!("expected Http") };
         assert_eq!(req.url, "https://api.github.com/zen");
         let msg = on_done(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() });
         m.update(msg);
         assert_eq!(m.quote.success().map(String::as_str), Some("Mind the gap."));
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn deprecated_aliases_still_compile_and_behave_identically() {
+        // Cmd/ReflectModel/ReflectMsg/MsgCtor survive as aliases until
+        // MIGRATION-NAMING.md Stage 8. `Cmd` is a true type alias for
+        // `Effect`, so it's interchangeable at the value level. The
+        // deprecated reflect traits are kept as standalone (not
+        // blanket-derived) traits — see the doc comment on
+        // `ReflectModel` for why — so old code that hand-implements
+        // them still compiles; this covers exactly that path.
+        let a: Cmd<Msg> = Cmd::http(HttpRequest::get("x"), Msg::Got);
+        let b: Effect<Msg> = Effect::http(HttpRequest::get("x"), Msg::Got);
+        assert_eq!(a, b);
+
+        struct OldStyleCounter {
+            count: i64,
+        }
+
+        #[allow(deprecated)]
+        impl ReflectModel for OldStyleCounter {
+            fn field(&self, path: &str) -> Option<String> {
+                match path {
+                    "count" => Some(self.count.to_string()),
+                    _ => None,
+                }
+            }
+            fn field_names() -> &'static [&'static str] {
+                &["count"]
+            }
+        }
+
+        #[allow(deprecated)]
+        fn field_via_old_trait<T: ReflectModel>(t: &T, path: &str) -> Option<String> {
+            t.field(path)
+        }
+        let c = OldStyleCounter { count: 42 };
+        assert_eq!(field_via_old_trait(&c, "count").as_deref(), Some("42"));
+
+        #[derive(Debug, Clone, PartialEq)]
+        enum OldStyleMsg {
+            Inc,
+        }
+
+        #[allow(deprecated)]
+        impl ReflectMsg for OldStyleMsg {
+            fn msg_by_name(name: &str) -> Option<Self> {
+                match name {
+                    "Inc" => Some(OldStyleMsg::Inc),
+                    _ => None,
+                }
+            }
+            fn msg_names() -> &'static [&'static str] {
+                &["Inc"]
+            }
+        }
+
+        #[allow(deprecated)]
+        fn by_name_via_old_trait<T: ReflectMsg>(name: &str) -> Option<T> {
+            T::msg_by_name(name)
+        }
+        assert_eq!(by_name_via_old_trait::<OldStyleMsg>("Inc"), Some(OldStyleMsg::Inc));
     }
 
     #[test]
@@ -576,18 +683,19 @@ mod tests {
     }
 
     #[test]
-    fn cmd_equality_is_over_data_not_ctor_identity() {
+    fn effect_equality_is_over_data_not_ctor_identity() {
         fn other_ctor(r: HttpResult) -> Msg {
             Msg::Got(r)
         }
         // Different ctors, same effect description → equal.
-        let a: Cmd<Msg> = Cmd::http(HttpRequest::get("x"), Msg::Got);
-        let b: Cmd<Msg> = Cmd::http(HttpRequest::get("x"), other_ctor);
+        let a: Effect<Msg> = Effect::http(HttpRequest::get("x"), Msg::Got);
+        let b: Effect<Msg> = Effect::http(HttpRequest::get("x"), other_ctor);
         assert_eq!(a, b);
         // Different data → unequal.
-        assert_ne!(a, Cmd::http(HttpRequest::get("y"), Msg::Got));
+        assert_ne!(a, Effect::http(HttpRequest::get("y"), Msg::Got));
         // Acked vs fire-and-forget KvSet → unequal (presence matters).
-        let acked: Cmd<Msg> = Cmd::kv_set_acked("k", vec![1], |_| Msg::Got(HttpResult::Failed(String::new())));
-        assert_ne!(acked, Cmd::kv_set("k", vec![1]));
+        let acked: Effect<Msg> =
+            Effect::kv_set_acked("k", vec![1], |_| Msg::Got(HttpResult::Failed(String::new())));
+        assert_ne!(acked, Effect::kv_set("k", vec![1]));
     }
 }

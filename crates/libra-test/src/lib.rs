@@ -1,22 +1,23 @@
 //! libra-test — the in-process test harness (ARCHITECTURE.md §15).
 //!
-//! Tier 2: build the real view via the real interpreter, lay it out at a
-//! virtual viewport, query by semantics, dispatch through real hit
-//! testing and the app's real `update`.
+//! Component tests: build the real view via the real interpreter, lay
+//! it out at a virtual viewport, query by semantics, dispatch through
+//! real hit testing and the app's real `update`.
 //!
-//! Tier 3: every `Cmd` returned by `init`/`update` is intercepted into a
-//! script queue instead of executed. Tests assert on them
-//! (`expect_cmd`) and hand-feed results back (`resolve_*`) in any order
-//! — including adversarial orders. No mocks anywhere: the cmd is data,
-//! the fixture is data, the dispatch is the app's real `update`.
+//! Integration tests: every `Effect` returned by `init`/`update` is
+//! intercepted into a script queue instead of executed. Tests assert
+//! on them (`expect_effect`) and hand-feed results back (`resolve_*`)
+//! in any order — including adversarial orders. No mocks anywhere: the
+//! effect is data, the fixture is data, the dispatch is the app's real
+//! `update`.
 //!
-//! Tier 4: render through the canonical executor and compare PNG bytes
-//! exactly. Missing snapshot → recorded (first run); LIBRA_BLESS=1 →
-//! re-record after intentional changes; otherwise any byte difference
-//! fails with expected/actual/diff-heatmap paths.
+//! Snapshot tests: render through the canonical executor and compare
+//! PNG bytes exactly. Missing snapshot → recorded (first run);
+//! LIBRA_BLESS=1 → re-record after intentional changes; otherwise any
+//! byte difference fails with expected/actual/diff-heatmap paths.
 
-// ReflectModel/ReflectMsg methods resolve through App's supertrait bounds.
-use libra_core::{App, Cmd, HttpResult, KvResult, ReflectMsg, SeriesId};
+// ReflectState/ReflectAction methods resolve through App's supertrait bounds.
+use libra_core::{App, Effect, HttpResult, KvResult, ReflectAction, SeriesId};
 use libra_data::SeriesStore;
 use libra_interp::Scope;
 use libra_markup::Node;
@@ -35,8 +36,9 @@ pub struct Harness<A: App> {
     laid: LaidTree,
     viewport: (u32, u32),
     snapshot_dir: PathBuf,
-    /// Tier 3: intercepted, unexecuted cmds in emission order.
-    pending: VecDeque<Cmd<A::Msg>>,
+    /// Intercepted, unexecuted effects in emission order (integration
+    /// tests, §15.4).
+    pending: VecDeque<Effect<A::Msg>>,
     /// The data plane, fed synchronously (tapes) — never by threads.
     store: Arc<SeriesStore>,
     /// §10.1 focus: the focused Input's identity + editing state +
@@ -70,8 +72,8 @@ pub mod by {
     }
 }
 
-/// Cmd matchers for `expect_cmd` (§15.4).
-pub mod cmd {
+/// Effect matchers for `expect_effect` (§15.4).
+pub mod fx {
     #[derive(Clone, Debug)]
     pub enum Matcher {
         Any,
@@ -118,21 +120,25 @@ pub mod cmd {
     }
 }
 
-fn matches<M>(matcher: &cmd::Matcher, c: &Cmd<M>) -> bool {
-    use cmd::Matcher;
+/// Deprecated alias for `fx` (MIGRATION-NAMING.md Stage 3).
+#[deprecated(note = "renamed to fx")]
+pub use fx as cmd;
+
+fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
+    use fx::Matcher;
     match (matcher, c) {
         (Matcher::Any, _) => true,
-        (Matcher::Http, Cmd::Http { .. }) => true,
-        (Matcher::KvGet(want), Cmd::KvGet { key, .. }) => {
+        (Matcher::Http, Effect::Http { .. }) => true,
+        (Matcher::KvGet(want), Effect::KvGet { key, .. }) => {
             want.as_deref().map_or(true, |w| w == key)
         }
-        (Matcher::KvSet(want), Cmd::KvSet { key, .. }) => {
+        (Matcher::KvSet(want), Effect::KvSet { key, .. }) => {
             want.as_deref().map_or(true, |w| w == key)
         }
-        (Matcher::KvScan, Cmd::KvScan { .. }) => true,
-        (Matcher::Timer, Cmd::Timer { .. }) => true,
-        (Matcher::Random, Cmd::Random { .. }) => true,
-        (Matcher::SetTheme, Cmd::SetTheme { .. }) => true,
+        (Matcher::KvScan, Effect::KvScan { .. }) => true,
+        (Matcher::Timer, Effect::Timer { .. }) => true,
+        (Matcher::Random, Effect::Random { .. }) => true,
+        (Matcher::SetTheme, Effect::SetTheme { .. }) => true,
         _ => false,
     }
 }
@@ -143,10 +149,15 @@ impl<A: App> Harness<A> {
         Self::with_viewport(lx_source, 400, 240)
     }
 
+    /// Alias for `new` — the documented constructor name (§15.3).
+    pub fn render(lx_source: &str) -> Self {
+        Self::new(lx_source)
+    }
+
     pub fn with_viewport(lx_source: &str, w: u32, h: u32) -> Self {
         let ast = libra_markup::parse(lx_source)
             .unwrap_or_else(|e| panic!("markup parse error: {e}"));
-        let (app, init_cmds) = A::init();
+        let (app, init_effects) = A::init();
         let renderer = Renderer::new();
         let theme = Theme::dark();
         let laid = rebuild(&app, &ast, &renderer, (w, h), &theme);
@@ -159,7 +170,7 @@ impl<A: App> Harness<A> {
             snapshot_dir: PathBuf::from(
                 std::env::var("LIBRA_SNAPSHOT_DIR").unwrap_or_else(|_| "tests/snapshots".into()),
             ),
-            pending: init_cmds.into(),
+            pending: init_effects.into(),
             store: Arc::new(SeriesStore::new()),
             focus: None,
             theme,
@@ -193,29 +204,36 @@ impl<A: App> Harness<A> {
         &self.store
     }
 
-    pub fn model(&self) -> &A {
+    pub fn state(&self) -> &A {
         &self.app
     }
 
-    /// Dispatch a msg directly through the real update, then rebuild.
-    /// Returned cmds are intercepted into the Tier-3 queue.
+    /// Deprecated alias for `state`.
+    #[deprecated(note = "renamed to state")]
+    pub fn model(&self) -> &A {
+        self.state()
+    }
+
+    /// Dispatch an action directly through the real update, then
+    /// rebuild. Returned effects are intercepted into the integration
+    /// queue (§15.4).
     pub fn dispatch(&mut self, msg: A::Msg) {
-        let cmds = self.app.update(msg);
-        for cmd in &cmds {
+        let effects = self.app.update(msg);
+        for effect in &effects {
             // SetTheme is presentation state: apply it (snapshots see
-            // it) *and* queue it (Tier-3 can assert on it).
-            if let Cmd::SetTheme { name } = cmd {
+            // it) *and* queue it (integration tests can assert on it).
+            if let Effect::SetTheme { name } = effect {
                 if let Some(t) = Theme::by_name(name) {
                     self.theme = t;
                 }
             }
         }
-        self.pending.extend(cmds);
+        self.pending.extend(effects);
         self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
     }
 
     /// Hit-test a synthetic click at the center of the selected item and
-    /// dispatch its handler through the app's real msg resolution.
+    /// dispatch its handler through the app's real action resolution.
     /// Clicking a TextInput focuses it (§10.1) instead of dispatching.
     pub fn click(&mut self, sel: Selector) {
         let item = self.find(&sel).unwrap_or_else(|| panic!("click: no item matches {sel:?}"));
@@ -230,8 +248,9 @@ impl<A: App> Harness<A> {
             self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
             return;
         }
-        let msg = A::Msg::msg_by_name(&name)
-            .unwrap_or_else(|| panic!("handler '{name}' resolved to no Msg — reflection out of sync"));
+        let msg = A::Msg::action_by_name(&name).unwrap_or_else(|| {
+            panic!("handler '{name}' resolved to no Action — reflection out of sync")
+        });
         self.dispatch(msg);
     }
 
@@ -262,16 +281,16 @@ impl<A: App> Harness<A> {
         let after = edit.text().to_string();
         self.focus = Some((id.clone(), edit, on_change.clone()));
         if before != after {
-            let msg = A::Msg::msg_with_str(&on_change, after)
-                .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Msg variant"));
+            let msg = A::Msg::action_with_str(&on_change, after)
+                .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Action variant"));
             self.dispatch(msg);
-            // Controlled input: the model is the source of truth. If
+            // Controlled input: state is the source of truth. If
             // update transformed the text, resync the editing state.
-            self.sync_focus_from_model();
+            self.sync_focus_from_state();
         }
     }
 
-    fn sync_focus_from_model(&mut self) {
+    fn sync_focus_from_state(&mut self) {
         let Some((id, edit, on_change)) = self.focus.take() else { return };
         let current = self
             .find(&Selector::TestId(id.clone()))
@@ -280,7 +299,7 @@ impl<A: App> Harness<A> {
         let edit = if current == edit.text() {
             edit
         } else {
-            EditState::new(current) // model rewrote the value: caret to end
+            EditState::new(current) // state rewrote the value: caret to end
         };
         self.focus = Some((id, edit, on_change));
     }
@@ -303,85 +322,104 @@ impl<A: App> Harness<A> {
     }
 
     // ------------------------------------------------------------------
-    // Tier 3 — cmd interception & scripted results (§15.4)
+    // Integration tests — effect interception & scripted results (§15.4)
     // ------------------------------------------------------------------
 
-    /// Remove and return the first pending cmd matching `matcher`.
+    /// Remove and return the first pending effect matching `matcher`.
     /// Panics (listing the queue) if none matches.
-    pub fn expect_cmd(&mut self, matcher: cmd::Matcher) -> Cmd<A::Msg> {
+    pub fn expect_effect(&mut self, matcher: fx::Matcher) -> Effect<A::Msg> {
         let pos = self.pending.iter().position(|c| matches(&matcher, c));
         match pos {
             Some(i) => self.pending.remove(i).expect("position is valid"),
             None => panic!(
-                "expect_cmd: nothing matches {matcher:?}; pending queue: {:?}",
+                "expect_effect: nothing matches {matcher:?}; pending queue: {:?}",
                 self.pending
             ),
         }
     }
 
-    /// Assert the cmd queue is fully drained — the flow produced nothing
-    /// the test didn't account for.
-    pub fn expect_no_cmds(&self) {
+    /// Deprecated alias for `expect_effect`.
+    #[deprecated(note = "renamed to expect_effect")]
+    pub fn expect_cmd(&mut self, matcher: fx::Matcher) -> Effect<A::Msg> {
+        self.expect_effect(matcher)
+    }
+
+    /// Assert the effect queue is fully drained — the flow produced
+    /// nothing the test didn't account for.
+    pub fn expect_no_effects(&self) {
         assert!(
             self.pending.is_empty(),
-            "expected no pending cmds, found: {:?}",
+            "expected no pending effects, found: {:?}",
             self.pending
         );
     }
 
-    pub fn pending_cmds(&self) -> impl Iterator<Item = &Cmd<A::Msg>> {
+    /// Deprecated alias for `expect_no_effects`.
+    #[deprecated(note = "renamed to expect_no_effects")]
+    pub fn expect_no_cmds(&self) {
+        self.expect_no_effects()
+    }
+
+    pub fn pending_effects(&self) -> impl Iterator<Item = &Effect<A::Msg>> {
         self.pending.iter()
     }
 
-    /// Feed an HTTP fixture into an intercepted `Cmd::Http` — constructs
-    /// the msg via the cmd's own ctor and dispatches it for real.
-    pub fn resolve_http(&mut self, cmd: Cmd<A::Msg>, result: HttpResult) {
-        match cmd {
-            Cmd::Http { on_done, .. } => self.dispatch(on_done(result)),
-            other => panic!("resolve_http: not an Http cmd: {other:?}"),
+    /// Deprecated alias for `pending_effects`.
+    #[deprecated(note = "renamed to pending_effects")]
+    pub fn pending_cmds(&self) -> impl Iterator<Item = &Effect<A::Msg>> {
+        self.pending.iter()
+    }
+
+    /// Feed an HTTP fixture into an intercepted `Effect::Http` —
+    /// constructs the action via the effect's own ctor and dispatches
+    /// it for real.
+    pub fn resolve_http(&mut self, effect: Effect<A::Msg>, result: HttpResult) {
+        match effect {
+            Effect::Http { on_done, .. } => self.dispatch(on_done(result)),
+            other => panic!("resolve_http: not an Http effect: {other:?}"),
         }
     }
 
-    pub fn resolve_kv_get(&mut self, cmd: Cmd<A::Msg>, value: Option<Vec<u8>>) {
-        match cmd {
-            Cmd::KvGet { on_done, .. } => self.dispatch(on_done(value)),
-            other => panic!("resolve_kv_get: not a KvGet cmd: {other:?}"),
+    pub fn resolve_kv_get(&mut self, effect: Effect<A::Msg>, value: Option<Vec<u8>>) {
+        match effect {
+            Effect::KvGet { on_done, .. } => self.dispatch(on_done(value)),
+            other => panic!("resolve_kv_get: not a KvGet effect: {other:?}"),
         }
     }
 
     /// Acked sets dispatch their result; fire-and-forget sets are a no-op.
-    pub fn resolve_kv_set(&mut self, cmd: Cmd<A::Msg>, result: KvResult) {
-        match cmd {
-            Cmd::KvSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
-            Cmd::KvSet { on_done: None, .. } => {}
-            other => panic!("resolve_kv_set: not a KvSet cmd: {other:?}"),
+    pub fn resolve_kv_set(&mut self, effect: Effect<A::Msg>, result: KvResult) {
+        match effect {
+            Effect::KvSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
+            Effect::KvSet { on_done: None, .. } => {}
+            other => panic!("resolve_kv_set: not a KvSet effect: {other:?}"),
         }
     }
 
-    pub fn resolve_kv_scan(&mut self, cmd: Cmd<A::Msg>, hits: Vec<(String, Vec<u8>)>) {
-        match cmd {
-            Cmd::KvScan { on_done, .. } => self.dispatch(on_done(hits)),
-            other => panic!("resolve_kv_scan: not a KvScan cmd: {other:?}"),
+    pub fn resolve_kv_scan(&mut self, effect: Effect<A::Msg>, hits: Vec<(String, Vec<u8>)>) {
+        match effect {
+            Effect::KvScan { on_done, .. } => self.dispatch(on_done(hits)),
+            other => panic!("resolve_kv_scan: not a KvScan effect: {other:?}"),
         }
     }
 
     /// Deliver an intercepted timer immediately — tests control time.
-    pub fn fire_timer(&mut self, cmd: Cmd<A::Msg>) {
-        match cmd {
-            Cmd::Timer { msg, .. } => self.dispatch(msg),
-            other => panic!("fire_timer: not a Timer cmd: {other:?}"),
+    pub fn fire_timer(&mut self, effect: Effect<A::Msg>) {
+        match effect {
+            Effect::Timer { action, .. } => self.dispatch(action),
+            other => panic!("fire_timer: not a Timer effect: {other:?}"),
         }
     }
 
-    pub fn resolve_random(&mut self, cmd: Cmd<A::Msg>, bytes: Vec<u8>) {
-        match cmd {
-            Cmd::Random { on_done, .. } => self.dispatch(on_done(bytes)),
-            other => panic!("resolve_random: not a Random cmd: {other:?}"),
+    pub fn resolve_random(&mut self, effect: Effect<A::Msg>, bytes: Vec<u8>) {
+        match effect {
+            Effect::Random { on_done, .. } => self.dispatch(on_done(bytes)),
+            other => panic!("resolve_random: not a Random effect: {other:?}"),
         }
     }
 
     // ------------------------------------------------------------------
-    // Queries (Tier 2)
+    // Queries (component tests)
     // ------------------------------------------------------------------
 
     pub fn query(&self, sel: Selector) -> NodeRef<'_> {
@@ -398,7 +436,7 @@ impl<A: App> Harness<A> {
     }
 
     // ------------------------------------------------------------------
-    // Snapshots (Tier 4)
+    // Snapshots (snapshot tests)
     // ------------------------------------------------------------------
 
     /// Byte-exact snapshot assertion (see module docs). On mismatch,
@@ -508,9 +546,9 @@ fn rebuild<A: App>(
     theme: &Theme,
 ) -> LaidTree {
     let field = |p: &str| app.field(p);
-    let has_msg = |m: &str| A::Msg::msg_by_name(m).is_some();
-    let has_str_msg = |m: &str| A::Msg::msg_with_str(m, String::new()).is_some();
-    let scope = Scope { field: &field, has_msg: &has_msg, has_str_msg: &has_str_msg };
+    let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
+    let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
+    let scope = Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
     let view = libra_interp::resolve(ast, &scope)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
     libra_components::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)

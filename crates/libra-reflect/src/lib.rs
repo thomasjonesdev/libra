@@ -1,19 +1,24 @@
-//! libra-reflect — `#[derive(LibraReflect)]` for Model and Msg
+//! libra-reflect — `#[derive(LibraReflect)]` for State and Action
 //! (ARCHITECTURE.md §21): the derive that retires the hand-written
 //! reflection shims and, later, drives the automation-server schema
 //! (§16).
 //!
-//! On a **struct** (the Model): implements `libra_core::ReflectModel`.
+//! On a **struct** (the State): implements `libra_core::ReflectState`.
 //! Every named field becomes a bindable path rendered via `ToString`
 //! (so any `Display` type binds). `#[libra(skip)]` excludes a field —
 //! used for non-Display state like `Remote<T, E>`; per §6.3, its
-//! display projection belongs on the Model as a plain field maintained
+//! display projection belongs on State as a plain field maintained
 //! in `update`.
 //!
-//! On an **enum** (the Msg): implements `libra_core::ReflectMsg`. Unit
-//! variants are constructible by handler name; payload variants are
-//! effect-result events, not UI handlers, and resolve to `None`.
-//! `msg_names` lists every variant for diagnostics either way.
+//! On an **enum** (the Action): implements `libra_core::ReflectAction`.
+//! Unit variants are constructible by handler name; payload variants
+//! are effect-result events, not UI handlers, and resolve to `None`.
+//! `action_names` lists every variant for diagnostics either way.
+//! Variant names resolve verbatim (no case transformation) — this
+//! derive predates the `#[libra::actions]` macro. The ARCHITECTURE.md
+//! §3.3 camelCase public-name mapping (and the macro that generates
+//! variants from snake_case method names) is MIGRATION-NAMING.md
+//! Stage 4 scope, landed in both view engines together per §6.4.
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -27,7 +32,7 @@ pub fn derive_libra_reflect(input: TokenStream) -> TokenStream {
         Data::Enum(e) => derive_msg(&input, e),
         Data::Union(_) => syn::Error::new_spanned(
             &input.ident,
-            "LibraReflect: unions are neither Models nor Msgs",
+            "LibraReflect: unions are neither State nor Action types",
         )
         .to_compile_error()
         .into(),
@@ -56,7 +61,7 @@ fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
     let Fields::Named(fields) = &data.fields else {
         return syn::Error::new_spanned(
             name,
-            "LibraReflect on a Model requires named fields",
+            "LibraReflect on a State struct requires named fields",
         )
         .to_compile_error()
         .into();
@@ -76,7 +81,7 @@ fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     quote! {
-        impl #impl_generics ::libra_core::ReflectModel for #name #ty_generics #where_clause {
+        impl #impl_generics ::libra_core::ReflectState for #name #ty_generics #where_clause {
             fn field(&self, path: &str) -> ::core::option::Option<::std::string::String> {
                 match path {
                     #(#arms)*
@@ -128,14 +133,14 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     quote! {
-        impl #impl_generics ::libra_core::ReflectMsg for #name #ty_generics #where_clause {
-            fn msg_by_name(name: &str) -> ::core::option::Option<Self> {
+        impl #impl_generics ::libra_core::ReflectAction for #name #ty_generics #where_clause {
+            fn action_by_name(name: &str) -> ::core::option::Option<Self> {
                 match name {
                     #(#ctor_arms)*
                     _ => ::core::option::Option::None,
                 }
             }
-            fn msg_with_str(name: &str, value: ::std::string::String) -> ::core::option::Option<Self> {
+            fn action_with_str(name: &str, value: ::std::string::String) -> ::core::option::Option<Self> {
                 match name {
                     #(#str_arms)*
                     _ => {
@@ -144,7 +149,7 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
                     }
                 }
             }
-            fn msg_names() -> &'static [&'static str] {
+            fn action_names() -> &'static [&'static str] {
                 &[#(#names),*]
             }
         }

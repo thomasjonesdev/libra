@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use libra_core::{App, Cmd, FrameInfo, ReflectMsg, Sub};
+use libra_core::{App, Effect, FrameInfo, ReflectAction, Sub};
 use libra_text::{EditOp, EditState};
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -273,7 +273,7 @@ struct Shell<A: App> {
     /// §10.1 focus: focused Input id + editing state + onChange name.
     focus: Option<(String, EditState, String)>,
     modifiers: ModifiersState,
-    /// §11: current theme; Cmd::SetTheme swaps it live.
+    /// §11: current theme; Effect::SetTheme swaps it live.
     theme: Theme,
     theme_mtime: Option<std::time::SystemTime>,
     /// §17: msgs from screen-reader actions enter here (same causal
@@ -303,9 +303,9 @@ where
         }
         let logical: LogicalSize<f32> = size.to_logical(gfx.window.scale_factor());
         let field = |p: &str| self.app.field(p);
-        let has_msg = |m: &str| A::Msg::msg_by_name(m).is_some();
-        let has_str_msg = |m: &str| A::Msg::msg_with_str(m, String::new()).is_some();
-        let scope = Scope { field: &field, has_msg: &has_msg, has_str_msg: &has_str_msg };
+        let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
+        let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
+        let scope = Scope { field: &field, has_action: &has_action, has_str_action: &has_str_action };
         match libra_interp::resolve(&self.ast, &scope) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
@@ -333,19 +333,19 @@ where
     }
 
     fn dispatch(&mut self, msg: A::Msg) {
-        let cmds = self.app.update(msg);
+        let effects = self.app.update(msg);
         // SetTheme is presentation state (§11): the shell applies it;
         // everything else goes to the effects runtime.
-        let mut rest = Vec::with_capacity(cmds.len());
-        for cmd in cmds {
-            if let Cmd::SetTheme { name } = &cmd {
+        let mut rest = Vec::with_capacity(effects.len());
+        for effect in effects {
+            if let Effect::SetTheme { name } = &effect {
                 match Theme::by_name(name) {
                     Some(t) => self.theme = t,
                     None => eprintln!("[libra] unknown theme '{name}' (built in: libra-dark, libra-light)"),
                 }
                 continue;
             }
-            rest.push(cmd);
+            rest.push(effect);
         }
         self.effects.execute_all(rest);
         self.sync_subscriptions();
@@ -401,8 +401,9 @@ where
             return;
         }
         self.focus = None;
-        let msg = A::Msg::msg_by_name(&name)
-            .unwrap_or_else(|| panic!("handler '{name}' resolved to no Msg — reflection out of sync"));
+        let msg = A::Msg::action_by_name(&name).unwrap_or_else(|| {
+            panic!("handler '{name}' resolved to no Action — reflection out of sync")
+        });
         self.dispatch(msg);
     }
 
@@ -499,9 +500,9 @@ where
         let new_text = edit.text().to_string();
         self.focus = Some((id, edit, on_change.clone()));
         if changed {
-            let msg = A::Msg::msg_with_str(&on_change, new_text)
-                .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Msg variant"));
-            self.dispatch(msg); // relayout picks up the model's new value
+            let msg = A::Msg::action_with_str(&on_change, new_text)
+                .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Action variant"));
+            self.dispatch(msg); // relayout picks up state's new value
         }
         self.request_redraw();
     }
@@ -772,7 +773,7 @@ where
         }
         let snap = self.snapshot.lock().expect("a11y snapshot");
         if let Some(name) = a11y::action_for(&snap, request.target_node.0) {
-            if let Some(msg) = A::Msg::msg_by_name(name) {
+            if let Some(msg) = A::Msg::action_by_name(name) {
                 (self.sink)(msg);
             }
         }
