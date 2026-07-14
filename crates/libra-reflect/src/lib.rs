@@ -190,23 +190,12 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
     });
     // Single-String tuple variants are control-payload handlers
     // (`onChange={TitleChanged}`): the control provides the value.
-    // Type detection is by name (`String`) — a macro can't resolve
-    // types; a false positive fails to compile, which is the goal.
-    let str_arms = data.variants.iter().filter_map(|v| {
-        let ident = &v.ident;
-        let vname = ident.to_string();
-        let Fields::Unnamed(fields) = &v.fields else { return None };
-        if fields.unnamed.len() != 1 {
-            return None;
-        }
-        let syn::Type::Path(tp) = &fields.unnamed[0].ty else { return None };
-        if tp.path.segments.last().map(|s| s.ident != "String").unwrap_or(true) {
-            return None;
-        }
-        Some(quote! {
-            #vname => ::core::option::Option::Some(#name::#ident(value)),
-        })
-    });
+    // Type detection is by name — a macro can't resolve types; a
+    // false positive fails to compile, which is the goal.
+    let str_arms = single_typed_tuple_arms(name, data, "String");
+    // Single-FrameInfo tuple variants are §12.5's <Frames
+    // onTick={Ticked}> handlers — same shape, different payload type.
+    let frame_info_arms = single_typed_tuple_arms(name, data, "FrameInfo");
     let names = data.variants.iter().map(|v| v.ident.to_string());
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -227,10 +216,56 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
                     }
                 }
             }
+            fn action_with_frame_info(name: &str, info: ::libra_core::FrameInfo) -> ::core::option::Option<Self> {
+                match name {
+                    #(#frame_info_arms)*
+                    _ => {
+                        let _ = info;
+                        ::core::option::Option::None
+                    }
+                }
+            }
             fn action_names() -> &'static [&'static str] {
                 &[#(#names),*]
             }
         }
     }
     .into()
+}
+
+/// Arms for a `ReflectAction` handler method that dispatches by name
+/// to single-tuple-field variants whose field type's last path segment
+/// matches `ty_name` (`"String"` for `action_with_str`, `"FrameInfo"`
+/// for `action_with_frame_info`). The bound variable is always named
+/// `value`/`info` by the caller's match arm — this only builds the
+/// `name => Some(Variant(<binding>))` arms, generic over which binding
+/// identifier the surrounding method uses.
+fn single_typed_tuple_arms(
+    enum_name: &syn::Ident,
+    data: &syn::DataEnum,
+    ty_name: &str,
+) -> Vec<proc_macro2::TokenStream> {
+    data.variants
+        .iter()
+        .filter_map(|v| {
+            let ident = &v.ident;
+            let vname = ident.to_string();
+            let Fields::Unnamed(fields) = &v.fields else { return None };
+            if fields.unnamed.len() != 1 {
+                return None;
+            }
+            let syn::Type::Path(tp) = &fields.unnamed[0].ty else { return None };
+            if tp.path.segments.last().map(|s| s.ident != ty_name).unwrap_or(true) {
+                return None;
+            }
+            let binding = if ty_name == "String" {
+                quote::format_ident!("value")
+            } else {
+                quote::format_ident!("info")
+            };
+            Some(quote! {
+                #vname => ::core::option::Option::Some(#enum_name::#ident(#binding)),
+            })
+        })
+        .collect()
 }

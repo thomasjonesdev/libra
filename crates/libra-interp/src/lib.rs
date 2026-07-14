@@ -40,6 +40,9 @@ pub struct Scope<'a> {
     /// scopes in tests that never construct a `<for>`) — every real
     /// Scope built from `ReflectState::collection` supplies this.
     pub collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
+    /// Does this name resolve to a `FrameInfo`-payload handler (§12.5's
+    /// `<Frames onTick={name}>`)? See `ReflectAction::action_with_frame_info`.
+    pub has_frame_info_action: &'a dyn Fn(&str) -> bool,
 }
 
 pub fn resolve(ast: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
@@ -132,6 +135,7 @@ fn resolve_for(node: &Node, scope: &Scope) -> Result<Vec<ViewNode>, InterpError>
             has_action: scope.has_action,
             has_str_action: scope.has_str_action,
             collection: scope.collection,
+            has_frame_info_action: scope.has_frame_info_action,
         };
         out.extend(resolve_children(children, &iter_scope, "for", *span)?);
     }
@@ -293,12 +297,34 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Input { value, placeholder, on_change: msg, test_id })
         }
 
+        // §12.5: invisible, zero-layout — declares a mount-scoped
+        // subscription rather than rendering anything. `Interval`/
+        // `Stream` are the same pattern, not yet implemented.
+        "Frames" => {
+            let mut on_tick: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("onTick", AttrValue::Ident(m)) => on_tick = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_tick.ok_or_else(|| err(*span, "<Frames> requires onTick={someAction}"))?;
+            if !(scope.has_frame_info_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a FrameInfo-payload Action variant (need `{msg}(FrameInfo)`)"),
+                ));
+            }
+            Ok(ViewNode::SourceFrames { on_tick: msg })
+        }
+
         "for" => Err(err(*span, "<for> is only allowed as a direct child of <Column>/<Row>")),
 
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, for"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, for"
             ),
         )),
     }
@@ -344,7 +370,13 @@ mod tests {
         field: &'a dyn Fn(&str) -> Option<String>,
         has_action: &'a dyn Fn(&str) -> bool,
     ) -> Scope<'a> {
-        Scope { field, has_action, has_str_action: &|_| false, collection: &|_| None }
+        Scope {
+            field,
+            has_action,
+            has_str_action: &|_| false,
+            collection: &|_| None,
+            has_frame_info_action: &|_| false,
+        }
     }
 
     #[test]
@@ -405,7 +437,13 @@ mod tests {
         field: &'a dyn Fn(&str) -> Option<String>,
         collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
     ) -> Scope<'a> {
-        Scope { field, has_action: &|_| true, has_str_action: &|_| false, collection }
+        Scope {
+            field,
+            has_action: &|_| true,
+            has_str_action: &|_| false,
+            collection,
+            has_frame_info_action: &|_| false,
+        }
     }
 
     #[test]
@@ -487,5 +525,67 @@ mod tests {
         let collection = |_: &str| None;
         let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
         assert!(e.message.contains("no collection 'nonexistent' on State"));
+    }
+
+    fn scope_with_frame_info<'a>(has_frame_info_action: &'a dyn Fn(&str) -> bool) -> Scope<'a> {
+        Scope {
+            field: &|_| None,
+            has_action: &|_| true,
+            has_str_action: &|_| false,
+            collection: &|_| None,
+            has_frame_info_action,
+        }
+    }
+
+    #[test]
+    fn frames_resolves_to_a_source_node_when_on_tick_names_a_real_handler() {
+        let ast = parse(r#"<Column><Frames onTick={frame} /></Column>"#).unwrap();
+        let has_frame_info_action = |m: &str| m == "frame";
+        let view = resolve(&ast, &scope_with_frame_info(&has_frame_info_action)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(children, vec![ViewNode::SourceFrames { on_tick: "frame".into() }]);
+    }
+
+    #[test]
+    fn frames_requires_on_tick() {
+        let ast = parse(r#"<Column><Frames /></Column>"#).unwrap();
+        let has_frame_info_action = |_: &str| true;
+        let e = resolve(&ast, &scope_with_frame_info(&has_frame_info_action)).unwrap_err();
+        assert!(e.message.contains("requires onTick="));
+    }
+
+    #[test]
+    fn frames_on_tick_must_name_a_frame_info_handler() {
+        let ast = parse(r#"<Column><Frames onTick={notAHandler} /></Column>"#).unwrap();
+        let has_frame_info_action = |_: &str| false;
+        let e = resolve(&ast, &scope_with_frame_info(&has_frame_info_action)).unwrap_err();
+        assert!(e.message.contains("not a FrameInfo-payload Action variant"), "{}", e.message);
+    }
+
+    #[test]
+    fn frames_is_invisible_inside_a_for_loop_too() {
+        // Mounted sources inside <for> bodies are exactly as valid as
+        // top-level ones — resolve_children handles both uniformly.
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={x}><Frames onTick={frame} /></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = vec!["a".to_string(), "b".to_string()];
+        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let has_frame_info_action = |m: &str| m == "frame";
+        let scope = Scope {
+            field: &field,
+            has_action: &|_| true,
+            has_str_action: &|_| false,
+            collection: &collection,
+            has_frame_info_action: &has_frame_info_action,
+        };
+        let view = resolve(&ast, &scope).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(children.len(), 2);
+        for child in &children {
+            assert_eq!(child, &ViewNode::SourceFrames { on_tick: "frame".into() });
+        }
     }
 }

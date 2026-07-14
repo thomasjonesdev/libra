@@ -72,6 +72,14 @@ pub enum ViewNode {
     /// `test_id` is required — it is the focus identity until the
     /// reconciler brings structural IDs.
     Input { value: String, placeholder: String, on_change: String, test_id: String },
+    /// `<Frames onTick={name}>` (§12.5): an invisible, zero-layout
+    /// source element — declares "subscribe to vsync-coalesced frame
+    /// ticks while this is mounted," diffed by the runtime like
+    /// `App::subscriptions`. Renders nothing; excluded from the
+    /// AccessKit projection (its `Role::Source` semantics are
+    /// test-query-only). `Interval`/`Stream` are the same pattern,
+    /// not yet implemented.
+    SourceFrames { on_tick: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +93,9 @@ pub enum Role {
     Button,
     Chart,
     TextInput,
+    /// A mounted source element (§12.5) — test-query-only; the a11y
+    /// layer excludes this role from the AccessKit projection.
+    Source,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,6 +125,9 @@ pub enum ItemKind {
     Button { label: String, px: f32, variant: Variant },
     Chart { handle: SeriesHandle, panel: bool },
     Input { value: String, placeholder: String, px: f32 },
+    /// §12.5 source element — zero-size, paints nothing (see
+    /// `ViewNode::SourceFrames`).
+    Source { on_tick: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -338,6 +352,21 @@ fn build(
             ));
             Ok(id)
         }
+        ViewNode::SourceFrames { on_tick } => {
+            let id = tree.new_leaf(Style {
+                size: Size { width: length(0.0), height: length(0.0) },
+                ..Default::default()
+            })?;
+            meta.push((
+                id,
+                ItemKind::Source { on_tick: on_tick.clone() },
+                // `text: "frames"` is the source *kind*, matched by
+                // `by::source("frames")` — not the handler name.
+                Semantics { role: Role::Source, text: "frames".to_string(), test_id: None },
+                None,
+            ));
+            Ok(id)
+        }
     }
 }
 
@@ -371,6 +400,7 @@ impl LaidTree {
         for item in &self.items {
             match &item.kind {
                 ItemKind::Box => {}
+                ItemKind::Source { .. } => {}
                 ItemKind::Chart { handle, panel } => {
                     paint_chart(&mut cmds, item.rect, handle, *panel, store, theme);
                 }

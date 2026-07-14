@@ -1,7 +1,7 @@
 //! The derive exercised against the real libra-core traits (dev-dep
 //! cycle, permitted by cargo).
 
-use libra_core::{ReflectAction, ReflectState};
+use libra_core::{FrameInfo, ReflectAction, ReflectState};
 use libra_reflect::LibraReflect;
 
 #[derive(LibraReflect)]
@@ -22,6 +22,7 @@ enum Action {
     Loaded(Option<Vec<u8>>),
     Moved { x: f32 },
     TitleChanged(String),
+    Ticked(FrameInfo),
 }
 
 #[test]
@@ -46,7 +47,7 @@ fn unit_variants_construct_and_payload_variants_do_not() {
     // …but every variant is visible to diagnostics:
     assert_eq!(
         Action::action_names(),
-        &["Increment", "Reset", "Loaded", "Moved", "TitleChanged"]
+        &["Increment", "Reset", "Loaded", "Moved", "TitleChanged", "Ticked"]
     );
 }
 
@@ -60,4 +61,14 @@ fn string_payload_variants_construct_with_a_control_value() {
     assert_eq!(Action::action_with_str("Increment", "x".into()), None);
     assert_eq!(Action::action_with_str("Loaded", "x".into()), None);
     assert_eq!(Action::action_with_str("Moved", "x".into()), None);
+    assert_eq!(Action::action_with_str("Ticked", "x".into()), None);
+}
+
+#[test]
+fn frame_info_payload_variants_construct_for_source_element_ticks() {
+    let info = FrameInfo::at(2500.0);
+    assert_eq!(Action::action_with_frame_info("Ticked", info), Some(Action::Ticked(info)));
+    // Unit and non-FrameInfo-payload variants do not:
+    assert_eq!(Action::action_with_frame_info("Increment", info), None);
+    assert_eq!(Action::action_with_frame_info("TitleChanged", info), None);
 }

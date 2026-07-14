@@ -1,0 +1,4 @@
+<Column gap={8} padding={12}>
+  <Text testId="status">status: {status}</Text>
+  <Frames onTick={Frame} />
+</Column>

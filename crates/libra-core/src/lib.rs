@@ -372,6 +372,16 @@ pub trait ReflectAction: Sized {
         None
     }
 
+    /// Resolve a handler name to an action carrying a `FrameInfo`
+    /// (§12.5's `<Frames onTick={frame}>` source element). Derived for
+    /// single-`FrameInfo` tuple variants; anything else resolves to
+    /// `None`. Mirrors `action_with_str`'s shape for a different
+    /// runtime-supplied payload type.
+    fn action_with_frame_info(name: &str, info: FrameInfo) -> Option<Self> {
+        let _ = (name, info);
+        None
+    }
+
     /// Every variant name (diagnostics, automation schema).
     fn action_names() -> &'static [&'static str];
 }

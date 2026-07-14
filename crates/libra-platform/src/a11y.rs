@@ -37,6 +37,9 @@ pub fn snapshot(laid: &LaidTree, scale: f64, focused_test_id: Option<&str>) -> A
         if item.semantics.role == Role::Container {
             continue; // transparent boxes carry no semantics yet
         }
+        if item.semantics.role == Role::Source {
+            continue; // §12.5: source elements are test-query-only, excluded from AccessKit
+        }
         if item.semantics.role == Role::TextInput
             && item.semantics.test_id.as_deref() == focused_test_id
         {
@@ -65,6 +68,10 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             Role::Button => AkRole::Button,
             Role::Chart => AkRole::Image, // closest stable mapping for a plot
             Role::TextInput => AkRole::TextInput,
+            // Unreachable: snapshot() already filters Role::Source out
+            // (§12.5 — source elements never reach the AccessKit
+            // projection). Matched here only so this stays exhaustive.
+            Role::Source => AkRole::GenericContainer,
         });
         match item.role {
             Role::TextInput => {
@@ -144,6 +151,24 @@ mod tests {
             width: 400.0,
             height: 200.0,
         }
+    }
+
+    #[test]
+    fn source_elements_are_excluded_from_the_accesskit_projection() {
+        // §12.5: <Frames> et al. are test-query-only — the a11y layer
+        // must never surface them to assistive tech, same as
+        // Role::Container's transparent boxes.
+        let mut l = laid();
+        l.items.push(Item {
+            kind: ItemKind::Source { on_tick: "Tick".into() },
+            rect: libra_draw::Rect::new(0.0, 0.0, 0.0, 0.0),
+            semantics: Semantics { role: Role::Source, text: "frames".into(), test_id: None },
+            on_press: None,
+        });
+        let before = snapshot(&laid(), 1.0, None).items.len();
+        let after = snapshot(&l, 1.0, None).items.len();
+        assert_eq!(before, after, "adding a Source item must not change the a11y snapshot");
+        assert!(snapshot(&l, 1.0, None).items.iter().all(|i| i.role != Role::Source));
     }
 
     #[test]

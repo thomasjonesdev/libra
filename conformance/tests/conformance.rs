@@ -3,10 +3,11 @@
 //! for node — for the same fixture across a spread of state values.
 
 use conformance::{generated, TestAction, TestState};
-use libra_core::{ReflectAction, ReflectState, SeriesHandle, SeriesId};
+use libra_core::{FrameInfo, ReflectAction, ReflectState, SeriesHandle, SeriesId};
 
 const KITCHEN_SINK: &str = include_str!("../fixtures/kitchen_sink.lx");
 const FOR_LOOP: &str = include_str!("../fixtures/for_loop.lx");
+const FRAMES: &str = include_str!("../fixtures/frames.lx");
 
 fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
     let ast = libra_markup::parse(src).expect("fixture parses");
@@ -14,11 +15,14 @@ fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
     let has_action = |m: &str| TestAction::action_by_name(m).is_some();
     let has_str_action = |m: &str| TestAction::action_with_str(m, String::new()).is_some();
     let collection = |p: &str| state.collection(p);
+    let has_frame_info_action =
+        |m: &str| TestAction::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
         collection: &collection,
+        has_frame_info_action: &has_frame_info_action,
     };
     libra_interp::resolve(&ast, &scope).expect("fixture resolves")
 }
@@ -84,4 +88,21 @@ fn for_loop_produces_identical_trees_across_series_counts() {
             state.series.len()
         );
     }
+}
+
+/// §12.5's `<Frames onTick={frame}>` — interp's runtime resolution
+/// (via ReflectAction::action_with_frame_info) and codegen's typed
+/// `fn(FrameInfo) -> Action` coercion must agree on the exact same
+/// ViewNode::SourceFrames { on_tick } value.
+#[test]
+fn frames_source_element_produces_identical_trees() {
+    let state = TestState::default();
+    let interp = interp_tree_src(FRAMES, &state);
+    let compiled = generated::build_frames(&state);
+    assert_eq!(interp, compiled, "engine drift on frames fixture — one grammar, two engines (§6.4)");
+    assert!(
+        matches!(&interp, libra_components::ViewNode::Column { children, .. }
+            if children.contains(&libra_components::ViewNode::SourceFrames { on_tick: "Frame".into() })),
+        "expected a mounted Frames source in the tree: {interp:?}"
+    );
 }

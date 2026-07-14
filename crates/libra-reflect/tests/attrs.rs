@@ -5,7 +5,7 @@
 //! doesn't exist yet (PLAN-ERGONOMICS.md E1) — same macros, same
 //! expansion, different import spelling.
 
-use libra_core::{Effect, HttpRequest, HttpResult, IntoEffects, ReflectAction, ReflectState};
+use libra_core::{Effect, FrameInfo, HttpRequest, HttpResult, IntoEffects, ReflectAction, ReflectState};
 use libra_reflect::{actions, state};
 
 #[state]
@@ -14,6 +14,8 @@ struct CounterState {
     #[libra(skip)]
     #[allow(dead_code)]
     quote: Option<String>,
+    #[libra(skip)]
+    last_frame_ms: f64,
 }
 
 #[actions]
@@ -50,11 +52,18 @@ impl CounterState {
             self.quote = Some(String::from_utf8_lossy(&body).into_owned());
         }
     }
+
+    // Single-FrameInfo-arg: §12.5's <Frames onTick={frame}> source
+    // element — a handler, not a continuation, despite taking a
+    // non-String payload.
+    fn frame(&mut self, info: FrameInfo) {
+        self.last_frame_ms = info.t_ms;
+    }
 }
 
 #[test]
 fn state_derives_are_bundled_and_reflect_state_works() {
-    let s = CounterState { count: 3, quote: None };
+    let s = CounterState { count: 3, quote: None, last_frame_ms: 0.0 };
     // Debug + Clone + PartialEq + Serialize/Deserialize all present:
     let s2 = s.clone();
     assert_eq!(s, s2);
@@ -129,6 +138,22 @@ fn continuations_are_not_nameable_from_markup() {
 }
 
 #[test]
+fn single_frame_info_arg_methods_are_handlers_for_source_elements() {
+    let info = FrameInfo::at(1500.0);
+    assert_eq!(
+        Action::action_with_frame_info("frame", info),
+        Some(Action::Frame(info))
+    );
+    // Not nameable via the other two paths:
+    assert_eq!(Action::action_by_name("frame"), None);
+    assert_eq!(Action::action_with_str("frame", String::new()), None);
+
+    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    reduce(&mut s, Action::Frame(info));
+    assert_eq!(s.last_frame_ms, 1500.0);
+}
+
+#[test]
 fn action_names_lists_every_variant_including_continuations() {
     let names = Action::action_names();
     for expect in ["increment", "decrement", "resetCount", "filterChanged", "fetch", "fetched"] {
@@ -138,7 +163,7 @@ fn action_names_lists_every_variant_including_continuations() {
 
 #[test]
 fn reduce_dispatches_zero_arg_and_str_arg_actions_and_calls_the_real_method() {
-    let mut s = CounterState { count: 0, quote: None };
+    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
     let fx = reduce(&mut s, Action::Increment);
     assert_eq!(s.count, 1);
     assert!(fx.is_empty());
@@ -156,7 +181,7 @@ fn reduce_dispatches_zero_arg_and_str_arg_actions_and_calls_the_real_method() {
 
 #[test]
 fn reduce_surfaces_effects_returned_by_an_action_and_dispatches_the_continuation() {
-    let mut s = CounterState { count: 0, quote: None };
+    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
     let fx = reduce(&mut s, Action::Fetch);
     assert_eq!(fx.len(), 1);
     let Effect::Http { req, on_done } = &fx[0] else { panic!("expected Http") };

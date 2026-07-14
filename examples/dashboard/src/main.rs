@@ -7,7 +7,7 @@
 //! view→layout→paint→damage-render path at 1280×800.
 
 use dashboard::{Dashboard, RATE_HZ, SERIES, VIEW, WINDOW_MS};
-use libra_core::{App, ReflectAction, SeriesId};
+use libra_core::{App, FrameInfo, ReflectAction, SeriesId};
 use libra_data::{sine_sample, Sample, SeriesStore};
 use libra_platform::Options;
 use std::sync::Arc;
@@ -51,11 +51,14 @@ fn bench() {
     let has_action = |m: &str| <Dashboard as App>::Msg::action_by_name(m).is_some();
     let has_str_action = |m: &str| <Dashboard as App>::Msg::action_with_str(m, String::new()).is_some();
     let collection = |p: &str| libra_core::ReflectState::collection(&model, p);
+    let has_frame_info_action =
+        |m: &str| <Dashboard as App>::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
         collection: &collection,
+        has_frame_info_action: &has_frame_info_action,
     };
 
     let mut cache = None;

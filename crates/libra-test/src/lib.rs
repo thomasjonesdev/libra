@@ -17,7 +17,7 @@
 //! byte difference fails with expected/actual/diff-heatmap paths.
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
-use libra_core::{App, Effect, HttpResult, KvResult, ReflectAction, SeriesId};
+use libra_core::{App, Effect, FrameInfo, HttpResult, KvResult, ReflectAction, SeriesId};
 use libra_data::SeriesStore;
 use libra_interp::Scope;
 use libra_markup::Node;
@@ -55,6 +55,9 @@ pub enum Selector {
     TestId(String),
     Text(String),
     Role(Role),
+    /// A mounted source element (§12.5), matched by kind — `"frames"`
+    /// today; `"interval"`/`"stream"` join once those land.
+    Source(String),
 }
 
 pub mod by {
@@ -69,6 +72,9 @@ pub mod by {
     }
     pub fn role(r: Role) -> Selector {
         Selector::Role(r)
+    }
+    pub fn source(kind: &str) -> Selector {
+        Selector::Source(kind.to_string())
     }
 }
 
@@ -432,7 +438,15 @@ impl<A: App> Harness<A> {
             Selector::TestId(id) => i.semantics.test_id.as_deref() == Some(id.as_str()),
             Selector::Text(t) => i.semantics.text == *t,
             Selector::Role(r) => i.semantics.role == *r,
+            Selector::Source(kind) => i.semantics.role == Role::Source && i.semantics.text == *kind,
         })
+    }
+
+    /// Is a source element of this kind (§12.5) currently mounted?
+    /// Non-panicking, unlike `query` — the natural way to assert
+    /// *absence* (e.g. a paused dashboard has no mounted `"frames"`).
+    pub fn has_source(&self, kind: &str) -> bool {
+        self.find(&Selector::Source(kind.to_string())).is_some()
     }
 
     // ------------------------------------------------------------------
@@ -549,11 +563,14 @@ fn rebuild<A: App>(
     let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
     let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
     let collection = |p: &str| app.collection(p);
+    let has_frame_info_action =
+        |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let scope = Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
         collection: &collection,
+        has_frame_info_action: &has_frame_info_action,
     };
     let view = libra_interp::resolve(ast, &scope)
         .unwrap_or_else(|e| panic!("interp error: {e}"));

@@ -3,7 +3,7 @@
 //! node. `TestState`/`TestAction` exercise every binding & handler kind
 //! the grammar knows.
 
-use libra_core::{LibraReflect, SeriesHandle, SeriesId};
+use libra_core::{FrameInfo, LibraReflect, SeriesHandle, SeriesId};
 
 #[derive(Debug, Clone, PartialEq, LibraReflect)]
 pub struct TestState {
@@ -40,6 +40,9 @@ pub enum TestAction {
     Reset,
     Refresh,
     NameChanged(String),
+    /// §12.5's `<Frames onTick={frame}>` — exercised by the frames
+    /// fixture, not kitchen_sink/for_loop.
+    Frame(FrameInfo),
 }
 
 /// The codegen engine's output, compiled into this crate. Any type
@@ -49,4 +52,5 @@ pub mod generated {
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/kitchen_sink.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_loop.rs"));
+    include!(concat!(env!("OUT_DIR"), "/frames.rs"));
 }

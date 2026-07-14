@@ -275,6 +275,35 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+        // §12.5: invisible, zero-layout — declares a mount-scoped
+        // subscription, matching libra-interp's "Frames" arm exactly
+        // (both engines share §6.4's no-drift guarantee). `Interval`/
+        // `Stream` are the same pattern, not yet implemented.
+        "Frames" => {
+            let mut on_tick: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("onTick", AttrValue::Ident(m)) => on_tick = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_tick.ok_or_else(|| err(*span, "<Frames> requires onTick={someAction}"))?;
+            // `let _: fn(FrameInfo) -> Action` makes "not a
+            // FrameInfo-payload variant" a type error at the .lx line,
+            // same trick as Button/Input's handler checks.
+            Ok(format!(
+                "{i}::libra_components::ViewNode::SourceFrames {{ {at}\n\
+                 {i}    on_tick: {{ let _: fn(::libra_core::FrameInfo) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+            ))
+        }
+
         "for" => Err(err(
             *span,
             "<for> is only allowed as a direct child of <Column>/<Row>",
@@ -283,7 +312,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, for"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, for"
             ),
         )),
     }
@@ -612,5 +641,22 @@ mod tests {
         .unwrap();
         let e = generate(&ast, &cfg()).unwrap_err();
         assert!(e.message.contains("loop-bound sub-field access"), "{}", e.message);
+    }
+
+    #[test]
+    fn frames_compiles_to_a_source_frames_view_node_with_a_typed_handler_check() {
+        let ast = libra_markup::parse(r#"<Column><Frames onTick={frame} /></Column>"#).unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("::libra_components::ViewNode::SourceFrames"), "{code}");
+        assert!(code.contains("fn(::libra_core::FrameInfo) -> crate::TestAction"), "{code}");
+        assert!(code.contains("crate::TestAction::Frame"), "{code}");
+        assert!(code.contains("\"frame\".to_string()"), "{code}");
+    }
+
+    #[test]
+    fn frames_requires_on_tick() {
+        let ast = libra_markup::parse("<Column><Frames /></Column>").unwrap();
+        let e = generate(&ast, &cfg()).unwrap_err();
+        assert!(e.message.contains("requires onTick="));
     }
 }

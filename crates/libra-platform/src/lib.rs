@@ -39,7 +39,7 @@ use libra_interp::Scope;
 use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::Renderer;
-use libra_components::{InputFocus, LaidTree, Role};
+use libra_components::{InputFocus, ItemKind, LaidTree, Role};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -224,6 +224,7 @@ where
         save_hook,
         frame_cache: None,
         frames_active: false,
+        markup_frame_handlers: Vec::new(),
         focus: None,
         modifiers: ModifiersState::empty(),
         theme,
@@ -270,6 +271,11 @@ struct Shell<A: App> {
     frame_cache: Option<libra_raster::FrameCache>,
     /// Sub::Frames (§12.2): diffed from subscriptions after each dispatch.
     frames_active: bool,
+    /// §12.5: `onTick` handler names from every mounted `<Frames>` in
+    /// the current laid tree, refreshed by `relayout`. Unioned with
+    /// `App::subscriptions()`'s `Sub::Frames` — either form (or both)
+    /// keeps frame ticks flowing.
+    markup_frame_handlers: Vec<String>,
     /// §10.1 focus: focused Input id + editing state + onChange name.
     focus: Option<(String, EditState, String)>,
     modifiers: ModifiersState,
@@ -306,15 +312,30 @@ where
         let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
         let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
         let collection = |p: &str| self.app.collection(p);
+        let has_frame_info_action =
+            |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
         let scope = Scope {
             field: &field,
             has_action: &has_action,
             has_str_action: &has_str_action,
             collection: &collection,
+            has_frame_info_action: &has_frame_info_action,
         };
         match libra_interp::resolve(&self.ast, &scope) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
+                    // §12.5: collect every mounted <Frames> handler name
+                    // so sync_subscriptions/tick_frame can union them
+                    // with App::subscriptions() — the markup-declared
+                    // and Rust-declared forms are equally valid.
+                    self.markup_frame_handlers = laid
+                        .items
+                        .iter()
+                        .filter_map(|i| match &i.kind {
+                            ItemKind::Source { on_tick } => Some(on_tick.clone()),
+                            _ => None,
+                        })
+                        .collect();
                     self.laid = Some(laid);
                     self.overlay = None;
                     self.push_a11y();
@@ -362,12 +383,12 @@ where
     }
 
     /// Diff subscriptions after update (§12.2). Phase 2: Frames only.
+    /// §12.2/§12.5: wants frame ticks if either form is present —
+    /// `App::subscriptions()`'s `Sub::Frames` or a mounted `<Frames>`
+    /// in the current markup. Either alone is sufficient.
     fn sync_subscriptions(&mut self) {
-        let want = self
-            .app
-            .subscriptions()
-            .iter()
-            .any(|s| matches!(s, Sub::Frames { .. }));
+        let want = self.app.subscriptions().iter().any(|s| matches!(s, Sub::Frames { .. }))
+            || !self.markup_frame_handlers.is_empty();
         if want && !self.frames_active {
             self.next_frame_at = Instant::now();
         }
@@ -380,11 +401,34 @@ where
             index: self.frame_index,
         };
         self.frame_index += 1;
+
         let ctor = self.app.subscriptions().into_iter().find_map(|s| match s {
             Sub::Frames { on_frame } => Some(on_frame),
         });
         if let Some(on_frame) = ctor {
             self.dispatch(on_frame(info));
+        }
+
+        // §12.5: every distinct markup-declared handler also gets this
+        // tick, resolved by name via ReflectAction — the same causal
+        // channel as every other action (replay/time-travel see it).
+        // Cloned up front: `dispatch` re-runs `relayout`, which
+        // rewrites `markup_frame_handlers` — iterating the live field
+        // while mutating it through `dispatch` would be a borrow
+        // conflict (and semantically wrong: this tick should see the
+        // set as it was when the tick started, not as it churns).
+        let mut handled: Vec<String> = Vec::new();
+        for name in self.markup_frame_handlers.clone() {
+            if handled.contains(&name) {
+                continue;
+            }
+            handled.push(name.clone());
+            match A::Msg::action_with_frame_info(&name, info) {
+                Some(msg) => self.dispatch(msg),
+                None => eprintln!(
+                    "[libra] <Frames onTick={{{name}}}> resolved to no action — reflection out of sync"
+                ),
+            }
         }
     }
 

@@ -15,12 +15,14 @@
 //! - The dispatchability rule (§5.2) is scoped to what `ReflectAction`
 //!   already exposes: zero-arg methods are unit-variant handlers
 //!   (`action_by_name`), single-`String`-arg methods are handlers with
-//!   a control payload (`action_with_str`). Any other signature is a
+//!   a control payload (`action_with_str`), single-`FrameInfo`-arg
+//!   methods are handlers for §12.5's `<Frames onTick={name}>` source
+//!   element (`action_with_frame_info`). Any other signature is a
 //!   continuation — constructible only by the runtime delivering that
 //!   effect result, never nameable from markup. Growing markup's
-//!   payload whitelist (bool, ids, …) is tracked as an open question
-//!   in ARCHITECTURE.md §26 and is a separate change to `ReflectAction`
-//!   plus both view engines, not this macro.
+//!   payload whitelist further (bool, ids, …) is tracked as an open
+//!   question in ARCHITECTURE.md §26 and is a separate change to
+//!   `ReflectAction` plus both view engines, not this macro.
 //! - Every method must take `&mut self` as its receiver; anything else
 //!   is a compile error naming the offending method.
 //! - `#[libra::state]` bundles `#[derive(Serialize, Deserialize)]`,
@@ -80,6 +82,7 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut reduce_arms = Vec::new();
     let mut by_name_arms = Vec::new();
     let mut with_str_arms = Vec::new();
+    let mut with_frame_info_arms = Vec::new();
     let mut all_names = Vec::new();
     let mut errors = Vec::new();
 
@@ -131,6 +134,20 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     #public_name => ::core::option::Option::Some(Action::#variant_ident(value)),
                 });
             }
+            [p] if is_frame_info_type(&p.ty) => {
+                // §12.5's <Frames onTick={name}> source element: not a
+                // continuation (unlike other non-String single-arg
+                // methods) — the runtime constructs this by *name* on
+                // every tick, the same handler-dispatch shape as
+                // action_with_str, just for a different payload type.
+                variants.push(quote! { #variant_ident(::libra_core::FrameInfo) });
+                reduce_arms.push(quote! {
+                    Action::#variant_ident(info) => ::libra_core::IntoEffects::into_effects(state.#method_ident(info)),
+                });
+                with_frame_info_arms.push(quote! {
+                    #public_name => ::core::option::Option::Some(Action::#variant_ident(info)),
+                });
+            }
             params => {
                 // Continuation: not nameable from markup (§5.2's
                 // dispatchability rule) — constructed only via the
@@ -153,6 +170,11 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let unmatched_str = if with_str_arms.is_empty() {
         quote! { let _ = value; }
+    } else {
+        quote! {}
+    };
+    let unmatched_frame_info = if with_frame_info_arms.is_empty() {
+        quote! { let _ = info; }
     } else {
         quote! {}
     };
@@ -188,6 +210,13 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     _ => ::core::option::Option::None,
                 }
             }
+            fn action_with_frame_info(name: &str, info: ::libra_core::FrameInfo) -> ::core::option::Option<Self> {
+                #unmatched_frame_info
+                match name {
+                    #(#with_frame_info_arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
             fn action_names() -> &'static [&'static str] {
                 &[#(#all_names),*]
             }
@@ -199,6 +228,11 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
 fn is_string_type(ty: &Type) -> bool {
     let Type::Path(tp) = ty else { return false };
     tp.path.segments.last().map(|s| s.ident == "String").unwrap_or(false)
+}
+
+fn is_frame_info_type(ty: &Type) -> bool {
+    let Type::Path(tp) = ty else { return false };
+    tp.path.segments.last().map(|s| s.ident == "FrameInfo").unwrap_or(false)
 }
 
 fn snake_to_pascal(s: &str) -> String {
