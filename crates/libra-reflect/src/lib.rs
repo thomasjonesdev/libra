@@ -20,6 +20,7 @@
 //! variants from snake_case method names) is MIGRATION-NAMING.md
 //! Stage 4 scope, landed in both view engines together per §6.4.
 
+mod app;
 mod attrs;
 
 use proc_macro::TokenStream;
@@ -56,6 +57,14 @@ pub fn state(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn actions(attr: TokenStream, item: TokenStream) -> TokenStream {
     attrs::actions(attr, item)
+}
+
+/// `libra::app!` (ARCHITECTURE.md §5.8): one declaration for the App
+/// impl + view bundle + `run()` entry point. See `app` module docs for
+/// scope.
+#[proc_macro]
+pub fn app(input: TokenStream) -> TokenStream {
+    app::app(input)
 }
 
 fn has_skip(attrs: &[syn::Attribute]) -> bool {

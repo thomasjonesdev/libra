@@ -1,0 +1,11 @@
+<Column gap={8} padding={12}>
+  <Row gap={8} cross="center">
+    <Text bold grow>Counter</Text>
+    <Button variant="ghost" onPress={reset} testId="reset">Reset</Button>
+  </Row>
+  <Row gap={8} main="center" cross="center" grow>
+    <Button variant="secondary" onPress={decrement} testId="dec">-</Button>
+    <Text size="xl" testId="count">{count}</Text>
+    <Button variant="primary" onPress={increment} testId="inc">+</Button>
+  </Row>
+</Column>

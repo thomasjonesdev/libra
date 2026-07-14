@@ -8,6 +8,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+libra = { path = "crates/libra" }
 libra-core = { path = "crates/libra-core" }
 libra-reflect = { path = "crates/libra-reflect" }
 libra-markup = { path = "crates/libra-markup" }

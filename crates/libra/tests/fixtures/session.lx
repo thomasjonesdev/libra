@@ -1,0 +1,3 @@
+<Column gap={8} padding={12}>
+  <Text testId="status">{status}</Text>
+</Column>

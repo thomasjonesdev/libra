@@ -1294,6 +1294,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "libra"
+version = "0.0.1"
+dependencies = [
+ "libra-core",
+ "libra-platform",
+ "libra-reflect",
+ "libra-test",
+ "serde",
+]
+
+[[package]]
 name = "libra-cli"
 version = "0.0.1"
 dependencies = [
