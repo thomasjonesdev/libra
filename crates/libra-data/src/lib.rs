@@ -327,6 +327,14 @@ impl SeriesStore {
 
         let key = (id, window_ms.to_bits(), width_px);
         let mut caches = self.strip_caches.lock().expect("strip cache lock");
+        // Resize drags touch many widths — keep only the current one per
+        // series/window so the cache doesn't grow without bound.
+        let wbits = window_ms.to_bits();
+        if caches.keys().any(|(sid, wms, wp)| *sid == id && *wms == wbits && *wp != width_px) {
+            caches.retain(|(sid, wms, wp), _| {
+                *sid != id || *wms != wbits || *wp == width_px
+            });
+        }
         let cache = caches.entry(key).or_insert(StripCache {
             dt,
             closed_end: i64::MIN,

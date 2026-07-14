@@ -234,6 +234,7 @@ where
         frame_index: 0,
         started: Instant::now(),
         next_frame_at: Instant::now(),
+        pending_relayout: false,
     };
     event_loop.run_app(&mut shell)?;
     Ok(())
@@ -289,6 +290,10 @@ struct Shell<A: App> {
     frame_index: u64,
     started: Instant,
     next_frame_at: Instant,
+    /// Resize coalescing: defer relayout to the next `RedrawRequested`
+    /// so a drag that delivers many `Resized` events per frame only
+    /// rebuilds view/layout once.
+    pending_relayout: bool,
 }
 
 impl<A: App + 'static> Shell<A>
@@ -748,10 +753,8 @@ where
                 event_loop.exit();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                self.relayout();
-                if let Some(gfx) = &self.gfx {
-                    gfx.window.request_redraw();
-                }
+                self.pending_relayout = true;
+                self.request_redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
@@ -763,7 +766,13 @@ where
                 button: MouseButton::Left,
                 ..
             } => self.click(),
-            WindowEvent::RedrawRequested => self.present(),
+            WindowEvent::RedrawRequested => {
+                if self.pending_relayout {
+                    self.pending_relayout = false;
+                    self.relayout();
+                }
+                self.present();
+            }
             _ => {}
         }
     }
