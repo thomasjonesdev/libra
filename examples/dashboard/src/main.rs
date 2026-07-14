@@ -6,10 +6,9 @@
 //! pipeline), then 600 frames run through the real
 //! view→layout→paint→damage-render path at 1280×800.
 
-use dashboard::{Dashboard, RATE_HZ, SERIES, VIEW, WINDOW_MS};
-use libra_core::{App, FrameInfo, ReflectAction, SeriesId};
+use dashboard::{Action, Dashboard, RATE_HZ, SERIES, VIEW, WINDOW_MS};
+use libra_core::{FrameInfo, ReflectAction, SeriesId};
 use libra_data::{sine_sample, Sample, SeriesStore};
-use libra_platform::Options;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -18,8 +17,7 @@ fn main() {
         bench();
         return;
     }
-    let opts = Options::new("Libra Dashboard", (1280.0, 640.0));
-    if let Err(e) = libra_platform::run_with::<Dashboard>(VIEW, opts) {
+    if let Err(e) = dashboard::run() {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
@@ -31,7 +29,7 @@ fn bench() {
     let samples_per_frame = (RATE_HZ / 60.0) as usize; // 10 kHz at 60 fps
 
     let store = Arc::new(SeriesStore::new());
-    let (model, _cmds) = Dashboard::init();
+    let (state, _fx) = Dashboard::init();
     let ast = libra_markup::parse(VIEW).expect("view parses");
     let renderer = libra_raster::Renderer::new();
     let theme = libra_draw::Theme::dark();
@@ -47,12 +45,11 @@ fn bench() {
         }
     }
 
-    let field = |p: &str| libra_core::ReflectState::field(&model, p);
-    let has_action = |m: &str| <Dashboard as App>::Msg::action_by_name(m).is_some();
-    let has_str_action = |m: &str| <Dashboard as App>::Msg::action_with_str(m, String::new()).is_some();
-    let collection = |p: &str| libra_core::ReflectState::collection(&model, p);
-    let has_frame_info_action =
-        |m: &str| <Dashboard as App>::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
+    let field = |p: &str| libra_core::ReflectState::field(&state, p);
+    let has_action = |m: &str| Action::action_by_name(m).is_some();
+    let has_str_action = |m: &str| Action::action_with_str(m, String::new()).is_some();
+    let collection = |p: &str| libra_core::ReflectState::collection(&state, p);
+    let has_frame_info_action = |m: &str| Action::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
