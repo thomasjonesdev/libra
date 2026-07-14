@@ -1577,11 +1577,13 @@ dependencies = [
 name = "notes"
 version = "0.0.1"
 dependencies = [
+ "libra",
  "libra-components",
  "libra-core",
  "libra-platform",
  "libra-test",
  "libra-text",
+ "serde",
 ]
 
 [[package]]

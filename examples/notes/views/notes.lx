@@ -2,11 +2,11 @@
   <Row gap={8} cross="center">
     <Text bold grow>Notes</Text>
     <Text size="sm" muted testId="status">{status}</Text>
-    <Button variant="ghost" onPress={ToggleTheme} testId="theme">{theme}</Button>
+    <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
   </Row>
   <Row gap={8} cross="center">
-    <Input value={title} placeholder="note title…" onChange={TitleChanged} testId="title" />
-    <Button variant="primary" onPress={Save} testId="save">Save</Button>
+    <Input value={title} placeholder="note title…" onChange={titleChanged} testId="title" />
+    <Button variant="primary" onPress={save} testId="save">Save</Button>
   </Row>
   <Row gap={8}>
     <Text size="sm" muted testId="echo">title is {title}</Text>
