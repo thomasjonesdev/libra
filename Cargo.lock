@@ -854,6 +854,7 @@ dependencies = [
 name = "fetcher"
 version = "0.0.1"
 dependencies = [
+ "libra",
  "libra-components",
  "libra-core",
  "libra-platform",

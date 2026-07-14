@@ -1,8 +1,8 @@
 //! The windowed fetcher — effects run for real here: KV persists to the
 //! platform app-data dir, HTTP hits api.github.com/zen. When run from
 //! the repo, the view file is watched: edit fetcher.lx and save to hot
-//! reload (state preserved); break it to see the error overlay. The
-//! model rehydrates across restarts (§18.2) — fetch a quote, close the
+//! reload (state preserved); break it to see the error overlay. State
+//! rehydrates across restarts (§18.2) — fetch a quote, close the
 //! window, relaunch: the quote is still there.
 
 use fetcher::{Fetcher, VIEW};

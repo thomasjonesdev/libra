@@ -1,15 +1,15 @@
 <Column gap={12} padding={16}>
   <Row gap={8} cross="center">
     <Text bold grow>Fetcher</Text>
-    <Button variant="ghost" onPress={Reset} testId="reset">Reset</Button>
+    <Button variant="ghost" onPress={reset} testId="reset">Reset</Button>
   </Row>
   <Row gap={8} main="center" cross="center">
-    <Button variant="secondary" onPress={Decrement} testId="dec">-</Button>
+    <Button variant="secondary" onPress={decrement} testId="dec">-</Button>
     <Text size="xl" testId="count">{count}</Text>
-    <Button variant="primary" onPress={Increment} testId="inc">+</Button>
+    <Button variant="primary" onPress={increment} testId="inc">+</Button>
   </Row>
   <Row gap={8} cross="center" grow>
-    <Button variant="primary" onPress={FetchQuote} testId="fetch">Fetch zen</Button>
+    <Button variant="primary" onPress={fetchQuote} testId="fetch">Fetch zen</Button>
     <Text size="sm" muted testId="quote">{quote}</Text>
   </Row>
   <Row gap={8}>
