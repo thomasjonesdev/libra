@@ -168,15 +168,15 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             }
             let (msg, mspan) =
                 on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             let label = gen_text_content(children, cfg, *span, d + 1, bound)?;
             // `let _ = &Action::X;` — a typo'd handler is a rustc error
             // at the line carrying the .lx span (§6.5). The variant
-            // reference is PascalCased from the markup name (§3.3: a
-            // no-op for already-PascalCase legacy handlers, and the
-            // inverse of #[libra::actions]'s camelCase mapping for new
-            // ones) — the *stored* handler name (`name_lit`) stays the
-            // markup's own text, matching what the interpreter's
-            // ReflectAction-based resolution compares against.
+            // reference is PascalCased from the markup name (§3.3,
+            // `#[libra::actions]`'s camelCase mapping inverted) — the
+            // *stored* handler name (`name_lit`) stays the markup's own
+            // text, matching what the interpreter's ReflectAction-based
+            // resolution compares against.
             Ok(format!(
                 "{i}::libra_components::ViewNode::Button {{ {at}\n\
                  {i}    label: {label},\n\
@@ -250,6 +250,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                 value.ok_or_else(|| err(*span, "<Input> requires value={someField}"))?;
             let (msg, mspan) =
                 on_change.ok_or_else(|| err(*span, "<Input> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Input> requires testId=\"…\" (focus identity)"))?;
             // The `let _: fn(String) -> Action` coercion makes "not a
@@ -289,6 +290,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             }
             let (msg, mspan) =
                 on_tick.ok_or_else(|| err(*span, "<Frames> requires onTick={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             // `let _: fn(FrameInfo) -> Action` makes "not a
             // FrameInfo-payload variant" a type error at the .lx line,
             // same trick as Button/Input's handler checks.
@@ -515,13 +517,40 @@ fn opt_str(s: &Option<String>) -> String {
 /// `FilterChanged`) and exposes the camelCase form (`filterChanged`)
 /// as the public markup name — so recovering the variant from the
 /// markup text only ever needs the *first* character uppercased; the
-/// rest of the identifier is already correctly cased. This is a no-op
-/// for legacy PascalCase handler names (`Increment` → `Increment`),
-/// which is what keeps this backward compatible.
+/// rest of the identifier is already correctly cased. `require_camel_case`
+/// runs before this on every handler name, so by the time this is
+/// called the input is already known to start lowercase.
 fn pascalize(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// §3.3's grammar-level rule: a markup handler reference is camelCase
+/// or it's a style error, not a silently-accepted alternate spelling.
+/// PascalCase in JSX-flavored markup reads as a component reference
+/// (`<MetricCard />`) — `onPress={Reset}` (the pre-revision style)
+/// misparses to a human the same way, so this is rejected before
+/// `pascalize` ever runs, with a suggestion naming the camelCase form.
+fn require_camel_case(name: &str, span: Span) -> Result<(), CodegenError> {
+    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+        return Err(err(
+            span,
+            format!(
+                "handler name '{name}' must be camelCase (§3.3) — did you mean '{}'?",
+                to_camel_case(name)
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn to_camel_case(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
         None => String::new(),
     }
 }
@@ -542,7 +571,7 @@ mod tests {
     #[test]
     fn generates_typed_accesses_and_span_trailers() {
         let ast = libra_markup::parse(
-            "<Column gap={12}>\n  <Text testId=\"c\">{count}</Text>\n  <Button onPress={Increment}>+</Button>\n</Column>",
+            "<Column gap={12}>\n  <Text testId=\"c\">{count}</Text>\n  <Button onPress={increment}>+</Button>\n</Column>",
         )
         .unwrap();
         let code = generate(&ast, &cfg()).unwrap();
@@ -553,13 +582,24 @@ mod tests {
     }
 
     #[test]
+    fn pascalcase_handler_name_is_a_camel_case_style_error() {
+        // §3.3: PascalCase in markup reads as a component reference,
+        // not a handler — `onPress={Reset}` (the pre-revision style)
+        // is rejected before it ever reaches variant resolution, with
+        // a suggestion naming the camelCase form.
+        let ast = libra_markup::parse("<Column><Button onPress={Reset}>Reset</Button></Column>")
+            .unwrap();
+        let e = generate(&ast, &cfg()).unwrap_err();
+        assert!(e.message.contains("must be camelCase"), "{}", e.message);
+        assert!(e.message.contains("did you mean 'reset'"), "{}", e.message);
+    }
+
+    #[test]
     fn camelcase_handler_names_resolve_to_pascalcase_variants() {
         // §3.3: markup keeps the camelCase public name (stored as the
         // handler string) while the Rust-level reference is
         // PascalCased to match what #[libra::actions] actually names
-        // the variant — this is the codegen half of that mapping; the
-        // interpreter needs no equivalent change (§6.4 note in the
-        // module doc comment).
+        // the variant — this is the codegen half of that mapping.
         let ast = libra_markup::parse(
             "<Column><Button onPress={filterChanged}>Go</Button></Column>",
         )
@@ -586,7 +626,7 @@ mod tests {
     #[test]
     fn input_requires_test_id_at_generation_time() {
         let ast = libra_markup::parse(
-            "<Column><Input value={name} onChange={NameChanged} /></Column>",
+            "<Column><Input value={name} onChange={nameChanged} /></Column>",
         )
         .unwrap();
         let e = generate(&ast, &cfg()).unwrap_err();

@@ -13,12 +13,12 @@
 //! On an **enum** (the Action): implements `libra_core::ReflectAction`.
 //! Unit variants are constructible by handler name; payload variants
 //! are effect-result events, not UI handlers, and resolve to `None`.
-//! `action_names` lists every variant for diagnostics either way.
-//! Variant names resolve verbatim (no case transformation) — this
-//! derive predates the `#[libra::actions]` macro. The ARCHITECTURE.md
-//! §3.3 camelCase public-name mapping (and the macro that generates
-//! variants from snake_case method names) is MIGRATION-NAMING.md
-//! Stage 4 scope, landed in both view engines together per §6.4.
+//! `action_names` lists every variant's public name for diagnostics
+//! either way. Variant names resolve via the same PascalCase-ident →
+//! camelCase-public-name mapping `#[libra::actions]` generates (§3.3)
+//! — a hand-written enum and a macro-generated one present an
+//! identical markup surface; there is exactly one canonical public
+//! name per action, never two.
 
 mod app;
 mod attrs;
@@ -179,24 +179,24 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
 
     let ctor_arms = data.variants.iter().filter_map(|v| {
         let ident = &v.ident;
-        let vname = ident.to_string();
+        let public_name = pascal_to_camel(&ident.to_string());
         match v.fields {
             Fields::Unit => Some(quote! {
-                #vname => ::core::option::Option::Some(#name::#ident),
+                #public_name => ::core::option::Option::Some(#name::#ident),
             }),
             // Payload variants are effect results — not nameable handlers.
             _ => None,
         }
     });
     // Single-String tuple variants are control-payload handlers
-    // (`onChange={TitleChanged}`): the control provides the value.
+    // (`onChange={titleChanged}`): the control provides the value.
     // Type detection is by name — a macro can't resolve types; a
     // false positive fails to compile, which is the goal.
     let str_arms = single_typed_tuple_arms(name, data, "String");
     // Single-FrameInfo tuple variants are §12.5's <Frames
-    // onTick={Ticked}> handlers — same shape, different payload type.
+    // onTick={ticked}> handlers — same shape, different payload type.
     let frame_info_arms = single_typed_tuple_arms(name, data, "FrameInfo");
-    let names = data.variants.iter().map(|v| v.ident.to_string());
+    let names = data.variants.iter().map(|v| pascal_to_camel(&v.ident.to_string()));
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     quote! {
@@ -249,7 +249,7 @@ fn single_typed_tuple_arms(
         .iter()
         .filter_map(|v| {
             let ident = &v.ident;
-            let vname = ident.to_string();
+            let public_name = pascal_to_camel(&ident.to_string());
             let Fields::Unnamed(fields) = &v.fields else { return None };
             if fields.unnamed.len() != 1 {
                 return None;
@@ -264,8 +264,22 @@ fn single_typed_tuple_arms(
                 quote::format_ident!("info")
             };
             Some(quote! {
-                #vname => ::core::option::Option::Some(#enum_name::#ident(#binding)),
+                #public_name => ::core::option::Option::Some(#enum_name::#ident(#binding)),
             })
         })
         .collect()
+}
+
+/// Rust variant identifier → camelCase public name (§3.3): lowercase
+/// just the first character — `#[libra::actions]`'s generated variant
+/// idents are already correctly cased past the first letter (built
+/// from a snake_case method name), and this derive holds hand-written
+/// enums to the identical public surface, so both paths resolve the
+/// same markup handler names.
+fn pascal_to_camel(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
 }

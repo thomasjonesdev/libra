@@ -18,7 +18,7 @@ const VIEW_NO_FRAMES: &str = r#"<Column>
 
 const VIEW_WITH_FRAMES: &str = r#"<Column>
   <Text testId="status">{status}</Text>
-  <Frames onTick={Tick} />
+  <Frames onTick={tick} />
 </Column>"#;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,10 +46,10 @@ impl ReflectAction for Action {
         None
     }
     fn action_with_frame_info(name: &str, info: FrameInfo) -> Option<Self> {
-        (name == "Tick").then(|| Action::Tick(info))
+        (name == "tick").then(|| Action::Tick(info))
     }
     fn action_names() -> &'static [&'static str] {
-        &["Tick"]
+        &["tick"]
     }
 }
 

@@ -2,15 +2,15 @@
   <Row gap={8} cross="center">
     <Text bold grow>Kitchen sink</Text>
     <Text size="sm" muted testId="status">status: {status}</Text>
-    <Button variant="ghost" onPress={Reset} testId="reset">Reset</Button>
+    <Button variant="ghost" onPress={reset} testId="reset">Reset</Button>
   </Row>
   <Row gap={8} main="center" cross="center" grow>
-    <Button variant="secondary" onPress={Refresh}>Refresh</Button>
+    <Button variant="secondary" onPress={refresh}>Refresh</Button>
     <Text size="xl" testId="count">{count}</Text>
-    <Button variant="primary" onPress={Increment} testId="inc">+</Button>
+    <Button variant="primary" onPress={increment} testId="inc">+</Button>
   </Row>
   <Row gap={6} cross="center">
-    <Input value={name} placeholder="type a name" onChange={NameChanged} testId="name" />
+    <Input value={name} placeholder="type a name" onChange={nameChanged} testId="name" />
     <Text testId="mix">Hello {name} — count is {count}!</Text>
   </Row>
   <Row gap={8} grow>

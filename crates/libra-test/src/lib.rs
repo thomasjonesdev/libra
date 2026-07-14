@@ -126,10 +126,6 @@ pub mod fx {
     }
 }
 
-/// Deprecated alias for `fx` (MIGRATION-NAMING.md Stage 3).
-#[deprecated(note = "renamed to fx")]
-pub use fx as cmd;
-
 fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
     use fx::Matcher;
     match (matcher, c) {
@@ -212,12 +208,6 @@ impl<A: App> Harness<A> {
 
     pub fn state(&self) -> &A {
         &self.app
-    }
-
-    /// Deprecated alias for `state`.
-    #[deprecated(note = "renamed to state")]
-    pub fn model(&self) -> &A {
-        self.state()
     }
 
     /// Dispatch an action directly through the real update, then
@@ -344,12 +334,6 @@ impl<A: App> Harness<A> {
         }
     }
 
-    /// Deprecated alias for `expect_effect`.
-    #[deprecated(note = "renamed to expect_effect")]
-    pub fn expect_cmd(&mut self, matcher: fx::Matcher) -> Effect<A::Msg> {
-        self.expect_effect(matcher)
-    }
-
     /// Assert the effect queue is fully drained — the flow produced
     /// nothing the test didn't account for.
     pub fn expect_no_effects(&self) {
@@ -360,19 +344,7 @@ impl<A: App> Harness<A> {
         );
     }
 
-    /// Deprecated alias for `expect_no_effects`.
-    #[deprecated(note = "renamed to expect_no_effects")]
-    pub fn expect_no_cmds(&self) {
-        self.expect_no_effects()
-    }
-
     pub fn pending_effects(&self) -> impl Iterator<Item = &Effect<A::Msg>> {
-        self.pending.iter()
-    }
-
-    /// Deprecated alias for `pending_effects`.
-    #[deprecated(note = "renamed to pending_effects")]
-    pub fn pending_cmds(&self) -> impl Iterator<Item = &Effect<A::Msg>> {
         self.pending.iter()
     }
 

@@ -191,6 +191,6 @@ byte-exact on macOS (Darwin 25.1.0, Apple Silicon) on 2026-07-12.
   (SetTextSelection, ReplaceSelectedText) land with the reconciler's
   focus model.
 - v0.1 polish backlog (§23 Phase 3 tail): remaining catalog components,
-  Textarea/IME/touch, `libra package`/`build`, and the naming migration
-  (`MIGRATION-NAMING.md`'s Stage 8 — removing the deprecated `Cmd`/
-  `ReflectModel`/`ReflectMsg`/etc. aliases before first public publish).
+  Textarea/IME/touch, and `libra package`/`build`. The naming migration
+  (`MIGRATION-NAMING.md`) is complete — Stage 8 removed the deprecated
+  pre-rename aliases and the legacy PascalCase markup-handler style.

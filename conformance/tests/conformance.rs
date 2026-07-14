@@ -54,6 +54,48 @@ fn interp_and_codegen_produce_identical_trees() {
     }
 }
 
+/// §3.3's camelCase-only handler-name rule, asserted identically
+/// across both engines (§6.4): `onPress={Reset}` (the pre-revision
+/// PascalCase style) is rejected by interp and by codegen with the
+/// same complaint and the same camelCase suggestion — not a fixture
+/// under `fixtures/` (those must all compile cleanly for `build.rs`
+/// to produce `generated`), but the same "one grammar, two engines"
+/// guarantee applied to an *invalid* markup string.
+#[test]
+fn pascalcase_handler_name_is_rejected_identically_by_both_engines() {
+    const SRC: &str = "<Column><Button onPress={Reset}>Reset</Button></Column>";
+
+    let ast = libra_markup::parse(SRC).expect("parses");
+    let field = |_: &str| None;
+    let has_action = |m: &str| TestAction::action_by_name(m).is_some();
+    let has_str_action = |_: &str| false;
+    let collection = |_: &str| None;
+    let has_frame_info_action = |_: &str| false;
+    let scope = libra_interp::Scope {
+        field: &field,
+        has_action: &has_action,
+        has_str_action: &has_str_action,
+        collection: &collection,
+        has_frame_info_action: &has_frame_info_action,
+    };
+    let interp_err = libra_interp::resolve(&ast, &scope).unwrap_err();
+    assert!(interp_err.message.contains("must be camelCase"), "{}", interp_err.message);
+    assert!(interp_err.message.contains("did you mean 'reset'"), "{}", interp_err.message);
+
+    let codegen_err = libra_codegen::generate(
+        &ast,
+        &libra_codegen::Config {
+            state: "crate::TestState".into(),
+            action: "crate::TestAction".into(),
+            fn_name: "build_rejected".into(),
+            source: "rejected.lx".into(),
+        },
+    )
+    .unwrap_err();
+    assert!(codegen_err.message.contains("must be camelCase"), "{}", codegen_err.message);
+    assert!(codegen_err.message.contains("did you mean 'reset'"), "{}", codegen_err.message);
+}
+
 /// The compiled engine is a pure function of state — same input,
 /// same tree, no interior state.
 #[test]
@@ -102,7 +144,7 @@ fn frames_source_element_produces_identical_trees() {
     assert_eq!(interp, compiled, "engine drift on frames fixture — one grammar, two engines (§6.4)");
     assert!(
         matches!(&interp, libra_components::ViewNode::Column { children, .. }
-            if children.contains(&libra_components::ViewNode::SourceFrames { on_tick: "Frame".into() })),
+            if children.contains(&libra_components::ViewNode::SourceFrames { on_tick: "frame".into() })),
         "expected a mounted Frames source in the tree: {interp:?}"
     );
 }

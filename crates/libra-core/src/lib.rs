@@ -8,9 +8,10 @@
 //! Phase-1 subset of the §12.1 Effect vocabulary (Http, Kv*, Timer,
 //! Random) and `Remote<T, E>` (Appendix C).
 //!
-//! Naming migration (ARCHITECTURE.md §3.2, MIGRATION-NAMING.md): the
-//! founding names `Cmd`/`ReflectModel`/`ReflectMsg`/`MsgCtor` survive as
-//! `#[deprecated]` aliases until Stage 8 removes them.
+//! Naming migration: this crate's founding-vocabulary rename is
+//! complete (ARCHITECTURE.md §3.2 has the full old→new table;
+//! MIGRATION-NAMING.md is the stage-by-stage record) — Stage 8 removed
+//! the deprecated pre-rename aliases this crate briefly carried.
 
 pub use libra_reflect::LibraReflect;
 
@@ -21,9 +22,6 @@ pub use libra_reflect::LibraReflect;
 /// `Effect`'s `PartialEq` deliberately compares the effect's data and
 /// ignores ctor identity — effects are data; the ctor is routing.
 pub type ActionCtor<T, M> = fn(T) -> M;
-
-#[deprecated(note = "renamed to ActionCtor")]
-pub type MsgCtor<T, M> = ActionCtor<T, M>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
@@ -247,12 +245,6 @@ impl<M> Effect<M> {
     }
 }
 
-/// Deprecated alias for `Effect`. A type alias can't apply
-/// `#[deprecated]` to construction sites the way a struct/enum can, but
-/// this keeps existing `Cmd<M>` signatures compiling.
-#[deprecated(note = "renamed to Effect")]
-pub type Cmd<M> = Effect<M>;
-
 /// What an `#[libra::actions]` method may return (ARCHITECTURE.md
 /// §5.1): `()`, a single `Effect`, an optional one, or several. The
 /// generated `reduce` calls `.into_effects()` uniformly — a plain
@@ -343,18 +335,6 @@ pub trait ReflectState {
     }
 }
 
-/// Deprecated alias for `ReflectState`, kept as a standalone trait
-/// (not a blanket impl over `ReflectState`) so a type never ends up
-/// implementing both with the same method names in scope at once —
-/// that would make `.field(...)` ambiguous for its callers. Old code
-/// that hand-implements `ReflectModel` still compiles; it just doesn't
-/// automatically satisfy a `ReflectState` bound, and vice versa.
-#[deprecated(note = "renamed to ReflectState")]
-pub trait ReflectModel {
-    fn field(&self, path: &str) -> Option<String>;
-    fn field_names() -> &'static [&'static str];
-}
-
 /// Action reflection: how markup handler names resolve to actions.
 /// Implemented by `#[derive(LibraReflect)]` on the Action enum: unit
 /// variants are constructible by name; payload variants are effect
@@ -384,19 +364,6 @@ pub trait ReflectAction: Sized {
 
     /// Every variant name (diagnostics, automation schema).
     fn action_names() -> &'static [&'static str];
-}
-
-/// Deprecated alias for `ReflectAction` — standalone for the same
-/// ambiguity-avoidance reason as `ReflectModel` above.
-#[deprecated(note = "renamed to ReflectAction; msg_by_name/msg_with_str/msg_names \
-    renamed to action_by_name/action_with_str/action_names")]
-pub trait ReflectMsg: Sized {
-    fn msg_by_name(name: &str) -> Option<Self>;
-    fn msg_with_str(name: &str, value: String) -> Option<Self> {
-        let _ = (name, value);
-        None
-    }
-    fn msg_names() -> &'static [&'static str];
 }
 
 /// Form-state helper (Appendix C, via React Hook Form): per-field
@@ -649,69 +616,6 @@ mod tests {
         let none: Vec<Effect<Msg>> = None::<Effect<Msg>>.into_effects();
         assert_eq!(none, Vec::<Effect<Msg>>::new());
         assert_eq!(vec![e.clone(), e.clone()].into_effects(), vec![e.clone(), e]);
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn deprecated_aliases_still_compile_and_behave_identically() {
-        // Cmd/ReflectModel/ReflectMsg/MsgCtor survive as aliases until
-        // MIGRATION-NAMING.md Stage 8. `Cmd` is a true type alias for
-        // `Effect`, so it's interchangeable at the value level. The
-        // deprecated reflect traits are kept as standalone (not
-        // blanket-derived) traits — see the doc comment on
-        // `ReflectModel` for why — so old code that hand-implements
-        // them still compiles; this covers exactly that path.
-        let a: Cmd<Msg> = Cmd::http(HttpRequest::get("x"), Msg::Got);
-        let b: Effect<Msg> = Effect::http(HttpRequest::get("x"), Msg::Got);
-        assert_eq!(a, b);
-
-        struct OldStyleCounter {
-            count: i64,
-        }
-
-        #[allow(deprecated)]
-        impl ReflectModel for OldStyleCounter {
-            fn field(&self, path: &str) -> Option<String> {
-                match path {
-                    "count" => Some(self.count.to_string()),
-                    _ => None,
-                }
-            }
-            fn field_names() -> &'static [&'static str] {
-                &["count"]
-            }
-        }
-
-        #[allow(deprecated)]
-        fn field_via_old_trait<T: ReflectModel>(t: &T, path: &str) -> Option<String> {
-            t.field(path)
-        }
-        let c = OldStyleCounter { count: 42 };
-        assert_eq!(field_via_old_trait(&c, "count").as_deref(), Some("42"));
-
-        #[derive(Debug, Clone, PartialEq)]
-        enum OldStyleMsg {
-            Inc,
-        }
-
-        #[allow(deprecated)]
-        impl ReflectMsg for OldStyleMsg {
-            fn msg_by_name(name: &str) -> Option<Self> {
-                match name {
-                    "Inc" => Some(OldStyleMsg::Inc),
-                    _ => None,
-                }
-            }
-            fn msg_names() -> &'static [&'static str] {
-                &["Inc"]
-            }
-        }
-
-        #[allow(deprecated)]
-        fn by_name_via_old_trait<T: ReflectMsg>(name: &str) -> Option<T> {
-            T::msg_by_name(name)
-        }
-        assert_eq!(by_name_via_old_trait::<OldStyleMsg>("Inc"), Some(OldStyleMsg::Inc));
     }
 
     #[test]

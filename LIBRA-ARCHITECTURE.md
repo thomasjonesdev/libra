@@ -145,11 +145,11 @@ Two deliberate naming judgments:
 - **Actions, not "state", for the change vocabulary.** The things you write to define state changes live *on* the `State` struct as methods, so the mental model reads as "state and the ways it changes" — but the recorded values themselves are named *actions*, because calling an event "state" would collide with the state it changes. This is precisely the Redux frame every React developer already carries: state + actions + reducer, with the reducer generated (§5.2).
 - **Retired jargon.** *Model*, *Msg*, *update*, *Cmd*, *widget*, and *tier* no longer appear on the authoring surface. The Elm loop those words described is still exactly what runs — §5.2 shows the expansion — it just no longer names the API.
 
-### 3.2 Terminology migration (this document leads, the code follows)
+### 3.2 Terminology migration (complete — this document and the code now agree)
 
-The rename is adopted in this document first; the shipped crates still use the founding names. Mapping, for reading today's code against this document:
+The rename below shipped in full, landing **snapshot-neutral** throughout (it renamed symbols, never behavior — every committed PNG hash survived every stage). Kept here as the historical map from the founding vocabulary, for reading old commits, old design notes, or anyone's muscle-memory names:
 
-| This document (authoritative) | Current code |
+| This document (authoritative, and current code) | Founding name (historical) |
 |---|---|
 | `State` + `#[libra::state]` | `Model` + `#[derive(LibraReflect)]` |
 | Action methods + generated `Action` enum | hand-written `Msg` enum + `update` arms |
@@ -160,7 +160,7 @@ The rename is adopted in this document first; the shipped crates still use the f
 | `expect_effect`, `assert_effect!`, `fx::` | `expect_cmd`, `assert_cmd!`, `cmd::` |
 | camelCase handler/binding names in `.lx` (§3.3) | PascalCase `Msg`-variant names (`onPress={Reset}`) |
 
-The mechanical migration (deprecated aliases first; hard rename before first public publish) is a Phase-4 backlog item, and it must land **snapshot-neutral** — it renames symbols, never behavior, so every committed PNG hash survives it. The staged execution plan lives in `MIGRATION-NAMING.md` at the repo root.
+The staged execution record lives in `MIGRATION-NAMING.md` at the repo root — all 8 stages ran, including Stage 8's alias removal and the CI guard that keeps the founding names from reentering (§21).
 
 ### 3.3 Naming conventions: React's, verbatim
 
@@ -1036,7 +1036,7 @@ libra/
 
 Dependency spine: `markup` and `reflect` at the root; `interp` and `codegen` both depend on `markup` only (the no-drift guarantee is structural); apps depend on `libra` (a facade crate) + `libra-test` (dev-dep). The app crate stays thin so §18.2's rebuild target holds.
 
-> **Naming migration (§3.2):** the shipped crates predate the vocabulary rename — the code still says `libra-widgets`, `Widget`, `Model`, `Msg`, `Cmd`, `update`, and `tier*_` test prefixes. The names above are authoritative for all new design work; the mechanical rename (deprecated aliases first, hard rename before first public publish) is a Phase-4 backlog item and must land snapshot-neutral — see `MIGRATION-NAMING.md` for the stage-by-stage checklist.
+> **Naming migration (§3.2): complete.** The mechanical rename ran to completion per `MIGRATION-NAMING.md`'s stage-by-stage checklist, landing snapshot-neutral throughout (every committed PNG hash survived every stage). The shipped crates now match the names above: `libra-components` (not `libra-widgets`), `Component` (not `Widget`), State/Action/`reduce`/`Effect` (not Model/Msg/update/Cmd), and named test-kind files — `tests/unit.rs`, `tests/components.rs`, `tests/integration.rs`, `tests/snapshots.rs` — rather than `tier*_` prefixes in one `tests/tiers.rs`. Stage 8 removed the deprecated pre-rename aliases and the legacy PascalCase markup-handler acceptance (`onPress={Reset}` is now a load-time/compile-time error suggesting the camelCase form, enforced identically by both engines); a CI naming guard (`.github/workflows/naming-guard.yml`) blocks the old names from reentering. `MsgCtor`/`Widget`/`ReflectModel`/`ReflectMsg`/`tier*_` survive only as historical references in this document and in `MIGRATION-NAMING.md` itself.
 
 ---
 

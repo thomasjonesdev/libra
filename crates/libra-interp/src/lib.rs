@@ -26,13 +26,41 @@ fn err(span: Span, msg: impl Into<String>) -> InterpError {
     InterpError { message: msg.into(), span }
 }
 
+/// §3.3's grammar-level rule, mirrored from libra-codegen so both
+/// engines reject the same markup identically (§6.4): a handler
+/// reference is camelCase or it's a style error, not a silently
+/// accepted alternate spelling. PascalCase reads as a component
+/// reference in JSX-flavored markup — `onPress={Reset}` (the
+/// pre-revision style) is rejected before any ReflectAction lookup,
+/// with a suggestion naming the camelCase form.
+fn require_camel_case(name: &str, span: Span) -> Result<(), InterpError> {
+    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+        return Err(err(
+            span,
+            format!(
+                "handler name '{name}' must be camelCase (§3.3) — did you mean '{}'?",
+                to_camel_case(name)
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn to_camel_case(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
 /// State/Action reflection the interpreter resolves against
 /// (`#[derive(LibraReflect)]` on the app side).
 pub struct Scope<'a> {
     pub field: &'a dyn Fn(&str) -> Option<String>,
     pub has_action: &'a dyn Fn(&str) -> bool,
     /// Does this name resolve to a String-payload handler
-    /// (`onChange={TitleChanged}`)? See `ReflectAction::action_with_str`.
+    /// (`onChange={titleChanged}`)? See `ReflectAction::action_with_str`.
     pub has_str_action: &'a dyn Fn(&str) -> bool,
     /// Resolve an iterable binding path to each element's display
     /// text (§6.2's `<for each={path}>`). `None` means the top-level
@@ -229,6 +257,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             }
             let (msg, mspan) =
                 on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             if !(scope.has_action)(&msg) {
                 return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
             }
@@ -284,6 +313,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                 .ok_or_else(|| err(vspan, format!("no field '{path}' on State")))?;
             let (msg, mspan) =
                 on_change.ok_or_else(|| err(*span, "<Input> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             if !(scope.has_str_action)(&msg) {
                 return Err(err(
                     mspan,
@@ -310,6 +340,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             }
             let (msg, mspan) =
                 on_tick.ok_or_else(|| err(*span, "<Frames> requires onTick={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
             if !(scope.has_frame_info_action)(&msg) {
                 return Err(err(
                     mspan,
@@ -384,12 +415,12 @@ mod tests {
         let ast = parse(
             r#"<Column gap={12}>
                  <Text testId="count">{count}</Text>
-                 <Button variant="primary" onPress={Increment}>+</Button>
+                 <Button variant="primary" onPress={increment}>+</Button>
                </Column>"#,
         )
         .unwrap();
         let field = |p: &str| (p == "count").then(|| "7".to_string());
-        let has_action = |m: &str| m == "Increment";
+        let has_action = |m: &str| m == "increment";
         let view = resolve(&ast, &scope_ok(&field, &has_action)).unwrap();
         let ViewNode::Column { children, .. } = view else { panic!() };
         assert_eq!(
@@ -407,12 +438,25 @@ mod tests {
 
     #[test]
     fn typoed_handler_is_a_load_time_error_with_span() {
-        let ast = parse("<Column>\n  <Button onPress={Incremnt}>+</Button>\n</Column>").unwrap();
+        let ast = parse("<Column>\n  <Button onPress={incremnt}>+</Button>\n</Column>").unwrap();
         let field = |_: &str| None;
-        let has_action = |m: &str| m == "Increment";
+        let has_action = |m: &str| m == "increment";
         let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
-        assert!(e.message.contains("no action 'Incremnt' on Action"));
+        assert!(e.message.contains("no action 'incremnt' on Action"));
         assert_eq!(e.span.line, 2);
+    }
+
+    #[test]
+    fn pascalcase_handler_name_is_a_camel_case_style_error() {
+        // §3.3: `onPress={Reset}` (the pre-revision style) misreads as
+        // a component reference in JSX-flavored markup — rejected
+        // before any ReflectAction lookup, with a camelCase suggestion.
+        let ast = parse("<Column>\n  <Button onPress={Reset}>Reset</Button>\n</Column>").unwrap();
+        let field = |_: &str| None;
+        let has_action = |m: &str| m == "reset" || m == "Reset";
+        let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
+        assert!(e.message.contains("must be camelCase"), "{}", e.message);
+        assert!(e.message.contains("did you mean 'reset'"), "{}", e.message);
     }
 
     #[test]

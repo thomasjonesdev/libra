@@ -11,6 +11,7 @@ libra-components.workspace = true
 [dev-dependencies]
 libra-markup.workspace = true
 libra-interp.workspace = true
+libra-codegen.workspace = true
 
 [build-dependencies]
 libra-markup.workspace = true
