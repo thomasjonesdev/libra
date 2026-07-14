@@ -1,10 +1,8 @@
-//! The windowed counter — the same app the tier tests exercise, in a
-//! real window. 400×240 logical matches the Tier-4 snapshot viewport.
-
-use counter::{Counter, VIEW};
+//! The windowed counter — the same app the test suite exercises, in a
+//! real window. 400×240 logical matches the snapshot-test viewport.
 
 fn main() {
-    if let Err(e) = libra_platform::run::<Counter>(VIEW, "Libra Counter", (400.0, 240.0)) {
+    if let Err(e) = counter::run() {
         eprintln!("error: {e}");
         std::process::exit(1);
     }
