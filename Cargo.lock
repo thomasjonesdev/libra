@@ -991,10 +991,12 @@ dependencies = [
 name = "gallery"
 version = "0.0.1"
 dependencies = [
+ "libra",
  "libra-core",
  "libra-data",
  "libra-platform",
  "libra-test",
+ "serde",
 ]
 
 [[package]]

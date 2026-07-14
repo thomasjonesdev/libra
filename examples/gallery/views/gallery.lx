@@ -1,7 +1,7 @@
 <Column gap={10} padding={14}>
   <Row gap={8} cross="center">
     <Text bold grow>Libra gallery — every widget, every state</Text>
-    <Button variant="ghost" onPress={ToggleTheme} testId="theme">{theme}</Button>
+    <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
   </Row>
   <Row gap={8} cross="center">
     <Text size="sm">sm text</Text>
@@ -11,14 +11,14 @@
     <Text muted>muted</Text>
   </Row>
   <Row gap={8} cross="center">
-    <Button variant="primary" onPress={Noop}>Primary</Button>
-    <Button variant="secondary" onPress={Noop}>Secondary</Button>
-    <Button variant="ghost" onPress={Noop}>Ghost</Button>
+    <Button variant="primary" onPress={noop}>Primary</Button>
+    <Button variant="secondary" onPress={noop}>Secondary</Button>
+    <Button variant="ghost" onPress={noop}>Ghost</Button>
     <Text size="sm" muted grow>count: {count}</Text>
   </Row>
   <Row gap={8} cross="center">
-    <Input value={draft} placeholder="empty input (placeholder)" onChange={DraftChanged} testId="empty" />
-    <Input value={filled} placeholder="unused" onChange={FilledChanged} testId="filled" />
+    <Input value={draft} placeholder="empty input (placeholder)" onChange={draftChanged} testId="empty" />
+    <Input value={filled} placeholder="unused" onChange={filledChanged} testId="filled" />
   </Row>
   <Row gap={8} cross="center" grow>
     <Chart series={wave} height={90} testId="chart" />

@@ -1,9 +1,9 @@
 //! The gallery's snapshot matrix: every component × both themes, plus a
 //! focused-input state. A component rendering change fails here first.
 
-use gallery::{Gallery, WAVE, VIEW};
+use gallery::{Action, Gallery, VIEW, WAVE};
 use libra_data::Sample;
-use libra_test::{by, cmd, Harness};
+use libra_test::{by, fx, Harness};
 
 /// Deterministic wave, fed synchronously — no generator thread in tests.
 fn feed_wave(h: &Harness<Gallery>) {
@@ -16,9 +16,9 @@ fn feed_wave(h: &Harness<Gallery>) {
 
 fn harness(theme: &str) -> Harness<Gallery> {
     let mut h = Harness::<Gallery>::with_viewport(VIEW, 640, 360).theme(theme);
-    let _ = h.expect_cmd(cmd::any()); // the IngestOpen — tests feed directly
+    let _ = h.expect_effect(fx::any()); // the IngestOpen — tests feed directly
     feed_wave(&h);
-    h.dispatch(gallery::Msg::Noop); // rebuild so paint sees the wave
+    h.dispatch(Action::Noop); // rebuild so paint sees the wave
     h
 }
 
@@ -46,9 +46,9 @@ fn theme_toggle_round_trips() {
     let mut h = harness("libra-dark");
     let dark = h.frame_png();
     h.click(by::test_id("theme"));
-    let _ = h.expect_cmd(cmd::set_theme());
+    let _ = h.expect_effect(fx::set_theme());
     assert_ne!(h.frame_png(), dark);
     h.click(by::test_id("theme"));
-    let _ = h.expect_cmd(cmd::set_theme());
+    let _ = h.expect_effect(fx::set_theme());
     assert_eq!(h.frame_png(), dark, "toggling back restores identical bytes");
 }
