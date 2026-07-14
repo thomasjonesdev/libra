@@ -206,7 +206,7 @@ mod tests {
     use std::sync::mpsc::channel;
 
     #[derive(Debug, Clone, PartialEq)]
-    enum Msg {
+    enum Action {
         Loaded(Option<Vec<u8>>),
         Saved(KvResult),
         Tick,
@@ -214,38 +214,38 @@ mod tests {
         Fetched(HttpResult),
     }
 
-    fn runtime() -> (Effects<Msg>, mpsc::Receiver<Msg>, tempfile::TempDir) {
+    fn runtime() -> (Effects<Action>, mpsc::Receiver<Action>, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
         let kv = Kv::open(&dir.path().join("kv.redb")).expect("kv");
         let (tx, rx) = channel();
-        let sink: Sink<Msg> = Arc::new(move |m| {
+        let sink: Sink<Action> = Arc::new(move |m| {
             let _ = tx.send(m);
         });
         (Effects::new(sink, Some(kv)), rx, dir)
     }
 
-    fn recv(rx: &mpsc::Receiver<Msg>) -> Msg {
+    fn recv(rx: &mpsc::Receiver<Action>) -> Action {
         rx.recv_timeout(Duration::from_secs(5)).expect("effect result arrives")
     }
 
     #[test]
     fn kv_set_then_get_roundtrips_through_workers() {
         let (fx, rx, _dir) = runtime();
-        fx.execute(Effect::kv_set_acked("k", b"v".to_vec(), Msg::Saved));
-        assert_eq!(recv(&rx), Msg::Saved(KvResult::Ok));
-        fx.execute(Effect::kv_get("k", Msg::Loaded));
-        assert_eq!(recv(&rx), Msg::Loaded(Some(b"v".to_vec())));
+        fx.execute(Effect::kv_set_acked("k", b"v".to_vec(), Action::Saved));
+        assert_eq!(recv(&rx), Action::Saved(KvResult::Ok));
+        fx.execute(Effect::kv_get("k", Action::Loaded));
+        assert_eq!(recv(&rx), Action::Loaded(Some(b"v".to_vec())));
     }
 
     #[test]
     fn timer_fires_and_cancelled_timer_never_delivers() {
         let (fx, rx, _dir) = runtime();
         let id = TimerId(7);
-        fx.execute(Effect::Timer { id: Some(id), after_ms: 200, action: Msg::Tick });
+        fx.execute(Effect::Timer { id: Some(id), after_ms: 200, action: Action::Tick });
         fx.execute(Effect::CancelTimer { id });
-        fx.execute(Effect::Timer { id: None, after_ms: 30, action: Msg::Tick });
+        fx.execute(Effect::Timer { id: None, after_ms: 30, action: Action::Tick });
         // The un-cancelled timer fires…
-        assert_eq!(recv(&rx), Msg::Tick);
+        assert_eq!(recv(&rx), Action::Tick);
         // …and the cancelled one never does (wait past its deadline).
         assert!(rx.recv_timeout(Duration::from_millis(400)).is_err());
     }
@@ -253,9 +253,9 @@ mod tests {
     #[test]
     fn random_yields_requested_bytes() {
         let (fx, rx, _dir) = runtime();
-        fx.execute(Effect::Random { bytes: 16, on_done: Msg::Entropy });
+        fx.execute(Effect::Random { bytes: 16, on_done: Action::Entropy });
         match recv(&rx) {
-            Msg::Entropy(b) => assert_eq!(b.len(), 16),
+            Action::Entropy(b) => assert_eq!(b.len(), 16),
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -283,10 +283,10 @@ mod tests {
         });
 
         let (fx, rx, _dir) = runtime();
-        fx.execute(Effect::http(HttpRequest::get(format!("http://{addr}/zen")), Msg::Fetched));
+        fx.execute(Effect::http(HttpRequest::get(format!("http://{addr}/zen")), Action::Fetched));
         assert_eq!(
             recv(&rx),
-            Msg::Fetched(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() })
+            Action::Fetched(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() })
         );
     }
 }

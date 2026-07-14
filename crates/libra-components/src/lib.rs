@@ -5,10 +5,10 @@
 //! into a DrawCmd list and hit-test interactions back to handler names.
 //!
 //! Catalog: Column, Row, Text, Button (Phase 0); Chart, Sparkline
-//! (Phase 2 — data-plane widgets that read their series from the
-//! `SeriesStore` at paint time, per §14.2: the Model holds handles,
+//! (Phase 2 — data-plane components that read their series from the
+//! `SeriesStore` at paint time, per §14.2: State holds handles,
 //! samples never transit the loop). The reconciler (keyed diffing,
-//! retained widget state, focus) is still pending; the laid tree
+//! retained component state, focus) is still pending; the laid tree
 //! rebuilds per dispatch, which damage tracking absorbs at raster time.
 
 use libra_core::SeriesHandle;
@@ -375,7 +375,7 @@ fn build(
 // ---------------------------------------------------------------------------
 
 /// Focus state for painting the caret/selection of the focused Input.
-/// Owned by the shell/harness (widget state is retained outside the
+/// Owned by the shell/harness (component state is retained outside the
 /// tree until the reconciler); byte offsets index into the input's value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InputFocus {

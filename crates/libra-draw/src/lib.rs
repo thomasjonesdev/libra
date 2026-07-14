@@ -1,5 +1,5 @@
 //! libra-draw — the display list: the universal currency between the
-//! widget layer and executors (ARCHITECTURE.md §9.1).
+//! component layer and executors (ARCHITECTURE.md §9.1).
 //!
 //! Phase 0 subset: Clear, Rect, RRect, Text. Interned resources
 //! (PathId/GlyphRunId/ImageId), layers, clips, and cache actions arrive
@@ -130,7 +130,7 @@ impl Rect {
 }
 
 /// Design tokens (ARCHITECTURE.md §11). Phase 0's hard-coded dark
-/// values, kept verbatim as the `libra-dark` theme's table — Tier-4
+/// values, kept verbatim as the `libra-dark` theme's table — snapshot
 /// snapshot identity depends on them.
 pub mod tokens {
     use super::Color;
@@ -153,11 +153,11 @@ pub mod tokens {
     pub const BTN_PAD_Y: f32 = 6.0;
 }
 
-/// A resolved theme: the named-token table every widget styles through
-/// (§11 — no hex codes in widgets or markup). Two ship built in:
+/// A resolved theme: the named-token table every component styles through
+/// (§11 — no hex codes in components or markup). Two ship built in:
 /// `libra-dark` (mission-control default) and `libra-light`. Themes are
 /// part of the determinism contract: a snapshot's identity includes the
-/// theme it rendered under. Runtime switching is `Cmd::SetTheme`;
+/// theme it rendered under. Runtime switching is `Effect::SetTheme`;
 /// TOML theme tables + hot reload are the remaining §11 items.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
@@ -221,7 +221,7 @@ impl Theme {
         }
     }
 
-    /// Resolve a theme by name (`Cmd::SetTheme`, harness `.theme(…)`).
+    /// Resolve a theme by name (`Effect::SetTheme`, harness `.theme(…)`).
     pub fn by_name(name: &str) -> Option<Theme> {
         match name {
             "libra-dark" => Some(Theme::dark()),

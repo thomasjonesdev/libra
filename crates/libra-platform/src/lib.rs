@@ -4,7 +4,7 @@
 //! test harness drives (interp → widgets/taffy → DrawCmds → libra-raster),
 //! then blits the frame into a winit window via softbuffer. Nothing here
 //! is on the determinism contract's paint path — the canonical frame
-//! remains the logical-resolution render Tier-4 tests assert against.
+//! remains the logical-resolution render snapshot tests assert against.
 //!
 //! Phase 1 additions:
 //! - **Effects**: cmds returned by `init`/`update` go to the

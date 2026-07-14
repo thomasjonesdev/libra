@@ -2,7 +2,7 @@
 //!
 //! Samples flow: source (tape / generator / [later] sockets) → ingest
 //! thread → per-series ring buffer → read at paint time through a
-//! `SeriesHandle` → M4 downsample → polyline geometry. The Model holds
+//! `SeriesHandle` → M4 downsample → polyline geometry. State holds
 //! handles; `update` never sees a sample.
 //!
 //! Determinism at the boundary (§14.4): in tests, sources are recorded

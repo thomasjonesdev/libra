@@ -1,10 +1,10 @@
-//! Accessibility (ARCHITECTURE.md §17): the widget tree's `Semantics`
-//! — the same tree Tier-2 queries resolve against — exported to
+//! Accessibility (ARCHITECTURE.md §17): the component tree's `Semantics`
+//! — the same tree component-test queries resolve against — exported to
 //! assistive technology through AccessKit. One tree, two consumers:
 //! that's the §17 contract, now literal.
 //!
 //! Screen-reader **actions** route back through the loop: an AccessKit
-//! Click on a Button dispatches the same msg a pointer click would,
+//! Click on a Button dispatches the same action a pointer click would,
 //! via the effects sink (main-thread delivery through the event loop).
 
 use libra_components::{LaidTree, Role};

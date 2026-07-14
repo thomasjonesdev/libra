@@ -1,6 +1,6 @@
 //! libra gallery (§18 / Appendix C, via Storybook): one app rendering
-//! every catalog widget × state × theme, snapshot-covered under both
-//! built-in themes. Doubles as the PR visual-review surface: a widget
+//! every catalog component × state × theme, snapshot-covered under both
+//! built-in themes. Doubles as the PR visual-review surface: a component
 //! rendering change shows up as a gallery snapshot diff.
 
 use libra_core::{App, Cmd, LibraReflect, SeriesHandle, SeriesId, SourceSpec};

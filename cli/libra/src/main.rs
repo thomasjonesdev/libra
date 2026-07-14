@@ -1,9 +1,11 @@
 //! The libra CLI (ARCHITECTURE.md §18). Phase 1 subset: `libra check` —
 //! parse + validate every `.lx` under the given paths in milliseconds,
 //! without building anything. Grammar-level validation only for now;
-//! binding/handler validation against Model/Msg joins when
-//! `#[derive(LibraReflect)]` lands (the interpreter already does it at
-//! app load time).
+//! binding/handler validation against State/Action needs the app's
+//! reflected types in scope (the interpreter already does it at app
+//! load time via `#[derive(LibraReflect)]`/`#[libra::state]`/
+//! `#[libra::actions]`) — wiring that into `libra check` itself is
+//! still open.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

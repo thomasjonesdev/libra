@@ -2,9 +2,9 @@
 //!
 //! The heart of the spec's promise: *the editing core is a pure state
 //! machine (`EditState × EditOp → EditState`) exercised without
-//! rendering*. No clocks, no platform, no fonts — every widget,
+//! rendering*. No clocks, no platform, no fonts — every component,
 //! harness verb, and (later) IME path drives this same machine, and
-//! Tier-1 tests cover it exhaustively.
+//! Unit tests cover it exhaustively.
 //!
 //! Phase 3 scope: single-line plain text, char-boundary navigation
 //! (grapheme clusters arrive with the parley/swash stack), per-field

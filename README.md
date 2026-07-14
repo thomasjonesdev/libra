@@ -3,29 +3,40 @@
 A native UI framework in Rust with a first-class testable foundation.
 See LIBRA-ARCHITECTURE.md for the full design. Phase 0 proved the
 determinism gate; Phase 1 built the testable foundation (effects,
-persistence, Tier 3, hot reload, CLI); Phase 2 built the data plane
-(rings, tapes, M4 charts, subscriptions, damage tracking); Phase 3
-brings the release engine (codegen + the interp≡codegen conformance
-suite, compile-time markup errors), text entry (the pure editing core,
-Input, focus/keyboard/clipboard, type_text harness verbs), theming
-(libra-dark / libra-light, TOML theme tables with hot reload,
-Cmd::SetTheme, theme-aware snapshots), AccessKit integration (§17: the
-semantics tree exported to assistive tech, screen-reader clicks
-dispatch real msgs), libra-query, FormState, NavStack, and the
-gallery.
+persistence, integration tests, hot reload, CLI); Phase 2 built the
+data plane (rings, tapes, M4 charts, subscriptions, damage tracking);
+Phase 3 brings the release engine (codegen + the interp≡codegen
+conformance suite, compile-time markup errors), text entry (the pure
+editing core, Input, focus/keyboard/clipboard, type_text harness
+verbs), theming (libra-dark / libra-light, TOML theme tables with hot
+reload, Effect::SetTheme, theme-aware snapshots), AccessKit
+integration (§17: the semantics tree exported to assistive tech,
+screen-reader clicks dispatch real actions), libra-query, FormState,
+NavStack, and the gallery — plus the ergonomics layer (§3/§5/§6.2/§12.5):
+`#[libra::state]`/`#[libra::actions]`/`libra::app!`, `<for>` collection
+bindings, and `<Frames>` source elements, which all four example apps
+now run on (see `MIGRATION-NAMING.md`/`PLAN-ERGONOMICS.md` for the
+still-in-progress rename of the underlying crates/types this sugars
+over).
 
 ## What exists
 
 - `libra-markup` — the `.lx` parser (one grammar, spans, real diagnostics)
-- `libra-interp` — dev engine: AST × model reflection → ViewTree, with
-  load-time validation (typo'd handler/binding = error with file:line:col)
-- `libra-core` — the App contract: Model / Msg / pure update / Cmd
+- `libra-interp` — dev engine: AST × state reflection → ViewTree, with
+  load-time validation (typo'd handler/binding = error with file:line:col);
+  `<for each={path} as="name" key={name}>` over `Vec<T>` state fields,
+  `<Frames onTick={name}>` mount-scoped source elements
+- `libra-core` — the App contract: State / Action / pure update / Effect
   (Http, Kv*, Timer, Random, Ingest*, SetTheme) + `Remote<T, E>` +
   `Field<T>` (FormState: dirty/touched/error, pure validators, submit
-  gating — plain model machinery)
-- `libra-reflect` — `#[derive(LibraReflect)]`: Display fields become
-  bindable paths (`#[libra(skip)]` to exclude), unit Msg variants become
-  handler names; hand-implementing the traits stays possible
+  gating — plain state machinery)
+- `libra-reflect` — `#[derive(LibraReflect)]` and the newer
+  `#[libra::state]`/`#[libra::actions]`/`libra::app!` (re-exported
+  through the `libra` facade crate): Display fields become bindable
+  paths (`#[libra(skip)]` to exclude), `Vec<T>` fields become iterable
+  paths for `<for>`, plain `&mut self` methods become the `Action`
+  enum + a generated `reduce` (camelCase public names, §3.3); hand-
+  implementing the traits stays possible
 - `libra-effects` — the effects runtime: worker pool, ureq HTTP, timer
   threads with cancellation (cancelled timers are never delivered)
 - `libra-kv` — persistence: redb in the platform app-data dir; get/set/
@@ -35,58 +46,70 @@ gallery.
   downsampling, and the §14.3 column cache (live windows quantize to
   pixel columns; each frame folds in only new samples — proven
   equivalent to a cold rebuild by property test)
-- `libra-widgets` — Column, Row, Text, Button + Chart/Sparkline (read
+- `libra-components` — Column, Row, Text, Button + Chart/Sparkline (read
   their series from the store at paint time; dense data renders as M4
   min/max column strips, sparse as stroked polylines); taffy layout;
   semantics; hit testing; paint to a DrawCmd display list
 - `libra-draw` — the display list (+ Polyline, Strips) + `Theme` (§11):
-  the named-token table widgets style through; `libra-dark` is
+  the named-token table components style through; `libra-dark` is
   byte-identical to the Phase 0 tokens (snapshot identity preserved),
-  `libra-light` ships alongside; `Cmd::SetTheme` swaps live
+  `libra-light` ships alongside; `Effect::SetTheme` swaps live
 - `libra-raster` — the canonical executor: tiny-skia + fontdue, manual
   src-over glyph blending, deterministic PNG output; damage-tracked
   incremental rendering (§9.3) that is byte-equivalent to a full
   render by property test
 - `libra-codegen` — the release engine (§6.4): compiles `.lx` to a
-  static Rust `fn(model) -> ViewNode`. Bindings become direct field
-  accesses, handlers become real Msg references — typos are rustc
+  static Rust `fn(state) -> ViewNode`. Bindings become direct field
+  accesses, handlers become real Action references — typos are rustc
   errors carrying `// file:line:col` trailers (§6.5). Depends on
   libra-markup only: the no-drift guarantee is structural.
 - `conformance/` — the §6.4 suite: golden fixtures compiled by
   build.rs through codegen AND resolved by the interpreter; trees must
-  match node-for-node across model states (unicode, quotes, extremes)
+  match node-for-node across state variants (unicode, quotes, extremes,
+  `<for>` at 0/1/N items, `<Frames>` mounting)
 - `libra-query` — the query cache (Appendix C): dedup,
   stale-while-revalidate, retry with exponential backoff, invalidation
-  — pure model machinery (time injected, effects returned as Cmds)
+  — pure state machinery (time injected, effects returned as data)
 - `libra-text` — the §10.1 editing core: a pure state machine
   (EditState × EditOp), caret/selection/word-nav on char boundaries,
   undo/redo grouped at word boundaries — exercised without rendering
-- `libra-test` — the Harness: Tier-2 queries + real-hit-test clicks;
-  Tier-3 cmd interception (expect_cmd / resolve_* / expect_no_cmds);
-  Tier-4 byte-exact snapshots with diff heatmaps (LIBRA_BLESS=1 to
-  re-record); §10.1 verbs: type_text / edit(EditOp) / focused_edit
-  drive the same editing core the shell drives
+- `libra-test` — the Harness: component-test queries (`by::test_id`/
+  `text`/`role`/`source`) + real-hit-test clicks; integration-test
+  effect interception (`expect_effect` / `resolve_*` / `expect_no_effects`);
+  snapshot tests with diff heatmaps (LIBRA_BLESS=1 to re-record);
+  §10.1 verbs: type_text / edit(EditOp) / focused_edit drive the same
+  editing core the shell drives; `has_source(kind)` checks a mounted
+  §12.5 source element
 - `libra-platform` — the winit/softbuffer windowed shell: effects wired
   through the event loop, `.lx` hot reload with state preservation, dev
-  error overlay, model rehydration across restarts (`run_rehydrating`,
+  error overlay, state rehydration across restarts (`run_rehydrating`,
   §18.2), paint-boundary panic containment, TOML theme files
-  (`Options::theme_file`, hot-reloaded), and AccessKit (§17): the same
-  semantics tree Tier-2 queries resolve against is served to assistive
-  technology, and an AT Click dispatches the button's real msg; HiDPI
-  via DrawCmd scaling
+  (`Options::theme_file`, hot-reloaded), AccessKit (§17): the same
+  semantics tree component-test queries resolve against is served to
+  assistive technology (`Role::Source` items excluded), and an AT
+  Click dispatches the button's real action; HiDPI via DrawCmd
+  scaling; §12.5's mounted `<Frames>` elements union with
+  `App::subscriptions()` for frame ticks
+- `libra` — the facade crate: depend on this to get `#[libra::state]`/
+  `#[libra::actions]`/`libra::app!` at their documented import path
+  (still needs `libra-core`/`libra-platform`/`serde` as direct deps too
+  — see its doc comment)
 - `cli/libra` — `libra check`: parse+validate every .lx in microseconds
-- `examples/counter` — the Phase 0 reference app (Tiers 1/2/4)
+- `examples/counter` — the Phase 0 reference app; §5.8's "counter in
+  ~10 lines" made real
 - `examples/fetcher` — the Phase 1 reference app: fetches (GitHub zen)
-  and persists (redb), fully tested at Tiers 1–4 including adversarial
-  effect-result ordering
+  and persists (redb), fully tested across all four kinds including
+  adversarial effect-result ordering
 - `examples/dashboard` — the Phase 2 benchmark app (§22): 16 series ×
-  10 kHz through the data plane into a 4×4 chart wall; `Sub::frames`
-  drives one msg per tick; tape → byte-exact chart snapshot tests
+  10 kHz through the data plane into a 4×4 chart wall, `Vec<SeriesHandle>`
+  rows bound through `<for>`; `subscriptions:` drives one action per
+  tick (pause-sensitive — see its module doc for why not `<Frames>`);
+  tape → byte-exact chart snapshot tests
 - `examples/notes` — the Phase 3 reference app: an Input driving
-  `TitleChanged(String)` per keystroke (controlled input; the model is
+  `titleChanged(String)` per keystroke (controlled input; state is
   the source of truth), Save persisting via kv, a live theme toggle
-  (Cmd::SetTheme); caret/selection render byte-exactly in snapshots
-- `examples/gallery` — every widget × state × theme (Appendix C via
+  (Effect::SetTheme); caret/selection render byte-exactly in snapshots
+- `examples/gallery` — every component × state × theme (Appendix C via
   Storybook): the PR visual-review surface; snapshot matrix covers
   both built-in themes; `cargo run -p gallery -- themes/solarized.toml`
   previews a custom theme table live
@@ -99,7 +122,7 @@ gallery.
     cargo run -p dashboard --release             # 16 live charts @ 10 kHz each
     cargo run -p dashboard --release -- bench    # §22 budget check, headless
     cargo run -p notes                           # text entry: click the field and type
-    cargo run -p gallery                         # widget gallery; theme toggle
+    cargo run -p gallery                         # component gallery; theme toggle
     cargo run -p gallery -- themes/solarized.toml   # custom TOML theme, hot-reloaded
     cargo run -p libra-cli -- check .   # validate all markup
 
@@ -128,15 +151,21 @@ byte-exact on macOS (Darwin 25.1.0, Apple Silicon) on 2026-07-12.
 
 ## Remaining spike shortcuts (all planned, none structural)
 
-- Cmd equality compares effect *data* and ignores msg-ctor identity
+- Effect equality compares effect *data* and ignores ctor identity
   (fn-pointer equality is unreliable across crates — discovered the
-  hard way, by a failing cross-crate Tier-1 test).
+  hard way, by a failing cross-crate unit test).
 - Reflection is flat: `{count}` binds, `{user.name}` paths and payload
   handler dispatch (`Select(item.id)`) arrive with the grammar's Phase 2+
-  forms.
+  forms. `<for>` iterates a flat `Vec<T>` field; dot-path access into a
+  loop-bound value (`key={x.id}`, `series={x.id}`) isn't supported yet
+  (§6.2) — needs structured, non-Display reflection into elements.
 - Text is fontdue advance-layout (no shaping/kerning); Phase 3 is parley.
 - No reconciler yet — the laid tree rebuilds per dispatch (fine at this
-  scale; keyed diffing + retained widget state comes with focus).
+  scale; keyed diffing + retained component state comes with focus).
+- No `<if>`/conditional markup yet (§26) — §12.5 source elements
+  (`<Frames>`) can't be conditionally mounted; state-dependent ambient
+  sources still need a hand-written `subscriptions:` function passed
+  to `libra::app!` (see `examples/dashboard`).
 - Rings are Mutex-guarded, not the specced lock-free SPSC seqlock —
   nanoseconds uncontended at these rates; the API is shaped so the
   swap is invisible when it lands.
@@ -156,10 +185,12 @@ byte-exact on macOS (Darwin 25.1.0, Apple Silicon) on 2026-07-12.
 - Hot reload watches one root view file; multi-file watching lands
   with composition.
 - `libra check` validates grammar only; binding/handler validation
-  against Model/Msg needs the app's types in scope (the interpreter
+  against State/Action needs the app's types in scope (the interpreter
   does it at load time; codegen turns them into rustc errors).
 - AccessKit ships the tree + Click actions; text-editing AT actions
   (SetTextSelection, ReplaceSelectedText) land with the reconciler's
   focus model.
-- v0.1 polish backlog (§23 Phase 3 tail): remaining catalog widgets,
-  Textarea/IME/touch, `libra package`/`build`.
+- v0.1 polish backlog (§23 Phase 3 tail): remaining catalog components,
+  Textarea/IME/touch, `libra package`/`build`, and the naming migration
+  (`MIGRATION-NAMING.md`'s Stage 8 — removing the deprecated `Cmd`/
+  `ReflectModel`/`ReflectMsg`/etc. aliases before first public publish).

@@ -28,14 +28,14 @@ pub type MsgCtor<T, M> = ActionCtor<T, M>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
 
-/// Identifies a data-plane series (§14.2). The Model never holds
+/// Identifies a data-plane series (§14.2). State never holds
 /// samples — it holds handles; samples live in ring buffers read at
 /// paint time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SeriesId(pub u32);
 
-/// The Model-side view of a series (§14.2): id + view window + pause
-/// flag. Control decisions are pure msgs that mutate this struct;
+/// The State-side view of a series (§14.2): id + view window + pause
+/// flag. Control decisions are pure actions that mutate this struct;
 /// samples never enter `update`.
 ///
 /// Phase 2 reflection shortcut: markup binds a handle through its
@@ -44,7 +44,7 @@ pub struct SeriesId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SeriesHandle {
     pub id: SeriesId,
-    /// How much history the widget shows, in ms of sample time.
+    /// How much history the component shows, in ms of sample time.
     pub window_ms: f64,
     pub paused: bool,
 }
@@ -288,7 +288,7 @@ impl<M> IntoEffects<M> for Vec<Effect<M>> {
 }
 
 /// Async-state type (Appendix C, via Elm's RemoteData): makes
-/// loading/error impossible-states unrepresentable on the Model.
+/// loading/error impossible-states unrepresentable on State.
 /// Serde-derived because Models are serializable (§5.1) — snapshots,
 /// rehydration, session export.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -400,9 +400,9 @@ pub trait ReflectMsg: Sized {
 }
 
 /// Form-state helper (Appendix C, via React Hook Form): per-field
-/// dirty/touched/error with a pure validator — plain model machinery,
-/// Tier-1 testable, no framework runtime involved. Fields live on the
-/// Model; `set` runs in `update`.
+/// dirty/touched/error with a pure validator — plain state machinery,
+/// unit-testable, no framework runtime involved. Fields live on
+/// State; `set` runs in an action.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Field<T> {
     value: T,
@@ -473,7 +473,7 @@ impl<T: std::fmt::Display> std::fmt::Display for Field<T> {
 
 /// Screen-stack helper (Appendix C, via React Router): a navigation
 /// stack over an app-defined `Screen` enum, driven by push/pop/replace
-/// msgs. Plain model machinery — the root screen is never popped, so
+/// actions. Plain state machinery — the root screen is never popped, so
 /// `current()` is total.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NavStack<S> {
@@ -513,9 +513,18 @@ impl<S> NavStack<S> {
 /// The application contract — `init` + `update`, nothing else (§5.1).
 /// This is runtime plumbing: `libra::app!` (§5.8) and the
 /// `#[libra::actions]` macro (§5.2) generate an impl of this trait from
-/// state + actions, so most apps never write one by hand. `Msg`/
-/// `update` keep their names here pending the Stage 4 macro work; the
-/// user-facing vocabulary is state/action/reduce (§3.1).
+/// state + actions, so apps using the ergonomic layer never write one
+/// by hand — none of the four ported examples reference `App::Msg`
+/// directly. `Msg`/`update` keep their names here permanently rather
+/// than pending, as originally noted: renaming the associated type
+/// would be a breaking change with no deprecated-alias escape hatch
+/// (Rust can't dual-accept `type Msg` and `type Action` for one
+/// required associated type), and it would force every hand-rolled
+/// `impl App` — including examples/gallery, deliberately not on the
+/// actions-style port list (MIGRATION-NAMING.md Stage 6) — to update
+/// immediately for a name the ergonomic surface never exposes. The
+/// user-facing vocabulary is state/action/reduce (§3.1); this trait is
+/// the generated-code layer underneath it, not part of that surface.
 ///
 /// Purity rules for `update` (ARCHITECTURE.md §5.3): no I/O, no clocks,
 /// no randomness, no threads, no blocking. Time and entropy arrive

@@ -28,7 +28,7 @@ struct Counter {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Msg {
+enum Action {
     Tick(FrameInfo),
 }
 
@@ -41,12 +41,12 @@ impl ReflectState for Counter {
     }
 }
 
-impl ReflectAction for Msg {
+impl ReflectAction for Action {
     fn action_by_name(_: &str) -> Option<Self> {
         None
     }
     fn action_with_frame_info(name: &str, info: FrameInfo) -> Option<Self> {
-        (name == "Tick").then(|| Msg::Tick(info))
+        (name == "Tick").then(|| Action::Tick(info))
     }
     fn action_names() -> &'static [&'static str] {
         &["Tick"]
@@ -54,13 +54,16 @@ impl ReflectAction for Msg {
 }
 
 impl App for Counter {
-    type Msg = Msg;
-    fn init() -> (Self, Vec<Effect<Msg>>) {
+    // App::Msg is the trait's permanent associated-type name (see its
+    // doc comment in libra-core) — only the concrete type assigned to
+    // it is named Action here.
+    type Msg = Action;
+    fn init() -> (Self, Vec<Effect<Action>>) {
         (Counter { status: "idle".into(), ticks: 0 }, vec![])
     }
-    fn update(&mut self, msg: Msg) -> Vec<Effect<Msg>> {
-        match msg {
-            Msg::Tick(info) => {
+    fn update(&mut self, action: Action) -> Vec<Effect<Action>> {
+        match action {
+            Action::Tick(info) => {
                 self.ticks += 1;
                 self.status = format!("tick {} at {}ms", self.ticks, info.t_ms);
             }
@@ -90,6 +93,6 @@ fn source_element_is_invisible_but_dispatch_through_it_still_works() {
     // real runtime's tick delivery does under the hood).
     let mut h = Harness::<Counter>::render(VIEW_WITH_FRAMES);
     h.query(by::test_id("status")).assert_text("idle");
-    h.dispatch(Msg::Tick(FrameInfo::at(16.0)));
+    h.dispatch(Action::Tick(FrameInfo::at(16.0)));
     h.query(by::test_id("status")).assert_text("tick 1 at 16ms");
 }

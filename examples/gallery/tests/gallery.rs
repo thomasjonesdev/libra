@@ -1,5 +1,5 @@
-//! The gallery's snapshot matrix: every widget × both themes, plus a
-//! focused-input state. A widget rendering change fails here first.
+//! The gallery's snapshot matrix: every component × both themes, plus a
+//! focused-input state. A component rendering change fails here first.
 
 use gallery::{Gallery, WAVE, VIEW};
 use libra_data::Sample;
