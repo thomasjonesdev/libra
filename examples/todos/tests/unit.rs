@@ -2,8 +2,12 @@
 //! whole model — add, complete/uncomplete by row line, remove, clear —
 //! is exercised here without any view or harness.
 
+use libra_core::App;
 use todos::{reduce, Action, Todos};
 
+/// `App::init` is `app!`'s projected default — no hand-written init
+/// exists; the `#[project]` hook has already run, so `summary` is
+/// "0 of 0 done" (not "") from frame zero.
 fn app() -> Todos {
     Todos::init().0
 }

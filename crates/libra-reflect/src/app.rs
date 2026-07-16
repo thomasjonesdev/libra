@@ -126,8 +126,17 @@ pub fn app(input: TokenStream) -> TokenStream {
     let window: Expr = spec.window.unwrap_or_else(|| syn::parse_quote! { (800.0f32, 600.0f32) });
     let init_expr = match spec.init {
         Some(p) => quote! { #p() },
+        // The projected default (§6.3): `Default::default()` run through
+        // the block's `#[project]` hook (`__libra_project` is a no-op
+        // when none is declared), so derived display fields are correct
+        // from frame zero. Emitted by `#[libra::actions]`, which `app!`
+        // already requires.
         None => quote! {
-            (<#state_ty as ::std::default::Default>::default(), ::std::vec::Vec::new())
+            {
+                let mut state = <#state_ty as ::std::default::Default>::default();
+                state.__libra_project();
+                (state, ::std::vec::Vec::new())
+            }
         },
     };
     // Optional: apps with ambient event sources beyond markup-declared

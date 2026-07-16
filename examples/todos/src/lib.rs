@@ -7,15 +7,16 @@
 //! The state layer is the point of the demo: `#[libra::state]` +
 //! `#[libra::actions]` turn plain `&mut self` methods into the whole
 //! `Action` enum + `reduce`. `items` is the source of truth;
-//! `active`/`done`/`summary` are §6.3 display projections rebuilt after
-//! every mutation, so the view binds simple `Vec<String>`/`String`
-//! fields and never has to compute anything itself (the closed grammar
-//! can't — §6.2). Identity rides in each row's `"<id>. <text>"` line:
-//! unique (the id is monotonic), human-readable, and stable across a
-//! toggle, so it doubles as the key *and* the action payload.
+//! `active`/`done`/`summary` are §6.3 display projections — and the
+//! `#[project]`-marked method rebuilds them **automatically after every
+//! action** (the generated `reduce` calls it; `app!`'s default init
+//! projects the default state). Actions just mutate `items`; nothing
+//! here remembers to refresh anything, same mental model as React's
+//! derived-during-render. Identity rides in each row's `"<id>. <text>"`
+//! line: unique (the id is monotonic), human-readable, and stable
+//! across a toggle, so it doubles as the key *and* the action payload.
 
 use libra::{actions, app, state};
-use libra_core::Effect;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -37,8 +38,9 @@ pub struct Todos {
     /// Monotonic id source; excluded from reflection (not display data).
     #[libra(skip)]
     pub next_id: u32,
-    /// Display projections (§6.3), rebuilt by `reproject` after every
-    /// mutation. Each entry is a row line — see `line`.
+    /// Display projections (§6.3) — never touched by actions; the
+    /// `#[project]` hook below rebuilds them after every reduce.
+    /// Each entry is a row line — see `line`.
     pub active: Vec<String>,
     pub done: Vec<String>,
     /// "N of M done", bound in the header.
@@ -46,12 +48,6 @@ pub struct Todos {
 }
 
 impl Todos {
-    pub fn init() -> (Todos, Vec<Effect<Action>>) {
-        let mut app = Todos::default();
-        app.reproject();
-        (app, Vec::new())
-    }
-
     /// A row's line — its identity, key, and action payload in one.
     /// `"3. Buy milk"`: the id keeps it unique and stable across a
     /// toggle; the text keeps it readable.
@@ -59,20 +55,10 @@ impl Todos {
         format!("{}. {}", t.id, t.text)
     }
 
-    /// Rebuild the display projections from `items`.
-    fn reproject(&mut self) {
-        self.active = self.items.iter().filter(|t| !t.done).map(Self::line).collect();
-        self.done = self.items.iter().filter(|t| t.done).map(Self::line).collect();
-        let total = self.items.len();
-        let done = self.items.iter().filter(|t| t.done).count();
-        self.summary = format!("{done} of {total} done");
-    }
-
     fn set_done(&mut self, line: &str, done: bool) {
         if let Some(t) = self.items.iter_mut().find(|t| Self::line(t) == line) {
             t.done = done;
         }
-        self.reproject();
     }
 }
 
@@ -93,7 +79,6 @@ impl Todos {
         self.items.push(Todo { id: self.next_id, text, done: false });
         self.next_id += 1;
         self.draft.clear();
-        self.reproject();
     }
 
     /// Item-scoped: `onPress={complete(t)}` — `t` is the row's line.
@@ -109,20 +94,30 @@ impl Todos {
     /// Item-scoped: `onPress={remove(t)}` — drop that row.
     pub fn remove(&mut self, line: String) {
         self.items.retain(|t| Self::line(t) != line);
-        self.reproject();
     }
 
     /// Drop every completed todo.
     pub fn clear_completed(&mut self) {
         self.items.retain(|t| !t.done);
-        self.reproject();
+    }
+
+    /// §6.3 display projections. Not an action — the generated `reduce`
+    /// runs this after every action above (and `app!`'s default init
+    /// runs it on the default state), so `active`/`done`/`summary` are
+    /// always in sync with `items` without anyone remembering anything.
+    #[project]
+    fn project(&mut self) {
+        self.active = self.items.iter().filter(|t| !t.done).map(Self::line).collect();
+        self.done = self.items.iter().filter(|t| t.done).map(Self::line).collect();
+        let total = self.items.len();
+        let done = self.items.iter().filter(|t| t.done).count();
+        self.summary = format!("{done} of {total} done");
     }
 }
 
 app! {
     state: Todos,
     view: "../views/todos.lx",
-    init: Todos::init,
     window: (460.0, 520.0),
     title: "Libra Todos",
 }

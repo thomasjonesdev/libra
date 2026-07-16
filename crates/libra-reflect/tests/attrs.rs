@@ -208,3 +208,90 @@ fn into_effects_lets_unit_and_option_and_vec_returns_all_compile() {
         Some(Effect::http(HttpRequest::get("x"), Action::Fetched)).into_effects();
     assert_eq!(one.len(), 1);
 }
+
+/// §6.3's `#[project]` hook, in its own module (one `#[actions]` block
+/// per module). The hook must: stay out of the Action enum, run after
+/// every reduce — unit handlers, payload handlers, and continuations
+/// alike — and back `__libra_project` for `app!`'s projected default.
+mod projected {
+    use libra_core::ReflectAction;
+    use libra_reflect::{actions, state};
+
+    #[state]
+    #[derive(Default)]
+    struct Todos {
+        #[libra(skip)]
+        items: Vec<(String, bool)>,
+        summary: String,
+    }
+
+    #[actions]
+    impl Todos {
+        fn add(&mut self, text: String) {
+            self.items.push((text, false));
+        }
+
+        fn complete_first(&mut self) {
+            if let Some(t) = self.items.first_mut() {
+                t.1 = true;
+            }
+        }
+
+        // The projection hook: not an action, called by reduce itself.
+        #[project]
+        fn project(&mut self) {
+            let done = self.items.iter().filter(|t| t.1).count();
+            self.summary = format!("{done} of {} done", self.items.len());
+        }
+    }
+
+    #[test]
+    fn project_runs_after_every_action_without_being_called() {
+        let mut s = Todos::default();
+        reduce(&mut s, Action::Add("a".into()));
+        assert_eq!(s.summary, "0 of 1 done");
+        reduce(&mut s, Action::CompleteFirst);
+        assert_eq!(s.summary, "1 of 1 done");
+    }
+
+    #[test]
+    fn project_is_not_an_action() {
+        assert!(Action::action_by_name("project").is_none(), "#[project] must not enter the enum");
+        assert!(!Action::action_names().contains(&"project"));
+    }
+
+    #[test]
+    fn libra_project_backs_the_projected_default() {
+        let mut s = Todos::default();
+        assert_eq!(s.summary, "", "raw Default is unprojected");
+        s.__libra_project();
+        assert_eq!(s.summary, "0 of 0 done", "app!'s no-init default projects");
+    }
+}
+
+/// A block *without* `#[project]` still gets the no-op `__libra_project`
+/// (what `app!`'s default init calls unconditionally).
+mod unprojected {
+    use libra_reflect::{actions, state};
+
+    #[state]
+    #[derive(Default)]
+    struct Plain {
+        count: i64,
+    }
+
+    #[actions]
+    impl Plain {
+        fn increment(&mut self) {
+            self.count += 1;
+        }
+    }
+
+    #[test]
+    fn libra_project_is_a_noop_without_a_hook() {
+        let mut s = Plain::default();
+        s.__libra_project();
+        assert_eq!(s, Plain::default());
+        let _ = Action::Increment; // silence single-variant lint surface
+    }
+}
