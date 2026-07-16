@@ -86,7 +86,7 @@ fn bench() {
         let t1 = Instant::now();
         let cmds = laid.paint(&renderer, &store, None, &theme);
         let t2 = Instant::now();
-        let damage = renderer.render_damage(&mut cache, &cmds, w, h);
+        let damage = renderer.render_damage(&mut cache, cmds, w, h);
         let t3 = Instant::now();
 
         if matches!(damage, libra_raster::Damage::Full) {

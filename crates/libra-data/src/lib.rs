@@ -64,6 +64,24 @@ impl Ring {
         r.generation += 1;
     }
 
+    /// Same per-slot logic as `push`, under one lock acquisition for the
+    /// whole batch (§14.2 Stage 5: high-rate live sources accumulate a
+    /// wakeup's worth of samples and push them together instead of
+    /// taking the lock per sample).
+    pub fn push_many(&self, samples: impl IntoIterator<Item = Sample>) {
+        let mut r = self.inner.lock().expect("ring lock");
+        for s in samples {
+            let cap = r.cap;
+            let gen = r.generation as usize;
+            if r.buf.len() < cap {
+                r.buf.push(s);
+            } else {
+                r.buf[gen % cap] = s;
+            }
+            r.generation += 1;
+        }
+    }
+
     pub fn generation(&self) -> u64 {
         self.inner.lock().expect("ring lock").generation
     }
@@ -432,41 +450,71 @@ impl SeriesStore {
 // Sources
 // ---------------------------------------------------------------------------
 
+/// Live source loops (§14.2). Stage 5 (PLAN-DASHBOARD-PERF.md): both
+/// arms batch every sample that's come due since the last wakeup into
+/// one `push_many` — one ring lock and one thread wakeup per ~1ms at
+/// high rates, instead of per sample. Sleeps are floored at ~1ms so a
+/// fast source (e.g. 10kHz) naturally accumulates a batch between
+/// wakeups; a slow source's due time already exceeds that floor, so it
+/// falls through effectively unchanged (one sample per wakeup, same as
+/// before). Sample *values* are untouched by this — `sine_sample(k)`
+/// stays a pure function of `k`, and tape samples are read verbatim.
 fn run_source(source: &SourceSpec, ring: &Ring, stop: &AtomicBool) {
+    const MIN_WAKE: std::time::Duration = std::time::Duration::from_millis(1);
     match source {
         SourceSpec::Tape { path, speed } => {
             let Ok(samples) = read_tape(path) else { return };
+            if !(speed.is_finite() && *speed > 0.0) {
+                // Unpaced: every sample is already due — nothing to wait
+                // for, so there's nothing batching buys beyond skipping
+                // len-1 lock acquisitions.
+                if !stop.load(Ordering::Relaxed) {
+                    ring.push_many(samples);
+                }
+                return;
+            }
             let start = std::time::Instant::now();
-            for s in samples {
-                if stop.load(Ordering::Relaxed) {
-                    return;
+            let mut i = 0usize;
+            let mut batch: Vec<Sample> = Vec::new();
+            while i < samples.len() && !stop.load(Ordering::Relaxed) {
+                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+                batch.clear();
+                while i < samples.len() && samples[i].t_ms / speed <= elapsed_ms {
+                    batch.push(samples[i]);
+                    i += 1;
                 }
-                if speed.is_finite() && *speed > 0.0 {
-                    let due_ms = s.t_ms / speed;
-                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                    if due_ms > elapsed {
-                        std::thread::sleep(std::time::Duration::from_micros(
-                            ((due_ms - elapsed) * 1000.0) as u64,
-                        ));
-                    }
+                if !batch.is_empty() && !stop.load(Ordering::Relaxed) {
+                    ring.push_many(batch.drain(..));
                 }
-                ring.push(s);
+                if i >= samples.len() {
+                    break;
+                }
+                let due_ms = samples[i].t_ms / speed;
+                let remaining_ms = (due_ms - elapsed_ms).max(0.0);
+                let sleep_for =
+                    std::time::Duration::from_micros((remaining_ms * 1000.0) as u64).max(MIN_WAKE);
+                std::thread::sleep(sleep_for);
             }
         }
         SourceSpec::Sine { rate_hz, freq_hz, amp, seed } => {
-            // Deterministic generator: sample k is a pure function of k.
-            let period_us = (1_000_000.0 / rate_hz) as u64;
+            let period_us = (1_000_000.0 / rate_hz).max(1.0) as u64;
             let mut k = 0u64;
             let start = std::time::Instant::now();
+            let mut batch: Vec<Sample> = Vec::new();
             while !stop.load(Ordering::Relaxed) {
-                let t_ms = k as f64 * 1000.0 / rate_hz;
-                ring.push(Sample { t_ms, v: sine_sample(t_ms, *freq_hz, *amp, *seed) });
-                k += 1;
-                let due = std::time::Duration::from_micros(k * period_us);
-                let elapsed = start.elapsed();
-                if due > elapsed {
-                    std::thread::sleep(due - elapsed);
+                let due_k = ((start.elapsed().as_secs_f64() * rate_hz) as u64 + 1).max(k);
+                batch.clear();
+                for j in k..due_k {
+                    let t_ms = j as f64 * 1000.0 / rate_hz;
+                    batch.push(Sample { t_ms, v: sine_sample(t_ms, *freq_hz, *amp, *seed) });
                 }
+                k = due_k;
+                if !batch.is_empty() && !stop.load(Ordering::Relaxed) {
+                    ring.push_many(batch.drain(..));
+                }
+                let due = std::time::Duration::from_micros(k * period_us);
+                let remaining = due.saturating_sub(start.elapsed());
+                std::thread::sleep(remaining.max(MIN_WAKE));
             }
         }
     }
@@ -599,6 +647,28 @@ mod tests {
         assert_eq!(r.latest_t(), Some(5.0));
     }
 
+    /// Stage 5 guard: `push_many` must be indistinguishable from the
+    /// equivalent sequence of individual `push` calls — it's purely a
+    /// lock-acquisition batching, not a different write path.
+    #[test]
+    fn push_many_matches_equivalent_individual_pushes() {
+        let batched = Ring::new(5);
+        let individual = Ring::new(5);
+        batched.push(s(0.0, 0.0));
+        batched.push_many([s(1.0, 1.0), s(2.0, 2.0), s(3.0, 3.0)]);
+        batched.push(s(4.0, 4.0));
+        batched.push_many([s(5.0, 5.0), s(6.0, 6.0)]);
+
+        for i in 0..7 {
+            individual.push(s(i as f64, i as f64));
+        }
+
+        let (batched_snap, batched_gen) = batched.snapshot_from(0.0);
+        let (individual_snap, individual_gen) = individual.snapshot_from(0.0);
+        assert_eq!(batched_gen, individual_gen);
+        assert_eq!(batched_snap, individual_snap);
+    }
+
     #[test]
     fn snapshot_window_filters_by_time() {
         let r = Ring::new(16);
@@ -708,11 +778,16 @@ mod tests {
             std::thread::yield_now();
         }
         store.ingest_close(SeriesId(9));
+        // Grace period: a batch already accumulating when the stop flag
+        // landed may still push (Stage 5 batches can be ~10 samples at
+        // 10kHz, not just 1-2) — what the test actually cares about is
+        // that the flow *ceases*, not the exact count at the instant of
+        // close. Sample generation() twice, a wakeup period apart, after
+        // that grace: no growth means ingest has genuinely stopped.
+        std::thread::sleep(std::time::Duration::from_millis(50));
         let g1 = ring.generation();
         std::thread::sleep(std::time::Duration::from_millis(50));
         let g2 = ring.generation();
-        // Writer may land a final in-flight sample after the stop flag,
-        // but the flow must cease.
-        assert!(g2 - g1 <= 2, "ingest kept writing after close ({g1} → {g2})");
+        assert_eq!(g1, g2, "ingest kept writing after close+grace ({g1} → {g2})");
     }
 }

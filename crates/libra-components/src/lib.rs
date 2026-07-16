@@ -389,6 +389,11 @@ impl LaidTree {
     /// read their ring here, at paint time (§14.2) — this is the one
     /// place samples meet the frame. `focus` paints the focused
     /// Input's ring, selection band, and caret.
+    ///
+    /// Delegates to `paint_at_density` at density 1.0 — the canonical
+    /// frame (§9) snapshot tests assert against is density 1.0 by
+    /// definition; every caller except the windowed shell (§21, off the
+    /// determinism contract) wants exactly this.
     pub fn paint(
         &self,
         measurer: &dyn TextMeasurer,
@@ -396,13 +401,34 @@ impl LaidTree {
         focus: Option<&InputFocus>,
         theme: &Theme,
     ) -> Vec<DrawCmd> {
+        self.paint_at_density(measurer, store, focus, theme, 1.0)
+    }
+
+    /// `paint`, but Chart items compute their M4 columns at `density`×
+    /// resolution instead of the item's logical width (PLAN-DASHBOARD-PERF.md
+    /// Stage 6). `density` is a *presentation* hint — the windowed shell
+    /// passes its window scale factor so a Retina display gets one
+    /// column per physical pixel instead of one per two; the shell then
+    /// scales the resulting cmds by the same factor, so a column lands
+    /// exactly 1 physical pixel wide. `chart_columns`'s cache keys on
+    /// (series, window, width_px), so both densities' queries are each
+    /// independently deterministic (§14.3) — this never touches the
+    /// canonical density-1.0 path or its snapshots.
+    pub fn paint_at_density(
+        &self,
+        measurer: &dyn TextMeasurer,
+        store: &SeriesStore,
+        focus: Option<&InputFocus>,
+        theme: &Theme,
+        density: f32,
+    ) -> Vec<DrawCmd> {
         let mut cmds = vec![DrawCmd::Clear(theme.bg)];
         for item in &self.items {
             match &item.kind {
                 ItemKind::Box => {}
                 ItemKind::Source { .. } => {}
                 ItemKind::Chart { handle, panel } => {
-                    paint_chart(&mut cmds, item.rect, handle, *panel, store, theme);
+                    paint_chart(&mut cmds, item.rect, handle, *panel, store, theme, density);
                 }
                 ItemKind::Input { value, placeholder, px } => {
                     let focused = focus
@@ -528,8 +554,24 @@ fn paint_input(
 /// columns, autoscale y to the window's extremes, emit either column
 /// strips (dense data — cheap opaque runs, the M4 paper's own rendering)
 /// or a stroked polyline (sparse data — smooth). Pure function of
-/// (ring contents, rect) — a fed tape renders the same bytes every time.
-fn paint_chart(cmds: &mut Vec<DrawCmd>, rect: Rect, handle: &SeriesHandle, panel: bool, store: &SeriesStore, theme: &Theme) {
+/// (ring contents, rect, density) — a fed tape renders the same bytes
+/// every time at a given density.
+///
+/// `density` (Stage 6): column count scales with it so a Retina caller
+/// gets one column per physical pixel; `col_w` is computed from
+/// `inner.w` (logical) and the *unscaled* strip count, so after the
+/// caller scales the resulting cmds by `density`, each column lands
+/// exactly 1 physical pixel wide rather than 1/density.
+#[allow(clippy::too_many_arguments)]
+fn paint_chart(
+    cmds: &mut Vec<DrawCmd>,
+    rect: Rect,
+    handle: &SeriesHandle,
+    panel: bool,
+    store: &SeriesStore,
+    theme: &Theme,
+    density: f32,
+) {
     const PAD: f32 = 4.0;
     if panel {
         cmds.push(DrawCmd::RRect { rect, radius: theme.radius_md, color: theme.surface });
@@ -541,7 +583,7 @@ fn paint_chart(cmds: &mut Vec<DrawCmd>, rect: Rect, handle: &SeriesHandle, panel
         (rect.h - 2.0 * PAD).max(1.0),
     );
 
-    let width_px = inner.w as u32;
+    let width_px = ((inner.w * density.max(0.01)).round() as u32).max(1);
     let cols = store.chart_columns(handle.id, handle.window_ms, width_px);
     if cols.samples < 2 {
         return; // no data: chrome only

@@ -231,26 +231,21 @@ impl Renderer {
     pub fn render_damage(
         &self,
         cache: &mut Option<FrameCache>,
-        cmds: &[DrawCmd],
+        cmds: Vec<DrawCmd>,
         width: u32,
         height: u32,
     ) -> Damage {
-        let full = |cache: &mut Option<FrameCache>, s: &Self| {
-            let pixmap = s.render(cmds, width, height);
-            let scratch = Pixmap::new(width, height).expect("nonzero scratch");
-            *cache = Some(FrameCache { cmds: cmds.to_vec(), pixmap, scratch });
-            Damage::Full
+        let Some(prev) = cache.as_mut() else {
+            return self.render_full(cache, cmds, width, height);
         };
-
-        let Some(prev) = cache.as_mut() else { return full(cache, self) };
         if prev.pixmap.width() != width || prev.pixmap.height() != height {
-            return full(cache, self);
+            return self.render_full(cache, cmds, width, height);
         }
         if prev.cmds == cmds {
             return Damage::None;
         }
-        let Some(dirty) = diff_dirty_rect(&prev.cmds, cmds) else {
-            return full(cache, self);
+        let Some(dirty) = diff_dirty_rect(&prev.cmds, &cmds) else {
+            return self.render_full(cache, cmds, width, height);
         };
         // Round out to the pixel grid and clamp to the frame.
         let x0 = (dirty.x.floor() as i32).max(0);
@@ -259,7 +254,7 @@ impl Renderer {
         let y1 = ((dirty.y + dirty.h).ceil() as i32).min(height as i32);
         if x0 >= x1 || y0 >= y1 {
             // Changed cmds have no visible footprint.
-            prev.cmds = cmds.to_vec();
+            prev.cmds = cmds;
             return Damage::None;
         }
         let (dw, dh) = ((x1 - x0) as u32, (y1 - y0) as u32);
@@ -267,13 +262,21 @@ impl Renderer {
 
         // Replay every cmd touching the region into the scratch at
         // original coordinates — identical FP math to the full render.
-        for cmd in cmds {
-            let touches = match cmd.bounds() {
-                None => true, // Clear: repaints the damaged region as bg
-                Some(b) => b.intersects(&clip_rect),
-            };
-            if touches {
-                self.draw(&mut prev.scratch, cmd);
+        // `Clear` is the one exception (§9.3 Stage 3): its output is
+        // coordinate-independent (every pixel gets the same premultiplied
+        // color), so — unlike stroked/AA geometry — filling just the
+        // dirty rect is byte-identical to filling the whole scratch. That
+        // identity holds only because just the dirty rows are ever copied
+        // out below; a full `self.draw` there would otherwise repaint
+        // ~13 MB of scratch a partial repaint never uses.
+        for cmd in &cmds {
+            match cmd {
+                DrawCmd::Clear(c) => fill_rect_exact(&mut prev.scratch, x0, y0, x1, y1, *c),
+                _ => {
+                    if cmd.bounds().is_some_and(|b| b.intersects(&clip_rect)) {
+                        self.draw(&mut prev.scratch, cmd);
+                    }
+                }
             }
         }
 
@@ -285,8 +288,20 @@ impl Renderer {
             let o = (y0 as usize + row) * stride + x0 as usize;
             dst[o..o + dw as usize].copy_from_slice(&src[o..o + dw as usize]);
         }
-        prev.cmds = cmds.to_vec();
+        prev.cmds = cmds;
         Damage::Partial(clip_rect)
+    }
+
+    /// Stage 4: takes `cmds` by value so the cache can store it by move
+    /// instead of cloning — a plain method rather than a closure over
+    /// `render_damage`'s local `cmds` so the non-full paths there can
+    /// still borrow it afterward (a `move` closure would capture it
+    /// whole, up front, and poison every other branch's access).
+    fn render_full(&self, cache: &mut Option<FrameCache>, cmds: Vec<DrawCmd>, width: u32, height: u32) -> Damage {
+        let pixmap = self.render(&cmds, width, height);
+        let scratch = Pixmap::new(width, height).expect("nonzero scratch");
+        *cache = Some(FrameCache { cmds, pixmap, scratch });
+        Damage::Full
     }
 }
 
@@ -330,13 +345,64 @@ impl TextMeasurer for Renderer {
     }
 }
 
+/// Overwrites `[x0,x1) × [y0,y1)` with `color`'s premultiplied bytes —
+/// the region-clipped equivalent of `Pixmap::fill` (§9.3 Stage 3). Uses
+/// the exact same `premultiply().to_color_u8()` conversion tiny-skia's
+/// own `fill` uses internally, so a clipped `Clear` replay is
+/// byte-identical to a full one restricted to the same pixels.
+fn fill_rect_exact(pixmap: &mut Pixmap, x0: i32, y0: i32, x1: i32, y1: i32, color: Color) {
+    let c = tiny_skia::Color::from_rgba8(color.r, color.g, color.b, color.a)
+        .premultiply()
+        .to_color_u8();
+    let stride = pixmap.width() as usize;
+    let pixels = pixmap.pixels_mut();
+    for y in y0..y1 {
+        let row = y as usize * stride;
+        for x in x0..x1 {
+            pixels[row + x as usize] = c;
+        }
+    }
+}
+
+/// src-over blend of `color` at `cov` (0..=255 coverage) onto one
+/// premultiplied pixel — the math `blend_glyph` (glyph coverage bitmaps)
+/// and `fill_strips`' Stage 7 edge coverage (dense chart columns) both
+/// use (PLAN-DASHBOARD-PERF.md).
+fn blend_px(pixels: &mut [tiny_skia::PremultipliedColorU8], idx: usize, color: Color, cov: u8) {
+    if cov == 0 {
+        return;
+    }
+    let cov = cov as u32;
+    // Source in premultiplied form, alpha = color.a * coverage.
+    let sa = (color.a as u32 * cov + 127) / 255; // 0..=255
+    if sa == 0 {
+        return;
+    }
+    let sr = (color.r as u32 * sa + 127) / 255;
+    let sg = (color.g as u32 * sa + 127) / 255;
+    let sb = (color.b as u32 * sa + 127) / 255;
+    let d = pixels[idx];
+    let inv = 255 - sa;
+    let r = (sr + (d.red() as u32 * inv + 127) / 255).min(255) as u8;
+    let g = (sg + (d.green() as u32 * inv + 127) / 255).min(255) as u8;
+    let b = (sb + (d.blue() as u32 * inv + 127) / 255).min(255) as u8;
+    let a = (sa + (d.alpha() as u32 * inv + 127) / 255).min(255) as u8;
+    pixels[idx] = tiny_skia::PremultipliedColorU8::from_rgba(r, g, b, a)
+        .unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
+}
+
 /// Dense-chart strips: opaque vertical pixel runs, integer-rounded —
-/// no AA machinery, deterministic by construction. The fast path that
-/// makes a 16-chart wall affordable (§9.3 / §14.3).
+/// no AA machinery on the core, deterministic by construction. The fast
+/// path that makes a 16-chart wall affordable (§9.3 / §14.3). Stage 7
+/// (PLAN-DASHBOARD-PERF.md) softens the staircase on slow curves with a
+/// single blended pixel row above and below the opaque core, instead of
+/// switching dense charts to AA polylines — that's the §22 hot-path
+/// lesson (18.6ms → 0.64ms, CLAUDE.md) this deliberately avoids
+/// re-triggering.
 fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f32)>], color: Color) {
     let pw = pixmap.width() as i32;
     let ph = pixmap.height() as i32;
-    let px = tiny_skia::PremultipliedColorU8::from_rgba(
+    let opaque = tiny_skia::PremultipliedColorU8::from_rgba(
         (color.r as u16 * color.a as u16 / 255) as u8,
         (color.g as u16 * color.a as u16 / 255) as u8,
         (color.b as u16 * color.a as u16 / 255) as u8,
@@ -348,12 +414,41 @@ fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f
         let Some((y0, y1)) = s else { continue };
         let cx0 = (x + i as f32 * col_w).round() as i32;
         let cx1 = ((x + (i + 1) as f32 * col_w).round() as i32).max(cx0 + 1);
-        let ry0 = (y0.min(*y1)).round() as i32;
-        let ry1 = ((y0.max(*y1)).round() as i32).max(ry0 + 1);
+        let (cx0, cx1) = (cx0.max(0), cx1.min(pw));
+
+        // The opaque core: rounded to the pixel grid exactly as before
+        // (byte-for-byte), with the existing min-1px visibility
+        // guarantee for near-flat spans.
+        let (fy0, fy1) = (y0.min(*y1), y0.max(*y1));
+        let ry0 = fy0.round() as i32;
+        let ry1 = (fy1.round() as i32).max(ry0 + 1);
         for cy in ry0.max(0)..ry1.min(ph) {
             let row = cy * pw;
-            for cx in cx0.max(0)..cx1.min(pw) {
-                pixels[(row + cx) as usize] = px;
+            for cx in cx0..cx1 {
+                pixels[(row + cx) as usize] = opaque;
+            }
+        }
+
+        // Soft edges: the fraction of the true (pre-rounding) span the
+        // core above doesn't already cover, blended into the one pixel
+        // row just outside it. Purely additive — never touches a pixel
+        // the opaque core already painted, so the core stays byte-exact.
+        let cov_above = (ry0 as f32 - fy0).clamp(0.0, 1.0);
+        let ay = ry0 - 1;
+        if cov_above > 0.0 && ay >= 0 && ay < ph {
+            let cov = (cov_above * 255.0).round() as u8;
+            let row = ay * pw;
+            for cx in cx0..cx1 {
+                blend_px(pixels, (row + cx) as usize, color, cov);
+            }
+        }
+        let cov_below = (fy1 - ry1 as f32).clamp(0.0, 1.0);
+        let by = ry1;
+        if cov_below > 0.0 && by >= 0 && by < ph {
+            let cov = (cov_below * 255.0).round() as u8;
+            let row = by * pw;
+            for cx in cx0..cx1 {
+                blend_px(pixels, (row + cx) as usize, color, cov);
             }
         }
     }
@@ -382,27 +477,8 @@ fn blend_glyph(
             if pxx < 0 || pxx >= pw {
                 continue;
             }
-            let cov = coverage[(row as usize) * gw + col as usize] as u32;
-            if cov == 0 {
-                continue;
-            }
-            // Source in premultiplied form, alpha = color.a * coverage.
-            let sa = (color.a as u32 * cov + 127) / 255; // 0..=255
-            if sa == 0 {
-                continue;
-            }
-            let sr = (color.r as u32 * sa + 127) / 255;
-            let sg = (color.g as u32 * sa + 127) / 255;
-            let sb = (color.b as u32 * sa + 127) / 255;
-            let idx = (py * pw + pxx) as usize;
-            let d = pixels[idx];
-            let inv = 255 - sa;
-            let r = (sr + (d.red() as u32 * inv + 127) / 255).min(255) as u8;
-            let g = (sg + (d.green() as u32 * inv + 127) / 255).min(255) as u8;
-            let b = (sb + (d.blue() as u32 * inv + 127) / 255).min(255) as u8;
-            let a = (sa + (d.alpha() as u32 * inv + 127) / 255).min(255) as u8;
-            pixels[idx] = tiny_skia::PremultipliedColorU8::from_rgba(r, g, b, a)
-                .unwrap_or(tiny_skia::PremultipliedColorU8::TRANSPARENT);
+            let cov = coverage[(row as usize) * gw + col as usize];
+            blend_px(pixels, (py * pw + pxx) as usize, color, cov);
         }
     }
 }
@@ -507,7 +583,7 @@ mod tests {
         for seed in 0..8u64 {
             let mut cache = None;
             let mut cmds = synth_frame(seed, 12);
-            r.render_damage(&mut cache, &cmds, w, h);
+            r.render_damage(&mut cache, cmds.clone(), w, h);
             for step in 0..10 {
                 // Mutate one cmd per step (move a rect / change text / shift polyline).
                 let idx = 1 + ((seed as usize + step * 7) % (cmds.len() - 1));
@@ -532,7 +608,7 @@ mod tests {
                     }
                     DrawCmd::Clear(_) => {}
                 }
-                let outcome = r.render_damage(&mut cache, &cmds, w, h);
+                let outcome = r.render_damage(&mut cache, cmds.clone(), w, h);
                 let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
                 let full = r.render(&cmds, w, h).encode_png().unwrap();
                 assert_eq!(
@@ -547,13 +623,47 @@ mod tests {
         }
     }
 
+    /// Stage 3 guard: the `Clear` replay is clipped to the dirty rect.
+    /// The randomized property test above mutates near frame edges as
+    /// often as not; this pins a dirty rect strictly in the interior
+    /// (touching none of the frame's four edges) so every clip boundary
+    /// of the clipped fill gets exercised deterministically.
+    #[test]
+    fn damage_tracked_clear_clip_is_exact_for_an_interior_rect() {
+        let r = Renderer::new();
+        let (w, h) = (400, 300);
+        let base = vec![
+            DrawCmd::Clear(tokens::BG),
+            DrawCmd::Rect { rect: Rect::new(150.0, 100.0, 40.0, 30.0), color: tokens::ACCENT },
+        ];
+        let mut cache = None;
+        r.render_damage(&mut cache, base.clone(), w, h);
+
+        // Move the rect elsewhere, still well inside the frame — the
+        // dirty rect (union of old + new, both interior) never touches
+        // x=0, y=0, x=w, or y=h.
+        let mut moved = base.clone();
+        if let DrawCmd::Rect { rect, .. } = &mut moved[1] {
+            rect.x = 200.0;
+            rect.y = 140.0;
+        }
+        let outcome = r.render_damage(&mut cache, moved.clone(), w, h);
+        assert!(
+            matches!(outcome, Damage::Partial(_)),
+            "expected an interior partial repaint, got {outcome:?}"
+        );
+        let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
+        let full = r.render(&moved, w, h).encode_png().unwrap();
+        assert_eq!(incremental, full, "interior Clear-clip diverged from full render");
+    }
+
     #[test]
     fn unchanged_frame_is_zero_damage() {
         let r = Renderer::new();
         let cmds = synth_frame(3, 10);
         let mut cache = None;
-        assert_eq!(r.render_damage(&mut cache, &cmds, 360, 200), Damage::Full);
-        assert_eq!(r.render_damage(&mut cache, &cmds, 360, 200), Damage::None);
+        assert_eq!(r.render_damage(&mut cache, cmds.clone(), 360, 200), Damage::Full);
+        assert_eq!(r.render_damage(&mut cache, cmds, 360, 200), Damage::None);
     }
 
     #[test]
@@ -561,9 +671,9 @@ mod tests {
         let r = Renderer::new();
         let mut cmds = synth_frame(4, 6);
         let mut cache = None;
-        r.render_damage(&mut cache, &cmds, 360, 200);
+        r.render_damage(&mut cache, cmds.clone(), 360, 200);
         cmds[0] = DrawCmd::Clear(Color::rgb(0, 0, 0));
-        assert_eq!(r.render_damage(&mut cache, &cmds, 360, 200), Damage::Full);
+        assert_eq!(r.render_damage(&mut cache, cmds.clone(), 360, 200), Damage::Full);
         let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
         assert_eq!(incremental, r.render(&cmds, 360, 200).encode_png().unwrap());
     }

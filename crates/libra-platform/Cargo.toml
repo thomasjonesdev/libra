@@ -11,6 +11,7 @@ libra-interp.workspace = true
 libra-components.workspace = true
 libra-draw.workspace = true
 libra-raster.workspace = true
+tiny-skia.workspace = true
 libra-effects.workspace = true
 libra-kv.workspace = true
 libra-text.workspace = true

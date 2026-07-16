@@ -38,7 +38,8 @@ use libra_effects::Effects;
 use libra_interp::Scope;
 use libra_kv::Kv;
 use libra_markup::Node;
-use libra_raster::Renderer;
+use libra_raster::{Damage, Renderer};
+use tiny_skia::Pixmap;
 use libra_components::{InputFocus, ItemKind, LaidTree, Role};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -48,6 +49,67 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Dev-only frame pacing diagnostics (PLAN-DASHBOARD-PERF.md Stage 0).
+/// Gated by `LIBRA_FRAME_STATS`; a no-op otherwise (a bool check per
+/// present, no allocation when disabled). Every `FRAME_STATS_WINDOW`
+/// presents, prints one stderr line with present-to-present interval
+/// and present() CPU-duration percentiles — interval shows pacing
+/// (should track the monitor's refresh period); present duration shows
+/// raster+blit cost.
+struct FrameStats {
+    enabled: bool,
+    last_present: Option<Instant>,
+    intervals_ms: Vec<f64>,
+    present_ms: Vec<f64>,
+}
+
+const FRAME_STATS_WINDOW: usize = 120;
+
+impl FrameStats {
+    fn new() -> Self {
+        FrameStats {
+            enabled: std::env::var_os("LIBRA_FRAME_STATS").is_some(),
+            last_present: None,
+            intervals_ms: Vec::with_capacity(FRAME_STATS_WINDOW),
+            present_ms: Vec::with_capacity(FRAME_STATS_WINDOW),
+        }
+    }
+
+    fn record(&mut self, present_dur: Duration) {
+        if !self.enabled {
+            return;
+        }
+        let now = Instant::now();
+        if let Some(last) = self.last_present {
+            self.intervals_ms.push((now - last).as_secs_f64() * 1000.0);
+        }
+        self.last_present = Some(now);
+        self.present_ms.push(present_dur.as_secs_f64() * 1000.0);
+        if self.present_ms.len() >= FRAME_STATS_WINDOW {
+            report_frame_stats(&mut self.intervals_ms, &mut self.present_ms);
+        }
+    }
+}
+
+fn report_frame_stats(intervals_ms: &mut Vec<f64>, present_ms: &mut Vec<f64>) {
+    intervals_ms.sort_by(f64::total_cmp);
+    present_ms.sort_by(f64::total_cmp);
+    let p = |xs: &[f64], q: f64| {
+        xs.get(((xs.len().max(1) - 1) as f64 * q) as usize).copied().unwrap_or(0.0)
+    };
+    eprintln!(
+        "[libra] frame p50/p95/max interval {:.2}/{:.2}/{:.2} ms · present {:.2}/{:.2}/{:.2} ms",
+        p(intervals_ms, 0.5),
+        p(intervals_ms, 0.95),
+        intervals_ms.last().copied().unwrap_or(0.0),
+        p(present_ms, 0.5),
+        p(present_ms, 0.95),
+        present_ms.last().copied().unwrap_or(0.0),
+    );
+    intervals_ms.clear();
+    present_ms.clear();
+}
 
 /// How to run an app in a window.
 pub struct Options {
@@ -234,14 +296,20 @@ where
         frame_index: 0,
         started: Instant::now(),
         next_frame_at: Instant::now(),
+        frame_period: DEFAULT_FRAME_PERIOD,
         pending_relayout: false,
+        frame_stats: FrameStats::new(),
     };
     event_loop.run_app(&mut shell)?;
     Ok(())
 }
 
-/// ~60 Hz frame ticks while a `Sub::Frames` subscription is active.
-const FRAME_INTERVAL: Duration = Duration::from_millis(16);
+/// Frame-tick fallback for `Sub::Frames` (§12.2) when the monitor's real
+/// refresh rate isn't known yet (before the first `resumed`). Once a
+/// window exists, `Shell::refresh_frame_period` replaces this with the
+/// actual refresh period so ticks stop beating against vsync
+/// (PLAN-DASHBOARD-PERF.md Stage 1).
+const DEFAULT_FRAME_PERIOD: Duration = Duration::from_millis(16);
 
 struct Gfx {
     window: Arc<Window>,
@@ -290,10 +358,16 @@ struct Shell<A: App> {
     frame_index: u64,
     started: Instant,
     next_frame_at: Instant,
+    /// Tick cadence for `Sub::Frames` (§12.2): the window's actual
+    /// monitor refresh period once known, `DEFAULT_FRAME_PERIOD` until
+    /// then. Recomputed on `resumed` and on `Resized`/`ScaleFactorChanged`
+    /// (the window may have moved to a different-refresh-rate monitor).
+    frame_period: Duration,
     /// Resize coalescing: defer relayout to the next `RedrawRequested`
     /// so a drag that delivers many `Resized` events per frame only
     /// rebuilds view/layout once.
     pending_relayout: bool,
+    frame_stats: FrameStats,
 }
 
 impl<A: App + 'static> Shell<A>
@@ -358,10 +432,12 @@ where
         let scale = self.scale() as f64;
         let focused = self.focus.as_ref().map(|(id, _, _)| id.as_str());
         let snap = a11y::snapshot(laid, scale, focused);
-        *self.a11y_snapshot.lock().expect("a11y snapshot") = snap.clone();
+        // Stage 4: build the update from the local borrow first, then
+        // move `snap` into the mutex last — one snapshot, not two.
         if let Some(gfx) = &mut self.gfx {
             gfx.a11y.update_if_active(|| a11y::tree_update(&snap));
         }
+        *self.a11y_snapshot.lock().expect("a11y snapshot") = snap;
     }
 
     fn dispatch(&mut self, msg: A::Msg) {
@@ -398,6 +474,19 @@ where
             self.next_frame_at = Instant::now();
         }
         self.frames_active = want;
+    }
+
+    /// Stage 1: match tick cadence to the window's actual monitor so
+    /// `about_to_wait`'s ticks land in step with the compositor instead
+    /// of beating against it. Falls back to `DEFAULT_FRAME_PERIOD` when
+    /// the platform can't report a rate (`current_monitor`/
+    /// `refresh_rate_millihertz` both return `Option`).
+    fn refresh_frame_period(&mut self) {
+        let mhz = self.gfx.as_ref().and_then(|g| g.window.current_monitor()).and_then(|m| m.refresh_rate_millihertz());
+        self.frame_period = match mhz {
+            Some(mhz) if mhz > 0 => Duration::from_secs_f64(1000.0 / mhz as f64),
+            _ => DEFAULT_FRAME_PERIOD,
+        };
     }
 
     fn tick_frame(&mut self) {
@@ -627,8 +716,9 @@ where
     }
 
     fn present(&mut self) {
+        let t0 = Instant::now();
         let focus_paint = self.focus_paint();
-        let theme = self.theme.clone();
+        let theme = &self.theme;
         let Some(laid) = &self.laid else { return };
         let Some(gfx) = &mut self.gfx else { return };
         let size = gfx.window.inner_size();
@@ -649,40 +739,85 @@ where
         let store = self.effects.store();
         let overlay = self.overlay.clone();
         let painted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut cmds = laid.paint(renderer, store, focus_paint.as_ref(), &theme);
+            // Stage 6: charts render at the window's physical density
+            // (Retina: 1 column per physical pixel) — presentation-only,
+            // off the determinism contract (§21); the canonical density
+            // stays 1.0 (`LaidTree::paint`, everywhere else).
+            let mut cmds = laid.paint_at_density(renderer, store, focus_paint.as_ref(), &theme, scale);
             if let Some(text) = &overlay {
                 overlay_cmds(&mut cmds, text, logical_w, &theme);
             }
-            let cmds = scale_cmds(&cmds, scale);
-            renderer.render_damage(frame_cache, &cmds, size.width, size.height)
+            scale_cmds_in_place(&mut cmds, scale);
+            renderer.render_damage(frame_cache, cmds, size.width, size.height)
         }));
-        if painted.is_err() {
-            let payload = painted.unwrap_err();
-            let text = format!("paint panicked: {}", panic_text(&payload));
-            eprintln!("[libra] {text}");
-            self.overlay = Some(text.clone());
-            let mut safe = vec![DrawCmd::Clear(theme.bg)];
-            overlay_cmds(&mut safe, &text, logical_w, &theme);
-            let pixmap = self.renderer.render(&scale_cmds(&safe, scale), size.width, size.height);
-            self.frame_cache = None; // cache poisoned mid-paint: discard
-            gfx.surface.resize(w, h).expect("surface resize");
-            let mut buffer = gfx.surface.buffer_mut().expect("surface buffer");
-            for (dst, src) in buffer.iter_mut().zip(pixmap.pixels()) {
-                *dst = ((src.red() as u32) << 16) | ((src.green() as u32) << 8) | src.blue() as u32;
+        let damage = match painted {
+            Ok(damage) => damage,
+            Err(payload) => {
+                let text = format!("paint panicked: {}", panic_text(&payload));
+                eprintln!("[libra] {text}");
+                self.overlay = Some(text.clone());
+                let mut safe = vec![DrawCmd::Clear(theme.bg)];
+                overlay_cmds(&mut safe, &text, logical_w, &theme);
+                scale_cmds_in_place(&mut safe, scale);
+                let pixmap = self.renderer.render(&safe, size.width, size.height);
+                self.frame_cache = None; // cache poisoned mid-paint: discard
+                gfx.surface.resize(w, h).expect("surface resize");
+                let mut buffer = gfx.surface.buffer_mut().expect("surface buffer");
+                blit_rows(&mut buffer, &pixmap, 0, w.get() as usize, 0, h.get() as usize);
+                gfx.window.pre_present_notify();
+                buffer.present().expect("present");
+                self.frame_stats.record(t0.elapsed());
+                return;
             }
-            buffer.present().expect("present");
+        };
+
+        // Stage 2 (PLAN-DASHBOARD-PERF.md): convert and present only the
+        // damaged region — `Damage::None` touches the surface at all,
+        // `Partial` converts just its rect (falling back to a full
+        // convert when the buffer's prior contents aren't last frame's,
+        // per `Buffer::age`'s contract), `Full` behaves as before.
+        if matches!(damage, Damage::None) {
+            self.frame_stats.record(t0.elapsed());
             return;
         }
-
         let Some(cache) = self.frame_cache.as_ref() else { return };
         let pixmap = cache.pixmap();
         gfx.surface.resize(w, h).expect("surface resize");
         let mut buffer = gfx.surface.buffer_mut().expect("surface buffer");
-        // Frame is opaque (Clear is first), so premultiplied == straight.
-        for (dst, src) in buffer.iter_mut().zip(pixmap.pixels()) {
-            *dst = ((src.red() as u32) << 16) | ((src.green() as u32) << 8) | src.blue() as u32;
+        let (bw, bh) = (w.get(), h.get());
+
+        if let Damage::Partial(r) = damage {
+            if buffer.age() == 1 {
+                let x0 = (r.x.round() as u32).min(bw);
+                let y0 = (r.y.round() as u32).min(bh);
+                let x1 = ((r.x + r.w).round() as u32).min(bw).max(x0);
+                let y1 = ((r.y + r.h).round() as u32).min(bh).max(y0);
+                blit_rows(&mut buffer, pixmap, x0 as usize, x1 as usize, y0 as usize, y1 as usize);
+                gfx.window.pre_present_notify();
+                if x1 > x0 && y1 > y0 {
+                    let damage_rect = softbuffer::Rect {
+                        x: x0,
+                        y: y0,
+                        width: NonZeroU32::new(x1 - x0).expect("nonzero damage width"),
+                        height: NonZeroU32::new(y1 - y0).expect("nonzero damage height"),
+                    };
+                    buffer.present_with_damage(&[damage_rect]).expect("present");
+                } else {
+                    buffer.present().expect("present");
+                }
+                self.frame_stats.record(t0.elapsed());
+                return;
+            }
+            // Buffer's prior contents aren't last frame's (age 0 or
+            // stale double-buffered content): the partial convert below
+            // would leave garbage outside the damaged rect, so fall
+            // through to a full convert.
         }
+
+        blit_rows(&mut buffer, pixmap, 0, bw as usize, 0, bh as usize);
+        gfx.window.pre_present_notify();
         buffer.present().expect("present");
+        self.frame_stats.record(t0.elapsed());
     }
 }
 
@@ -725,6 +860,7 @@ where
         window.set_visible(true);
         window.request_redraw();
         self.gfx = Some(Gfx { window, _context: context, surface, a11y });
+        self.refresh_frame_period();
         self.sync_subscriptions();
         self.relayout();
     }
@@ -753,6 +889,9 @@ where
                 event_loop.exit();
             }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                // The window may have moved to a different-refresh-rate
+                // monitor (Stage 1) — cadence is cheap to recompute.
+                self.refresh_frame_period();
                 self.pending_relayout = true;
                 self.request_redraw();
             }
@@ -790,8 +929,17 @@ where
         }
 
         if self.frames_active {
-            if Instant::now() >= self.next_frame_at {
-                self.next_frame_at = Instant::now() + FRAME_INTERVAL;
+            let now = Instant::now();
+            if now >= self.next_frame_at {
+                // Advance by exactly one period rather than rebasing on
+                // `now` — a late `WaitUntil` wakeup (routine on macOS)
+                // must not permanently shift the schedule (Stage 1). Only
+                // resync to `now` if we've fallen more than a full period
+                // behind (e.g. the app was backgrounded).
+                self.next_frame_at += self.frame_period;
+                if self.next_frame_at < now {
+                    self.next_frame_at = now + self.frame_period;
+                }
                 self.tick_frame();
             }
             wake_at = Some(wake_at.map_or(self.next_frame_at, |w| w.min(self.next_frame_at)));
@@ -844,6 +992,23 @@ impl accesskit::DeactivationHandler for Deactivation {
     fn deactivate_accessibility(&mut self) {}
 }
 
+/// Converts pixels within `[x0,x1) × [y0,y1)` from `src` (tiny-skia's
+/// premultiplied RGBA, row-major, stride = `src.width()`) into `dst`
+/// (softbuffer's 0RGB, same stride) — the one RGBA→XRGB conversion site
+/// (PLAN-DASHBOARD-PERF.md Stage 2). Frame is opaque (`Clear` is always
+/// first), so premultiplied == straight and alpha is safely dropped.
+fn blit_rows(dst: &mut [u32], src: &Pixmap, x0: usize, x1: usize, y0: usize, y1: usize) {
+    let stride = src.width() as usize;
+    let pixels = src.pixels();
+    for y in y0..y1 {
+        let row = y * stride;
+        for x in x0..x1 {
+            let p = pixels[row + x];
+            dst[row + x] = ((p.red() as u32) << 16) | ((p.green() as u32) << 8) | p.blue() as u32;
+        }
+    }
+}
+
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
         (*s).to_string()
@@ -872,48 +1037,47 @@ fn overlay_cmds(cmds: &mut Vec<DrawCmd>, text: &str, width: f32, theme: &Theme) 
     });
 }
 
-/// Scale a logical-space DrawCmd stream to physical pixels. Text scales
-/// by px size (re-rasterized by fontdue at the target size), so HiDPI
-/// output is crisp, not upsampled.
-fn scale_cmds(cmds: &[DrawCmd], s: f32) -> Vec<DrawCmd> {
+/// Scale a logical-space DrawCmd stream to physical pixels in place
+/// (Stage 4: the display list is scaled and fed to `render_damage`
+/// exactly once per frame — no reason to allocate a second copy). Text
+/// scales by px size (re-rasterized by fontdue at the target size), so
+/// HiDPI output is crisp, not upsampled.
+fn scale_cmds_in_place(cmds: &mut [DrawCmd], s: f32) {
     if s == 1.0 {
-        return cmds.to_vec();
+        return;
     }
-    cmds.iter()
-        .map(|cmd| match cmd {
-            DrawCmd::Clear(c) => DrawCmd::Clear(*c),
-            DrawCmd::Rect { rect, color } => {
-                DrawCmd::Rect { rect: scale_rect(rect, s), color: *color }
+    for cmd in cmds.iter_mut() {
+        match cmd {
+            DrawCmd::Clear(_) => {}
+            DrawCmd::Rect { rect, .. } => *rect = scale_rect(rect, s),
+            DrawCmd::RRect { rect, radius, .. } => {
+                *rect = scale_rect(rect, s);
+                *radius *= s;
             }
-            DrawCmd::RRect { rect, radius, color } => DrawCmd::RRect {
-                rect: scale_rect(rect, s),
-                radius: radius * s,
-                color: *color,
-            },
-            DrawCmd::Text { x, y, content, px, style, color } => DrawCmd::Text {
-                x: x * s,
-                y: y * s,
-                content: content.clone(),
-                px: px * s,
-                style: *style,
-                color: *color,
-            },
-            DrawCmd::Polyline { points, width, color } => DrawCmd::Polyline {
-                points: points.iter().map(|(x, y)| (x * s, y * s)).collect(),
-                width: width * s,
-                color: *color,
-            },
-            DrawCmd::Strips { x, col_w, strips, color } => DrawCmd::Strips {
-                x: x * s,
-                col_w: col_w * s,
-                strips: strips
-                    .iter()
-                    .map(|o| o.map(|(y0, y1)| (y0 * s, y1 * s)))
-                    .collect(),
-                color: *color,
-            },
-        })
-        .collect()
+            DrawCmd::Text { x, y, px, .. } => {
+                *x *= s;
+                *y *= s;
+                *px *= s;
+            }
+            DrawCmd::Polyline { points, width, .. } => {
+                for (x, y) in points.iter_mut() {
+                    *x *= s;
+                    *y *= s;
+                }
+                *width *= s;
+            }
+            DrawCmd::Strips { x, col_w, strips, .. } => {
+                *x *= s;
+                *col_w *= s;
+                for o in strips.iter_mut() {
+                    if let Some((y0, y1)) = o {
+                        *y0 *= s;
+                        *y1 *= s;
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn scale_rect(r: &Rect, s: f32) -> Rect {
@@ -931,12 +1095,14 @@ mod tests {
             DrawCmd::Clear(theme.bg),
             DrawCmd::RRect { rect: Rect::new(1.0, 2.0, 3.0, 4.0), radius: 6.0, color: theme.accent },
         ];
-        assert_eq!(scale_cmds(&cmds, 1.0), cmds);
+        let mut scaled = cmds.clone();
+        scale_cmds_in_place(&mut scaled, 1.0);
+        assert_eq!(scaled, cmds);
     }
 
     #[test]
     fn scale_multiplies_geometry_and_px_but_not_color() {
-        let cmds = vec![DrawCmd::Text {
+        let mut cmds = vec![DrawCmd::Text {
             x: 10.0,
             y: 20.0,
             content: "x".into(),
@@ -944,8 +1110,8 @@ mod tests {
             style: FontStyle::Regular,
             color: Theme::dark().text,
         }];
-        let scaled = scale_cmds(&cmds, 2.0);
-        match &scaled[0] {
+        scale_cmds_in_place(&mut cmds, 2.0);
+        match &cmds[0] {
             DrawCmd::Text { x, y, px, color, .. } => {
                 assert_eq!((*x, *y, *px), (20.0, 40.0, 28.0));
                 assert_eq!(*color, Theme::dark().text);
