@@ -1,11 +1,12 @@
 name: naming guard
 
-# MIGRATION-NAMING.md Stage 8: the founding-vocabulary rename (Model→State,
-# Msg→Action, update→reduce, Cmd→Effect, widget→component, tierN_→named
-# test kinds) is complete and the deprecated aliases are gone. This job
-# fails a PR that reintroduces the old names — LIBRA-ARCHITECTURE.md §2/§3.2
-# and MIGRATION-NAMING.md itself are the only places allowed to still say
-# them, since they document the rename's history.
+# architecture/plans/MIGRATION-NAMING.md Stage 8: the founding-vocabulary
+# rename (Model→State, Msg→Action, update→reduce, Cmd→Effect,
+# widget→component, tierN_→named test kinds) is complete and the deprecated
+# aliases are gone. This job fails a PR that reintroduces the old names —
+# architecture vault notes for §2/§3.2/§21 and MIGRATION-NAMING.md are the
+# only places allowed to still say them, since they document the rename's
+# history.
 on:
   push:
   pull_request:
@@ -21,13 +22,15 @@ jobs:
           pattern='libra_widgets|ReflectModel|ReflectMsg|expect_cmd|assert_cmd|tier[0-9]_'
           hits=$(grep -rnIE "$pattern" . \
             --exclude-dir=.git --exclude-dir=target \
-            --exclude=LIBRA-ARCHITECTURE.md --exclude=MIGRATION-NAMING.md \
+            --exclude-dir=.obsidian \
             --exclude=naming-guard.yml \
             || true)
+          # Historical record lives in the architecture vault; drop those hits.
+          hits=$(printf '%s\n' "$hits" | grep -vE '^\./architecture/' || true)
           if [ -n "$hits" ]; then
             echo "Old pre-rename names found outside their historical record:"
             echo "$hits"
             echo
-            echo "See MIGRATION-NAMING.md — Stage 8 removed these; don't reintroduce them."
+            echo "See architecture/plans/MIGRATION-NAMING.md — Stage 8 removed these; don't reintroduce them."
             exit 1
           fi

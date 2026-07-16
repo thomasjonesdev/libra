@@ -4,11 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Libra: a native UI framework in Rust where every layer — logic, views, effects, rendered pixels — is deterministic and machine-verifiable. **LIBRA-ARCHITECTURE.md is the source of truth**; consult it before designing anything, and cite the relevant § in doc comments (the existing code does this consistently). The repo has **completed Phase 3's core** (§23). Done: Phases 0–2 (determinism gate; effects/KV/integration tests/LibraReflect/hot-reload; data plane + damage tracking + §22 benchmark at 0.64 ms p50), plus Phase 3's two pillars: **libra-codegen** (release engine: `.lx` → typed Rust via build.rs; typos = rustc errors with `// file:line:col` trailers; deps libra-markup ONLY — structural no-drift) with the **conformance suite** (`conformance/`: fixtures compiled by build.rs AND interpreted; `interp_and_codegen_produce_identical_trees` is the §6.4 guardrail — grammar changes must update BOTH engines and keep it green), and **§10.1 text entry's core**: libra-text (pure EditState × EditOp, undo grouped at word boundaries), Input component (controlled: state is source of truth; testId = focus identity), shell keyboard model, harness `type_text`/`edit(EditOp)`. Also landed: **theming** (§11: `Theme` in libra-draw threaded through layout+paint; `libra-dark` is byte-identical to the old tokens — existing snapshots depend on that; `Effect::SetTheme` is shell/harness-handled, never reaches workers; harness `.theme("libra-light")`), **clipboard** (shell-side arboard, text-only features — the editing core stays pure), and **`Field<T>`** (FormState). Backlog worked: TOML theme tables (`Theme::from_toml_str`, flat key/value subset, `Options::theme_file` + hot reload; sample at `themes/solarized.toml`), **AccessKit** (§17: `platform/src/a11y.rs` maps the semantics tree to a TreeUpdate; AT Clicks route through the effects sink as real actions; the adapter MUST be created before the window is first shown — the window is created hidden for this), `libra-query` (pure dedup/SWR/retry-backoff/invalidation; time injected), `NavStack`, and `examples/gallery` (component×theme snapshot matrix — component rendering changes fail there first).
+Libra: a native UI framework in Rust where every layer — logic, views, effects, rendered pixels — is deterministic and machine-verifiable. **The Obsidian vault at `architecture/` is the source of truth** (not a monolithic markdown file). **Read `architecture/AGENTS.md` first** for an end-to-end brief; then open the relevant § note before designing anything. Cite the relevant § in doc comments (the existing code does this consistently — resolve § ids via `architecture/SECTION-INDEX.md`). The repo has **completed Phase 3's core** (§23). Done: Phases 0–2 (determinism gate; effects/KV/integration tests/LibraReflect/hot-reload; data plane + damage tracking + §22 benchmark at 0.64 ms p50), plus Phase 3's two pillars: **libra-codegen** (release engine: `.lx` → typed Rust via build.rs; typos = rustc errors with `// file:line:col` trailers; deps libra-markup ONLY — structural no-drift) with the **conformance suite** (`conformance/`: fixtures compiled by build.rs AND interpreted; `interp_and_codegen_produce_identical_trees` is the §6.4 guardrail — grammar changes must update BOTH engines and keep it green), and **§10.1 text entry's core**: libra-text (pure EditState × EditOp, undo grouped at word boundaries), Input component (controlled: state is source of truth; testId = focus identity), shell keyboard model, harness `type_text`/`edit(EditOp)`. Also landed: **theming** (§11: `Theme` in libra-draw threaded through layout+paint; `libra-dark` is byte-identical to the old tokens — existing snapshots depend on that; `Effect::SetTheme` is shell/harness-handled, never reaches workers; harness `.theme("libra-light")`), **clipboard** (shell-side arboard, text-only features — the editing core stays pure), and **`Field<T>`** (FormState). Backlog worked: TOML theme tables (`Theme::from_toml_str`, flat key/value subset, `Options::theme_file` + hot reload; sample at `themes/solarized.toml`), **AccessKit** (§17: `platform/src/a11y.rs` maps the semantics tree to a TreeUpdate; AT Clicks route through the effects sink as real actions; the adapter MUST be created before the window is first shown — the window is created hidden for this), `libra-query` (pure dedup/SWR/retry-backoff/invalidation; time injected), `NavStack`, and `examples/gallery` (component×theme snapshot matrix — component rendering changes fail there first).
 
-**The ergonomics layer (2026-07, ARCHITECTURE.md §3/§5/§6.2/§12.5) is built and all five examples (including gallery) run on it**: `#[libra::state]` / `#[libra::actions]` (a `State` struct + plain `&mut self` methods generate the `Action` enum and `reduce` — see `crates/libra-reflect/src/attrs.rs`), `libra::app!` (one declaration for the `App` impl + view bundle + `run()` — `crates/libra-reflect/src/app.rs`, facade crate at `crates/libra`), `<for each={path} as="name" key={name}>` over `Vec<T>` state fields (§6.2, both engines — `ReflectState::collection`), and `<Frames onTick={name}>` mount-scoped source elements (§12.5, `Frames` only — `Interval`/`Stream` not yet built). `MIGRATION-NAMING.md` and `PLAN-ERGONOMICS.md` (repo root) are the now-fully-executed staging plans: Stage 8 has run — the deprecated aliases for the pre-rename vocabulary (see LIBRA-ARCHITECTURE.md §3.2's old→new table) are gone, and markup handler names are camelCase-only in both engines (a PascalCase handler reference is now a load-time/compile-time error naming the camelCase form) — a CI naming guard (`.github/workflows/naming-guard.yml`) blocks the pre-rename names from reentering.
+**The ergonomics layer (2026-07, §3/§5/§6.2/§12.5) is built and all five examples (including gallery) run on it**: `#[libra::state]` / `#[libra::actions]` (a `State` struct + plain `&mut self` methods generate the `Action` enum and `reduce` — see `crates/libra-reflect/src/attrs.rs`), `libra::app!` (one declaration for the `App` impl + view bundle + `run()` — `crates/libra-reflect/src/app.rs`, facade crate at `crates/libra`), `<for each={path} as="name" key={name}>` over `Vec<T>` state fields (§6.2, both engines — `ReflectState::collection`), and `<Frames onTick={name}>` mount-scoped source elements (§12.5, `Frames` only — `Interval`/`Stream` not yet built). Naming/ergonomics staging plans are complete and live under `architecture/plans/` (`MIGRATION-NAMING`, `PLAN-ERGONOMICS`): Stage 8 has run — the deprecated aliases for the pre-rename vocabulary (see §3.2's old→new table) are gone, and markup handler names are camelCase-only in both engines (a PascalCase handler reference is now a load-time/compile-time error naming the camelCase form) — a CI naming guard (`.github/workflows/naming-guard.yml`) blocks the pre-rename names from reentering.
 
-Remaining: catalog components, Textarea/IME/touch, packaging, `<if>`/conditional markup (tracked in ARCHITECTURE.md §26 — blocks conditionally-mounted source elements). Do not build ahead, but keep shapes compatible with later phases.
+Remaining: catalog components, Textarea/IME/touch, packaging, `<if>`/conditional markup (tracked in §26 — blocks conditionally-mounted source elements). Do not build ahead, but keep shapes compatible with later phases.
+
+## Architecture vault (source of truth)
+
+**Location:** `architecture/` — open that folder as an Obsidian vault.
+
+| Need | Go here |
+|---|---|
+| **End-to-end brief (start here)** | **`architecture/AGENTS.md`** |
+| Entry + full outline | `architecture/Architecture Home.md` |
+| Graph / MOC | `architecture/Map of Content.md` |
+| Resolve `§N.N` → file | `architecture/SECTION-INDEX.md` |
+| Numbered design notes | `architecture/sections/` (§1–§26, one note per section *and* subsection) |
+| Appendices | `architecture/appendices/` |
+| Execution plans | `architecture/plans/` (+ `architecture/Plans Index.md`) |
+
+### How to find
+
+1. **Always start with `architecture/AGENTS.md`** when you need system context (pipeline, bets, closed sets, crate map, what's built, how to change safely).
+2. For a citation like `ARCHITECTURE.md §12.5` or `§5.2`, open `architecture/SECTION-INDEX.md` and jump to that note (or Obsidian-quick-open the alias `§12.5` / `§5.2`).
+3. Parent notes link to children under **In this vault**; subsections link back to their parent. Cross-refs inside notes are wiki-links (`[[…|§N.N]]`).
+4. Plans that implement architecture decisions are vault notes under `architecture/plans/`, indexed from `Plans Index.md`.
+
+### How to update
+
+1. **Edit the specific note** under `sections/`, `appendices/`, or `plans/` — never rebuild a single mega-document at the repo root.
+2. Keep frontmatter honest: `section: "N.N"`, aliases including `§N.N` and `N.N`, tags `architecture` / `section/N` (or `plans`).
+3. When adding a new subsection, create its note, link it from the parent’s **In this vault** list, and add a row to `SECTION-INDEX.md` plus the outlines in `Architecture Home.md` / `Map of Content.md`.
+4. When a decision changes behavior or a contract, update the normative architecture note *and* any dependent plan status; cite the § in code/doc comments the same way existing crates do.
+5. Wiki-link related notes when you introduce a dependency between topics (effects ↔ testing, markup ↔ codegen, etc.) so the graph stays a structured related dataset.
+6. Follow the light **“When this change lands”** checklist in `architecture/AGENTS.md` §9 — governing note + status lines if needed; not a full vault rewrite.
+
+### How to respect
+
+- The vault is **normative**. Code that disagrees with it is wrong (or the vault needs an explicit, deliberate update in the same change).
+- Do not invent features ahead of §23 / §26; keep shapes compatible with open questions.
+- Appendix A (determinism checklist) is the non-negotiable gate for paint/actions/effects/markup changes.
+- Grammar changes still require **both** engines + a `conformance/` fixture (§6.4) — the vault note is not a substitute for that guardrail.
+- Historical pre-rename vocabulary may appear only in vault history notes (§2/§3.2/§21, `MIGRATION-NAMING`); CI naming-guard allows `architecture/` for that record and nowhere else in product code.
 
 ## Commands
 

@@ -2,3 +2,11 @@
 *.actual.png
 *.diff.png
 .DS_Store
+
+# Obsidian vault personal/cache state (keep app.json + core-plugins committed)
+architecture/.obsidian/workspace.json
+architecture/.obsidian/workspace-mobile.json
+architecture/.obsidian/cache
+architecture/.obsidian/plugins
+architecture/.obsidian/themes
+architecture/.obsidian/graph.json

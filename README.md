@@ -1,23 +1,25 @@
 # Libra — Phase 3
 
 A native UI framework in Rust with a first-class testable foundation.
-See LIBRA-ARCHITECTURE.md for the full design. Phase 0 proved the
-determinism gate; Phase 1 built the testable foundation (effects,
-persistence, integration tests, hot reload, CLI); Phase 2 built the
-data plane (rings, tapes, M4 charts, subscriptions, damage tracking);
-Phase 3 brings the release engine (codegen + the interp≡codegen
-conformance suite, compile-time markup errors), text entry (the pure
-editing core, Input, focus/keyboard/clipboard, type_text harness
-verbs), theming (libra-dark / libra-light, TOML theme tables with hot
-reload, Effect::SetTheme, theme-aware snapshots), AccessKit
-integration (§17: the semantics tree exported to assistive tech,
-screen-reader clicks dispatch real actions), libra-query, FormState,
-NavStack, and the gallery — plus the ergonomics layer (§3/§5/§6.2/§12.5):
+See the Obsidian vault in [`architecture/`](./architecture/) for the
+full design (start at [`architecture/AGENTS.md`](./architecture/AGENTS.md)
+for an end-to-end brief; then `Architecture Home.md`; § lookup via
+`SECTION-INDEX.md`). Phase 0 proved the determinism gate; Phase 1
+built the testable foundation (effects, persistence, integration
+tests, hot reload, CLI); Phase 2 built the data plane (rings, tapes,
+M4 charts, subscriptions, damage tracking); Phase 3 brings the
+release engine (codegen + the interp≡codegen conformance suite,
+compile-time markup errors), text entry (the pure editing core,
+Input, focus/keyboard/clipboard, type_text harness verbs), theming
+(libra-dark / libra-light, TOML theme tables with hot reload,
+Effect::SetTheme, theme-aware snapshots), AccessKit integration
+(§17: the semantics tree exported to assistive tech, screen-reader
+clicks dispatch real actions), libra-query, FormState, NavStack, and
+the gallery — plus the ergonomics layer (§3/§5/§6.2/§12.5):
 `#[libra::state]`/`#[libra::actions]`/`libra::app!`, `<for>` collection
 bindings, and `<Frames>` source elements, which all four example apps
-now run on (see `MIGRATION-NAMING.md`/`PLAN-ERGONOMICS.md` for the
-still-in-progress rename of the underlying crates/types this sugars
-over).
+now run on (completed rename/ergonomics plans live under
+`architecture/plans/`).
 
 ## What exists
 
