@@ -10,6 +10,10 @@ fn main() {
     if let Some(theme_path) = std::env::args().nth(1) {
         opts = opts.theme_file(theme_path);
     }
+    let dev_view = std::path::Path::new("examples/gallery/views/gallery.lx");
+    if dev_view.exists() {
+        opts = opts.watch(dev_view);
+    }
     if let Err(e) = libra_platform::run_with::<Gallery>(VIEW, opts) {
         eprintln!("error: {e}");
         std::process::exit(1);
