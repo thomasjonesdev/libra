@@ -11,4 +11,4 @@ libra-platform.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true

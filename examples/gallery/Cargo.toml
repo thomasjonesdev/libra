@@ -8,7 +8,7 @@ license.workspace = true
 libra.workspace = true
 libra-core.workspace = true
 libra-platform.workspace = true
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true

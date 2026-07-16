@@ -8,14 +8,14 @@ license.workspace = true
 libra.workspace = true
 libra-core.workspace = true
 libra-platform.workspace = true
-serde = { version = "1", features = ["derive"] }
-libra-markup = { workspace = true }
-libra-interp = { workspace = true }
-libra-components = { workspace = true }
-libra-raster = { workspace = true }
-libra-draw = { workspace = true }
-libra-data = { workspace = true }
+serde.workspace = true
+libra-markup.workspace = true
+libra-interp.workspace = true
+libra-components.workspace = true
+libra-raster.workspace = true
+libra-draw.workspace = true
+libra-data.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true
-tempfile = "3"
+tempfile.workspace = true
