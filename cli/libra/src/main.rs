@@ -1,11 +1,16 @@
-//! The libra CLI (ARCHITECTURE.md §18). Phase 1 subset: `libra check` —
-//! parse + validate every `.lx` under the given paths in milliseconds,
-//! without building anything. Grammar-level validation only for now;
-//! binding/handler validation against State/Action needs the app's
-//! reflected types in scope (the interpreter already does it at app
-//! load time via `#[derive(LibraReflect)]`/`#[libra::state]`/
-//! `#[libra::actions]`) — wiring that into `libra check` itself is
-//! still open.
+//! The libra CLI (ARCHITECTURE.md §18). Phase 1 subset:
+//! - `libra check` — parse + validate every `.lx` under the given paths
+//!   in milliseconds, without building anything. Grammar-level validation
+//!   only for now; binding/handler validation against State/Action needs
+//!   the app's reflected types in scope (the interpreter already does it
+//!   at app load time via `#[derive(LibraReflect)]`/`#[libra::state]`/
+//!   `#[libra::actions]`) — wiring that into `libra check` itself is
+//!   still open.
+//! - `libra dev` — run a Libra app crate in debug mode (§18.2's
+//!   interpreter + view hot reload). Inspector, automation server, and
+//!   managed `libra.toml` manifests are still open (§16, §18.4).
+
+mod dev;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,8 +19,11 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.split_first() {
         Some((cmd, rest)) if cmd == "check" => check(rest),
+        Some((cmd, rest)) if cmd == "dev" => dev::dev(rest),
         _ => {
-            eprintln!("usage: libra check [paths…]   (default: current directory)");
+            eprintln!("usage:");
+            eprintln!("  libra check [paths…]          validate .lx markup (default: .)");
+            eprintln!("  libra dev [path] [-- args…]   run app in debug with view hot reload");
             ExitCode::from(2)
         }
     }

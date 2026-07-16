@@ -17,7 +17,9 @@
 //!   (`action_by_name`), single-`String`-arg methods are handlers with
 //!   a control payload (`action_with_str`), single-`FrameInfo`-arg
 //!   methods are handlers for §12.5's `<Frames onTick={name}>` source
-//!   element (`action_with_frame_info`). Any other signature is a
+//!   element (`action_with_frame_info`), single-`Instant`-arg methods
+//!   are handlers for `<Interval every={ms} onTick={name}>`
+//!   (`action_with_instant`). Any other signature is a
 //!   continuation — constructible only by the runtime delivering that
 //!   effect result, never nameable from markup. Growing markup's
 //!   payload whitelist further (bool, ids, …) is tracked as an open
@@ -92,6 +94,7 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut by_name_arms = Vec::new();
     let mut with_str_arms = Vec::new();
     let mut with_frame_info_arms = Vec::new();
+    let mut with_instant_arms = Vec::new();
     let mut all_names = Vec::new();
     let mut errors = Vec::new();
     // §6.3's display-projection hook: the one `#[project]`-marked method,
@@ -191,6 +194,18 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     #public_name => ::core::option::Option::Some(Action::#variant_ident(info)),
                 });
             }
+            [p] if is_instant_type(&p.ty) => {
+                // §12.5's <Interval every={ms} onTick={name}> source
+                // element — same shape as the FrameInfo arm above, just
+                // a different runtime-supplied payload type.
+                variants.push(quote! { #variant_ident(::libra_core::Instant) });
+                reduce_arms.push(quote! {
+                    Action::#variant_ident(instant) => ::libra_core::IntoEffects::into_effects(state.#method_ident(instant)),
+                });
+                with_instant_arms.push(quote! {
+                    #public_name => ::core::option::Option::Some(Action::#variant_ident(instant)),
+                });
+            }
             params => {
                 // Continuation: not nameable from markup (§5.2's
                 // dispatchability rule) — constructed only via the
@@ -218,6 +233,11 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     let unmatched_frame_info = if with_frame_info_arms.is_empty() {
         quote! { let _ = info; }
+    } else {
+        quote! {}
+    };
+    let unmatched_instant = if with_instant_arms.is_empty() {
+        quote! { let _ = instant; }
     } else {
         quote! {}
     };
@@ -285,6 +305,13 @@ pub fn actions(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     _ => ::core::option::Option::None,
                 }
             }
+            fn action_with_instant(name: &str, instant: ::libra_core::Instant) -> ::core::option::Option<Self> {
+                #unmatched_instant
+                match name {
+                    #(#with_instant_arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
             fn action_names() -> &'static [&'static str] {
                 &[#(#all_names),*]
             }
@@ -301,6 +328,11 @@ fn is_string_type(ty: &Type) -> bool {
 fn is_frame_info_type(ty: &Type) -> bool {
     let Type::Path(tp) = ty else { return false };
     tp.path.segments.last().map(|s| s.ident == "FrameInfo").unwrap_or(false)
+}
+
+fn is_instant_type(ty: &Type) -> bool {
+    let Type::Path(tp) = ty else { return false };
+    tp.path.segments.last().map(|s| s.ident == "Instant").unwrap_or(false)
 }
 
 fn snake_to_pascal(s: &str) -> String {

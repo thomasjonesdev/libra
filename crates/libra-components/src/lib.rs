@@ -87,9 +87,20 @@ pub enum ViewNode {
     /// ticks while this is mounted," diffed by the runtime like
     /// `App::subscriptions`. Renders nothing; excluded from the
     /// AccessKit projection (its `Role::Source` semantics are
-    /// test-query-only). `Interval`/`Stream` are the same pattern,
-    /// not yet implemented.
+    /// test-query-only).
     SourceFrames { on_tick: String },
+    /// `<Interval every={ms} onTick={name}>` (§12.5): a recurring
+    /// timer while mounted — identity is `(every_ms, on_tick)`, the
+    /// moral equivalent of `SourceFrames`'s single identity but keyed
+    /// per-cadence so several distinct intervals can coexist. Same
+    /// zero-layout, test-query-only treatment.
+    SourceInterval { every_ms: u64, on_tick: String },
+    /// `<Stream id={feed} onEvent={name}>` (§12.5): grammar + mount +
+    /// query in v1 — `id` is the resolved binding's Display text,
+    /// `on_event` is a String-payload handler name that will carry the
+    /// event body as text once delivery (Ws/Spawn, §12.1) lands. Same
+    /// zero-layout, test-query-only treatment as the other sources.
+    SourceStream { id: String, on_event: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -135,9 +146,20 @@ pub enum ItemKind {
     Button { label: String, px: f32, variant: Variant },
     Chart { handle: SeriesHandle, panel: bool },
     Input { value: String, placeholder: String, px: f32 },
-    /// §12.5 source element — zero-size, paints nothing (see
-    /// `ViewNode::SourceFrames`).
-    Source { on_tick: String },
+    /// §12.5 source element — zero-size, paints nothing. Carries which
+    /// kind mounted (see `SourceDecl`) so the shell/harness can
+    /// dispatch/query by kind without re-deriving it from `ViewNode`.
+    Source(SourceDecl),
+}
+
+/// What a mounted §12.5 source element declares — one variant per
+/// element kind (`Frames`/`Interval`/`Stream`), mirroring the
+/// `ViewNode::Source*` variants it was built from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SourceDecl {
+    Frames { on_tick: String },
+    Interval { every_ms: u64, on_tick: String },
+    Stream { id: String, on_event: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -197,7 +219,22 @@ pub fn layout(
 
     // Flatten with accumulated absolute positions, in paint (pre-)order.
     let mut items = Vec::with_capacity(meta.len());
-    flatten(&tree, root, (0.0, 0.0), &meta, &mut items)?;
+    let mut seen = std::collections::HashSet::new();
+    flatten(&tree, root, (0.0, 0.0), &meta, &mut items, &mut seen)?;
+
+    // §12.5 source leaves are intentionally not flex children — attach
+    // them with a zero rect so harness/`by::source` still see them.
+    for (id, kind, sem, _) in &meta {
+        if matches!(kind, ItemKind::Source(_)) && !seen.contains(id) {
+            items.push(Item {
+                kind: kind.clone(),
+                rect: Rect::new(0.0, 0.0, 0.0, 0.0),
+                semantics: sem.clone(),
+                on_press: None,
+                on_press_arg: None,
+            });
+        }
+    }
 
     Ok(LaidTree { items, width: viewport.0, height: viewport.1 })
 }
@@ -208,12 +245,14 @@ fn flatten(
     origin: (f32, f32),
     meta: &[(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)],
     out: &mut Vec<Item>,
+    seen: &mut std::collections::HashSet<NodeId>,
 ) -> Result<(), LayoutError> {
     let l = tree.layout(node).map_err(|e| LayoutError(format!("{e:?}")))?;
     let abs = (origin.0 + l.location.x, origin.1 + l.location.y);
     let rect = Rect::new(abs.0, abs.1, l.size.width, l.size.height);
 
-    if let Some((_, kind, sem, press)) = meta.iter().find(|(id, ..)| *id == node) {
+    if let Some((id, kind, sem, press)) = meta.iter().find(|(id, ..)| *id == node) {
+        seen.insert(*id);
         out.push(Item {
             kind: kind.clone(),
             rect,
@@ -223,7 +262,7 @@ fn flatten(
         });
     }
     for child in tree.children(node).map_err(|e| LayoutError(format!("{e:?}")))? {
-        flatten(tree, child, abs, meta, out)?;
+        flatten(tree, child, abs, meta, out, seen)?;
     }
     Ok(())
 }
@@ -246,6 +285,16 @@ fn box_style(s: &BoxStyle, dir: FlexDirection) -> Style {
     }
 }
 
+/// §12.5: is this child a mounted source element? Used to keep all
+/// three kinds (`Frames`/`Interval`/`Stream`) out of the flex tree —
+/// they're registered in `meta` but never a taffy child.
+fn is_source_node(n: &ViewNode) -> bool {
+    matches!(
+        n,
+        ViewNode::SourceFrames { .. } | ViewNode::SourceInterval { .. } | ViewNode::SourceStream { .. }
+    )
+}
+
 fn build(
     tree: &mut TaffyTree<()>,
     meta: &mut Vec<(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)>,
@@ -255,10 +304,17 @@ fn build(
 ) -> Result<NodeId, taffy::TaffyError> {
     match view {
         ViewNode::Column { style, children } => {
-            let kids = children
-                .iter()
-                .map(|c| build(tree, meta, c, m, theme))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut kids = Vec::new();
+            for c in children {
+                // §12.5: source elements occupy no layout — register them
+                // in meta but keep them out of the flex tree so gap/grow
+                // of siblings stay snapshot-stable.
+                if is_source_node(c) {
+                    let _ = build(tree, meta, c, m, theme)?;
+                } else {
+                    kids.push(build(tree, meta, c, m, theme)?);
+                }
+            }
             let id = tree.new_with_children(box_style(style, FlexDirection::Column), &kids)?;
             meta.push((
                 id,
@@ -269,10 +325,14 @@ fn build(
             Ok(id)
         }
         ViewNode::Row { style, children } => {
-            let kids = children
-                .iter()
-                .map(|c| build(tree, meta, c, m, theme))
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut kids = Vec::new();
+            for c in children {
+                if is_source_node(c) {
+                    let _ = build(tree, meta, c, m, theme)?;
+                } else {
+                    kids.push(build(tree, meta, c, m, theme)?);
+                }
+            }
             let id = tree.new_with_children(box_style(style, FlexDirection::Row), &kids)?;
             meta.push((
                 id,
@@ -380,10 +440,36 @@ fn build(
             })?;
             meta.push((
                 id,
-                ItemKind::Source { on_tick: on_tick.clone() },
+                ItemKind::Source(SourceDecl::Frames { on_tick: on_tick.clone() }),
                 // `text: "frames"` is the source *kind*, matched by
                 // `by::source("frames")` — not the handler name.
                 Semantics { role: Role::Source, text: "frames".to_string(), test_id: None },
+                None,
+            ));
+            Ok(id)
+        }
+        ViewNode::SourceInterval { every_ms, on_tick } => {
+            let id = tree.new_leaf(Style {
+                size: Size { width: length(0.0), height: length(0.0) },
+                ..Default::default()
+            })?;
+            meta.push((
+                id,
+                ItemKind::Source(SourceDecl::Interval { every_ms: *every_ms, on_tick: on_tick.clone() }),
+                Semantics { role: Role::Source, text: "interval".to_string(), test_id: None },
+                None,
+            ));
+            Ok(id)
+        }
+        ViewNode::SourceStream { id: stream_id, on_event } => {
+            let id = tree.new_leaf(Style {
+                size: Size { width: length(0.0), height: length(0.0) },
+                ..Default::default()
+            })?;
+            meta.push((
+                id,
+                ItemKind::Source(SourceDecl::Stream { id: stream_id.clone(), on_event: on_event.clone() }),
+                Semantics { role: Role::Source, text: "stream".to_string(), test_id: None },
                 None,
             ));
             Ok(id)
@@ -447,7 +533,7 @@ impl LaidTree {
         for item in &self.items {
             match &item.kind {
                 ItemKind::Box => {}
-                ItemKind::Source { .. } => {}
+                ItemKind::Source(_) => {}
                 ItemKind::Chart { handle, panel } => {
                     paint_chart(&mut cmds, item.rect, handle, *panel, store, theme, density);
                 }

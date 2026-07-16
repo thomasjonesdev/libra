@@ -12,7 +12,7 @@ fn populated() -> Harness<Todos> {
         h.click(by::test_id("add"));
     }
     // Complete the middle one so the snapshot shows both sections.
-    h.click(by::text("1. Walk the dog"));
+    h.click(by::text("Walk the dog"));
     h
 }
 

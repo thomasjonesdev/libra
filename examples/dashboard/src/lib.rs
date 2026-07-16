@@ -10,16 +10,11 @@
 //! ingest/toggle logic doesn't touch these fields at all — it only
 //! ever needs "all sixteen series ids", which is just `0..SERIES`.
 //!
-//! `subscriptions` stays hand-written (`libra::app!`'s `subscriptions:`
-//! field) rather than a §12.5 `<Frames>` source element: pause/resume
-//! needs *conditional* mounting ("only tick while running"), and the
-//! grammar has no `<if>` yet (§26) — an unconditionally-mounted
-//! `<Frames>` would tick at full rate even while paused and just
-//! discard the result, which defeats the point for a throughput
-//! benchmark specifically.
+//! Pause/resume mounts `<Frames>` conditionally via `<if test={running}>`
+//! (§6.2 / PLAN-IF / §12.5) — no `subscriptions:` escape hatch needed.
 
 use libra::{actions, app, state};
-use libra_core::{Effect, FrameInfo, SeriesHandle, SeriesId, SourceSpec, Sub};
+use libra_core::{Effect, FrameInfo, SeriesHandle, SeriesId, SourceSpec};
 
 pub const SERIES: u32 = 16;
 pub const ROW_LEN: u32 = 4;
@@ -29,7 +24,7 @@ pub const WINDOW_MS: f64 = 3_000.0;
 #[state]
 pub struct Dashboard {
     pub status: String,
-    #[libra(skip)]
+    /// Bindable so `<if test={running}>` can mount `<Frames>` (§12.5).
     pub running: bool,
     pub row0: Vec<SeriesHandle>,
     pub row1: Vec<SeriesHandle>,
@@ -89,20 +84,10 @@ impl Dashboard {
     }
 }
 
-/// Pure: "tick while running" is a testable function (§12.2).
-pub fn subscriptions(state: &Dashboard) -> Vec<Sub<Action>> {
-    if state.running {
-        vec![Sub::frames(Action::Frame)]
-    } else {
-        vec![]
-    }
-}
-
 app! {
     state: Dashboard,
     view: "../views/dashboard.lx",
     init: Dashboard::init,
-    subscriptions: subscriptions,
     window: (1280.0, 640.0),
     title: "Libra Dashboard",
 }

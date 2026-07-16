@@ -50,14 +50,17 @@ fn bench() {
     let field = |p: &str| libra_core::ReflectState::field(&state, p);
     let has_action = |m: &str| Action::action_by_name(m).is_some();
     let has_str_action = |m: &str| Action::action_with_str(m, String::new()).is_some();
-    let collection = |p: &str| libra_core::ReflectState::collection(&state, p);
+    let collection_rows = |p: &str| libra_core::ReflectState::collection_rows(&state, p);
     let has_frame_info_action = |m: &str| Action::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
+    let has_instant_action =
+        |m: &str| Action::action_with_instant(m, libra_core::Instant::at(0.0)).is_some();
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
-        collection: &collection,
+        collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
+        has_instant_action: &has_instant_action,
     };
 
     let mut cache = None;

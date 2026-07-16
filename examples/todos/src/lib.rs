@@ -1,8 +1,8 @@
-//! Todos — the §6.2 item-scoped-handler showcase: a list you interact
-//! with per row. Each todo renders inside a `<for>` as a `<Button>`
-//! whose `onPress={complete(t)}` / `onPress={remove(t)}` carries *that
-//! row's* value as the action payload — the loop binding becomes the
-//! `String` argument the reducer receives.
+//! Todos — the §6.2 item-fields showcase: a list you interact with
+//! per row. Each todo renders inside a `<for>` as a `<Button>` whose
+//! `onPress={complete(t.id)}` / `onPress={remove(t.id)}` carries *that
+//! row's* id as the action payload — loop-scoped field access
+//! (PLAN-ITEM-FIELDS), not a Display-encoded line.
 //!
 //! The state layer is the point of the demo: `#[libra::state]` +
 //! `#[libra::actions]` turn plain `&mut self` methods into the whole
@@ -11,19 +11,27 @@
 //! `#[project]`-marked method rebuilds them **automatically after every
 //! action** (the generated `reduce` calls it; `app!`'s default init
 //! projects the default state). Actions just mutate `items`; nothing
-//! here remembers to refresh anything, same mental model as React's
-//! derived-during-render. Identity rides in each row's `"<id>. <text>"`
-//! line: unique (the id is monotonic), human-readable, and stable
-//! across a toggle, so it doubles as the key *and* the action payload.
+//! here remembers to refresh anything. Until `<if>` exists (§26), the
+//! view keeps two filtered collections rather than one conditional list.
 
 use libra::{actions, app, state};
+use libra_core::LibraReflect;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
 pub struct Todo {
     pub id: u32,
     pub text: String,
     pub done: bool,
+}
+
+impl fmt::Display for Todo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Whole-value fallback (`key={t}`) — id is unique and stable
+        // across a toggle.
+        write!(f, "{}", self.id)
+    }
 }
 
 #[derive(Default)]
@@ -40,23 +48,19 @@ pub struct Todos {
     pub next_id: u32,
     /// Display projections (§6.3) — never touched by actions; the
     /// `#[project]` hook below rebuilds them after every reduce.
-    /// Each entry is a row line — see `line`.
-    pub active: Vec<String>,
-    pub done: Vec<String>,
+    /// Structured `Todo` rows so markup can bind `{t.text}` / `t.id`.
+    pub active: Vec<Todo>,
+    pub done: Vec<Todo>,
     /// "N of M done", bound in the header.
     pub summary: String,
 }
 
 impl Todos {
-    /// A row's line — its identity, key, and action payload in one.
-    /// `"3. Buy milk"`: the id keeps it unique and stable across a
-    /// toggle; the text keeps it readable.
-    fn line(t: &Todo) -> String {
-        format!("{}. {}", t.id, t.text)
-    }
-
-    fn set_done(&mut self, line: &str, done: bool) {
-        if let Some(t) = self.items.iter_mut().find(|t| Self::line(t) == line) {
+    fn set_done(&mut self, id: &str, done: bool) {
+        let Ok(id) = id.parse::<u32>() else {
+            return;
+        };
+        if let Some(t) = self.items.iter_mut().find(|t| t.id == id) {
             t.done = done;
         }
     }
@@ -81,19 +85,22 @@ impl Todos {
         self.draft.clear();
     }
 
-    /// Item-scoped: `onPress={complete(t)}` — `t` is the row's line.
-    pub fn complete(&mut self, line: String) {
-        self.set_done(&line, true);
+    /// Item-scoped: `onPress={complete(t.id)}` — `t.id` is the row id.
+    pub fn complete(&mut self, id: String) {
+        self.set_done(&id, true);
     }
 
-    /// Item-scoped: `onPress={uncomplete(t)}`.
-    pub fn uncomplete(&mut self, line: String) {
-        self.set_done(&line, false);
+    /// Item-scoped: `onPress={uncomplete(t.id)}`.
+    pub fn uncomplete(&mut self, id: String) {
+        self.set_done(&id, false);
     }
 
-    /// Item-scoped: `onPress={remove(t)}` — drop that row.
-    pub fn remove(&mut self, line: String) {
-        self.items.retain(|t| Self::line(t) != line);
+    /// Item-scoped: `onPress={remove(t.id)}` — drop that row.
+    pub fn remove(&mut self, id: String) {
+        let Ok(id) = id.parse::<u32>() else {
+            return;
+        };
+        self.items.retain(|t| t.id != id);
     }
 
     /// Drop every completed todo.
@@ -107,8 +114,8 @@ impl Todos {
     /// always in sync with `items` without anyone remembering anything.
     #[project]
     fn project(&mut self) {
-        self.active = self.items.iter().filter(|t| !t.done).map(Self::line).collect();
-        self.done = self.items.iter().filter(|t| t.done).map(Self::line).collect();
+        self.active = self.items.iter().filter(|t| !t.done).cloned().collect();
+        self.done = self.items.iter().filter(|t| t.done).cloned().collect();
         let total = self.items.len();
         let done = self.items.iter().filter(|t| t.done).count();
         self.summary = format!("{done} of {total} done");

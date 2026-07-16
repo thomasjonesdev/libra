@@ -1,0 +1,4 @@
+<Column gap={8} padding={12}>
+  <Interval every={1000} onTick={poll} />
+  <Stream id={feed} onEvent={packet} />
+</Column>

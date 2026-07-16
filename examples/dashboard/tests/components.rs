@@ -19,7 +19,9 @@ fn renders_the_chart_wall() {
 #[test]
 fn toggle_click_pauses_through_real_hit_testing() {
     let mut h = Harness::<Dashboard>::with_viewport(VIEW, 900, 620);
+    assert!(h.has_source("frames"), "running → <Frames> mounted via <if>");
     h.click(by::test_id("toggle"));
     h.query(by::test_id("status")).assert_text("paused");
     assert!(!h.state().running);
+    assert!(!h.has_source("frames"), "paused → <Frames> unmounted");
 }

@@ -19,7 +19,11 @@ type: architecture
 - Density: a global scale token (`compact`/`normal`) multiplies the space ramp — ops screens want compact.
 - Tokens are part of the determinism contract: a snapshot test's identity includes the theme hash.
 
----
+**Implementation status:** a flat `Theme` struct + TOML override subset is
+shipped (`libra-dark` byte-identical to legacy tokens). Full named ramps,
+density, and semantic status colors are staged in [[PLAN-TOKENS]] (under
+[[PLAN-UI-SURFACE]]). Catalog growth must not invent paint literals —
+extend the token table instead.
 
 ---
 

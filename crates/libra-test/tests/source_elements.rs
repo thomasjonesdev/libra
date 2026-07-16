@@ -7,11 +7,9 @@
 use libra_core::{App, Effect, FrameInfo, ReflectAction, ReflectState};
 use libra_test::{by, Harness};
 
-// The grammar has no <if> yet (§26 open question), so there's no
-// single view that toggles <Frames> based on state. Instead, this
-// test compares two *different* view sources against the same app —
-// the presence/absence check a real conditional would produce once
-// <if> lands, exercised at the level that's actually implemented today.
+// With <if> (§6.2 / PLAN-IF), a single view can toggle <Frames>. These
+// fixtures still compare two view sources so the mount/unmount assertion
+// stays isolated from app state wiring.
 const VIEW_NO_FRAMES: &str = r#"<Column>
   <Text testId="status">{status}</Text>
 </Column>"#;

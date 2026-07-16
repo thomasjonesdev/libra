@@ -101,6 +101,22 @@ impl FrameInfo {
     }
 }
 
+/// What one `<Interval every={ms} onTick={name}>` tick tells `update`
+/// (§12.5): just the session-relative time the timer fired — no frame
+/// index, since intervals aren't vsync-coalesced (each identity ticks
+/// on its own cadence). Tests construct these directly — time is
+/// injected, never read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Instant {
+    pub t_ms: f64,
+}
+
+impl Instant {
+    pub fn at(t_ms: f64) -> Self {
+        Instant { t_ms }
+    }
+}
+
 /// Ongoing event sources, declared by `App::subscriptions` and diffed
 /// by the runtime (§12.2). Phase 2 subset: frame ticks. Streams join
 /// with WebSocket/process effects.
@@ -309,14 +325,82 @@ impl<T, E> Default for Remote<T, E> {
     }
 }
 
+/// One element of a `<for each={…}>` collection (§6.2 / PLAN-ITEM-FIELDS).
+///
+/// Opaque element types (`String`, `SeriesHandle`, …) carry only
+/// [`whole`](CollectionRow::whole) — the item's `Display` text — with
+/// an empty [`fields`](CollectionRow::fields) map. Structured element
+/// types (`T: ReflectState + Display`, typically `#[derive(LibraReflect)]`)
+/// also expose named Display fields for `{loopVar.field}` /
+/// `key={loopVar.field}` / `onPress={action(loopVar.field)}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectionRow {
+    /// Whole-item Display — used by `key={t}`, `onPress={f(t)}`, and
+    /// Chart/`series={s}` round-trips.
+    pub whole: String,
+    /// Named fields on a structured item; empty for opaque elements.
+    pub fields: Vec<(String, String)>,
+}
+
+impl CollectionRow {
+    /// Opaque row: Display only, no field map.
+    pub fn opaque(whole: impl Into<String>) -> Self {
+        CollectionRow { whole: whole.into(), fields: Vec::new() }
+    }
+
+    /// Resolve a loop-scoped binding against this row.
+    ///
+    /// - `loop_var` → `whole`
+    /// - `loop_var.field` → that field's Display (one segment only)
+    /// - anything else → `None` (caller may fall through to outer state)
+    pub fn get(&self, path: &str, loop_var: &str) -> Option<String> {
+        if path == loop_var {
+            return Some(self.whole.clone());
+        }
+        let prefix = format!("{loop_var}.");
+        let Some(field) = path.strip_prefix(&prefix) else {
+            return None;
+        };
+        if field.is_empty() || field.contains('.') {
+            return None;
+        }
+        self.fields
+            .iter()
+            .find(|(k, _)| k == field)
+            .map(|(_, v)| v.clone())
+    }
+}
+
+/// Build a [`CollectionRow`] from a structured item (`ReflectState` +
+/// `Display`). Used by the state derive for `Vec<T>` element types that
+/// aren't on the opaque allowlist (`String`, `SeriesHandle`).
+pub fn collection_row_from_state<T: ReflectState + std::fmt::Display>(item: &T) -> CollectionRow {
+    CollectionRow {
+        whole: item.to_string(),
+        fields: T::field_names()
+            .iter()
+            .filter_map(|n| item.field(n).map(|v| ((*n).to_string(), v)))
+            .collect(),
+    }
+}
+
+/// Opaque row from a Display-only element (`String`, `SeriesHandle`, …).
+pub fn collection_row_opaque(item: &impl std::fmt::Display) -> CollectionRow {
+    CollectionRow::opaque(item.to_string())
+}
+
 /// State reflection: how markup bindings resolve against the state.
 /// Implemented by `#[derive(LibraReflect)]` on the State struct
 /// (Display fields become bindable; `#[libra(skip)]` excludes one), or
 /// by hand for custom projections. Drives the interpreter's load-time
 /// validation and, later, the automation-server schema (§16).
 pub trait ReflectState {
-    /// Resolve a binding path (`count`) to display text.
-    /// `None` makes the binding a load-time interp error.
+    /// Resolve a binding path to display text.
+    ///
+    /// Paths include whole-value fields (`count`), nested ReflectState
+    /// fields (`user.name` — PLAN-ACCESSORS), and the accessor whitelist
+    /// on strings/collections (`items.len`, `name.isEmpty`, with optional
+    /// trailing `()`). `None` makes the binding a load-time interp error.
     fn field(&self, path: &str) -> Option<String>;
 
     /// Every bindable field name (diagnostics, automation schema).
@@ -332,6 +416,15 @@ pub trait ReflectState {
     fn collection(&self, path: &str) -> Option<Vec<String>> {
         let _ = path;
         None
+    }
+
+    /// Resolve an iterable binding path to structured rows (§6.2 item
+    /// fields). Default wraps [`collection`](ReflectState::collection)
+    /// as opaque rows so hand-written implementors stay source-compatible;
+    /// the derive overrides this with [`collection_row_of`] per element.
+    fn collection_rows(&self, path: &str) -> Option<Vec<CollectionRow>> {
+        self.collection(path)
+            .map(|items| items.into_iter().map(CollectionRow::opaque).collect())
     }
 }
 
@@ -359,6 +452,16 @@ pub trait ReflectAction: Sized {
     /// runtime-supplied payload type.
     fn action_with_frame_info(name: &str, info: FrameInfo) -> Option<Self> {
         let _ = (name, info);
+        None
+    }
+
+    /// Resolve a handler name to an action carrying an `Instant`
+    /// (§12.5's `<Interval every={ms} onTick={name}>` source element).
+    /// Derived for single-`Instant` tuple variants; anything else
+    /// resolves to `None`. Mirrors `action_with_frame_info`'s shape for
+    /// a different runtime-supplied payload type.
+    fn action_with_instant(name: &str, instant: Instant) -> Option<Self> {
+        let _ = (name, instant);
         None
     }
 

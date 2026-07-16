@@ -1,0 +1,17 @@
+<Column gap={8}>
+  <Text testId="user-name">{user.name}</Text>
+  <Text testId="items-len">{items.len()}</Text>
+  <Text testId="name-empty">{name.isEmpty}</Text>
+  <if test={items.isEmpty}>
+    <Text testId="empty-branch">empty</Text>
+    <else>
+      <Text testId="full-branch">has-items</Text>
+    </else>
+  </if>
+  <if test={user.active}>
+    <Text testId="active">active</Text>
+    <else>
+      <Text testId="inactive">inactive</Text>
+    </else>
+  </if>
+</Column>

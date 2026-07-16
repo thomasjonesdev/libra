@@ -1,7 +1,7 @@
 //! The derive exercised against the real libra-core traits (dev-dep
 //! cycle, permitted by cargo).
 
-use libra_core::{FrameInfo, ReflectAction, ReflectState};
+use libra_core::{FrameInfo, Instant, ReflectAction, ReflectState};
 use libra_reflect::LibraReflect;
 
 #[derive(LibraReflect)]
@@ -23,6 +23,7 @@ enum Action {
     Moved { x: f32 },
     TitleChanged(String),
     Ticked(FrameInfo),
+    Polled(Instant),
 }
 
 #[test]
@@ -34,6 +35,42 @@ fn display_fields_bind_and_skipped_fields_do_not() {
     assert_eq!(s.field("internal"), None); // skipped
     assert_eq!(s.field("cuont"), None); // typo → load-time interp error
     assert_eq!(State::field_names(), &["count", "label", "ratio"]);
+}
+
+#[derive(Debug, Clone, PartialEq, LibraReflect)]
+struct User {
+    name: String,
+    active: bool,
+}
+
+impl std::fmt::Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(LibraReflect)]
+struct NestedState {
+    user: User,
+    items: Vec<String>,
+    title: String,
+}
+
+#[test]
+fn nested_paths_and_accessors_resolve() {
+    let s = NestedState {
+        user: User { name: "Ada".into(), active: true },
+        items: vec!["a".into(), "b".into()],
+        title: String::new(),
+    };
+    assert_eq!(s.field("user.name").as_deref(), Some("Ada"));
+    assert_eq!(s.field("user.active").as_deref(), Some("true"));
+    assert_eq!(s.field("items.len").as_deref(), Some("2"));
+    assert_eq!(s.field("items.len()").as_deref(), Some("2"));
+    assert_eq!(s.field("items.isEmpty").as_deref(), Some("false"));
+    assert_eq!(s.field("title.isEmpty").as_deref(), Some("true"));
+    assert_eq!(s.field("title.len()").as_deref(), Some("0"));
+    assert_eq!(s.field("user.missing"), None);
 }
 
 #[test]
@@ -50,7 +87,7 @@ fn unit_variants_construct_and_payload_variants_do_not() {
     // …but every variant is visible to diagnostics, by its public name:
     assert_eq!(
         Action::action_names(),
-        &["increment", "reset", "loaded", "moved", "titleChanged", "ticked"]
+        &["increment", "reset", "loaded", "moved", "titleChanged", "ticked", "polled"]
     );
 }
 
@@ -74,4 +111,13 @@ fn frame_info_payload_variants_construct_for_source_element_ticks() {
     // Unit and non-FrameInfo-payload variants do not:
     assert_eq!(Action::action_with_frame_info("increment", info), None);
     assert_eq!(Action::action_with_frame_info("titleChanged", info), None);
+}
+
+#[test]
+fn instant_payload_variants_construct_for_interval_source_element_ticks() {
+    let instant = Instant::at(4200.0);
+    assert_eq!(Action::action_with_instant("polled", instant), Some(Action::Polled(instant)));
+    // Unit and non-Instant-payload variants do not:
+    assert_eq!(Action::action_with_instant("increment", instant), None);
+    assert_eq!(Action::action_with_instant("titleChanged", instant), None);
 }

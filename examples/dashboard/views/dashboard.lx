@@ -24,4 +24,7 @@
       <Chart series={s} height={130} />
     </for>
   </Row>
+  <if test={running}>
+    <Frames onTick={frame} />
+  </if>
 </Column>

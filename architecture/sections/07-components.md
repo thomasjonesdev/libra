@@ -19,6 +19,7 @@ type: architecture
 - [[07.2-composed-components-markup]]
 - [[07.3-rust-components]]
 - [[07.4-canvas-advanced-custom-ui]]
+- Plans: [[PLAN-UI-SURFACE]] · [[PLAN-CATALOG]] · [[PLAN-TOKENS]]
 
 ---
 

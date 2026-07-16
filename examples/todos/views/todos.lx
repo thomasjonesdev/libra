@@ -9,18 +9,18 @@
   </Row>
 
   <Text bold muted>Active</Text>
-  <for each={active} as="t" key={t}>
+  <for each={active} as="t" key={t.id}>
     <Row gap={8} cross="center">
-      <Button variant="secondary" onPress={complete(t)}>{t}</Button>
-      <Button variant="ghost" onPress={remove(t)}>×</Button>
+      <Button variant="secondary" onPress={complete(t.id)}>{t.text}</Button>
+      <Button variant="ghost" onPress={remove(t.id)}>×</Button>
     </Row>
   </for>
 
   <Text bold muted>Done</Text>
-  <for each={done} as="t" key={t}>
+  <for each={done} as="t" key={t.id}>
     <Row gap={8} cross="center">
-      <Button variant="ghost" onPress={uncomplete(t)}>{t}</Button>
-      <Button variant="ghost" onPress={remove(t)}>×</Button>
+      <Button variant="ghost" onPress={uncomplete(t.id)}>{t.text}</Button>
+      <Button variant="ghost" onPress={remove(t.id)}>×</Button>
     </Row>
   </for>
 

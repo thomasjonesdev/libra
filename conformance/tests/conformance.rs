@@ -2,28 +2,35 @@
 //! compiled engine produce identical ViewTrees — structurally, node
 //! for node — for the same fixture across a spread of state values.
 
-use conformance::{generated, TestAction, TestState};
+use conformance::{generated, Item, TestAction, TestState, User};
 use libra_core::{FrameInfo, ReflectAction, ReflectState, SeriesHandle, SeriesId};
 
 const KITCHEN_SINK: &str = include_str!("../fixtures/kitchen_sink.lx");
 const FOR_LOOP: &str = include_str!("../fixtures/for_loop.lx");
 const FOR_ACTIONS: &str = include_str!("../fixtures/for_actions.lx");
+const FOR_ITEM_FIELDS: &str = include_str!("../fixtures/for_item_fields.lx");
+const IF_ELSE: &str = include_str!("../fixtures/if_else.lx");
 const FRAMES: &str = include_str!("../fixtures/frames.lx");
+const INTERVAL_STREAM: &str = include_str!("../fixtures/interval_stream.lx");
+const ACCESSORS: &str = include_str!("../fixtures/accessors.lx");
 
 fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
     let ast = libra_markup::parse(src).expect("fixture parses");
     let field = |p: &str| state.field(p);
     let has_action = |m: &str| TestAction::action_by_name(m).is_some();
     let has_str_action = |m: &str| TestAction::action_with_str(m, String::new()).is_some();
-    let collection = |p: &str| state.collection(p);
+    let collection_rows = |p: &str| state.collection_rows(p);
     let has_frame_info_action =
         |m: &str| TestAction::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
+    let has_instant_action =
+        |m: &str| TestAction::action_with_instant(m, libra_core::Instant::at(0.0)).is_some();
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
-        collection: &collection,
+        collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
+        has_instant_action: &has_instant_action,
     };
     libra_interp::resolve(&ast, &scope).expect("fixture resolves")
 }
@@ -70,14 +77,16 @@ fn pascalcase_handler_name_is_rejected_identically_by_both_engines() {
     let field = |_: &str| None;
     let has_action = |m: &str| TestAction::action_by_name(m).is_some();
     let has_str_action = |_: &str| false;
-    let collection = |_: &str| None;
+    let collection_rows = |_: &str| None;
     let has_frame_info_action = |_: &str| false;
+    let has_instant_action = |_: &str| false;
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
-        collection: &collection,
+        collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
+        has_instant_action: &has_instant_action,
     };
     let interp_err = libra_interp::resolve(&ast, &scope).unwrap_err();
     assert!(interp_err.message.contains("must be camelCase"), "{}", interp_err.message);
@@ -161,6 +170,61 @@ fn for_actions_item_scoped_handlers_produce_identical_trees() {
     }
 }
 
+/// §6.2 item fields — `{t.label}`, `key={t.id}`, `onPress={nameChanged(t.id)}`
+/// inside a `<for>` over a structured `Vec<Item>`. Interp resolves via
+/// `collection_rows`; codegen emits `t.label` / `t.id` field access.
+/// Both engines must agree across empty / one / several items.
+#[test]
+fn for_item_fields_produce_identical_trees() {
+    let variants = [
+        Vec::<Item>::new(),
+        vec![Item { id: "7".into(), label: "Solo".into() }],
+        vec![
+            Item { id: "1".into(), label: "Alpha".into() },
+            Item { id: "2".into(), label: "Beta".into() },
+            Item { id: "3".into(), label: "Gamma".into() },
+        ],
+    ];
+    for (i, items) in variants.into_iter().enumerate() {
+        let state = TestState { items, ..TestState::default() };
+        let interp = interp_tree_src(FOR_ITEM_FIELDS, &state);
+        let compiled = generated::build_for_item_fields(&state);
+        assert_eq!(
+            interp, compiled,
+            "engine drift on for_item_fields fixture with {} items (variant #{i})",
+            state.items.len()
+        );
+    }
+}
+
+/// §6.2 `<if test={running}>` — both engines must agree on then vs else
+/// trees, including a nested `<Frames>` that only mounts when true.
+#[test]
+fn if_else_produces_identical_trees_for_both_branches() {
+    use libra_components::ViewNode;
+    for running in [true, false] {
+        let state = TestState { running, ..TestState::default() };
+        let interp = interp_tree_src(IF_ELSE, &state);
+        let compiled = generated::build_if_else(&state);
+        assert_eq!(
+            interp, compiled,
+            "engine drift on if_else fixture with running={running}"
+        );
+        let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+        if running {
+            assert!(
+                children.iter().any(|c| matches!(c, ViewNode::SourceFrames { .. })),
+                "running → Frames mounted: {interp:?}"
+            );
+        } else {
+            assert!(
+                children.iter().all(|c| !matches!(c, ViewNode::SourceFrames { .. })),
+                "paused → Frames absent: {interp:?}"
+            );
+        }
+    }
+}
+
 /// §12.5's `<Frames onTick={frame}>` — interp's runtime resolution
 /// (via ReflectAction::action_with_frame_info) and codegen's typed
 /// `fn(FrameInfo) -> Action` coercion must agree on the exact same
@@ -176,4 +240,88 @@ fn frames_source_element_produces_identical_trees() {
             if children.contains(&libra_components::ViewNode::SourceFrames { on_tick: "frame".into() })),
         "expected a mounted Frames source in the tree: {interp:?}"
     );
+}
+
+/// §12.5 Interval + Stream — Instant-payload ticks and String-payload
+/// stream events; both engines must agree on the Source* nodes.
+#[test]
+fn interval_and_stream_produce_identical_trees() {
+    use libra_components::ViewNode;
+    let state = TestState::default();
+    let interp = interp_tree_src(INTERVAL_STREAM, &state);
+    let compiled = generated::build_interval_stream(&state);
+    assert_eq!(
+        interp, compiled,
+        "engine drift on interval_stream fixture — one grammar, two engines (§6.4)"
+    );
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        children.contains(&ViewNode::SourceInterval { every_ms: 1000, on_tick: "poll".into() }),
+        "{interp:?}"
+    );
+    assert!(
+        children.contains(&ViewNode::SourceStream {
+            id: "telemetry".into(),
+            on_event: "packet".into()
+        }),
+        "{interp:?}"
+    );
+}
+
+/// PLAN-ACCESSORS — `{user.name}`, `{items.len()}`, `test={items.isEmpty}` /
+/// `test={user.active}`; both engines must agree.
+#[test]
+fn accessors_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    let variants = [
+        TestState::default(),
+        TestState {
+            items: vec![],
+            name: String::new(),
+            user: User {
+                name: "Grace".into(),
+                active: false,
+            },
+            ..TestState::default()
+        },
+        TestState {
+            items: vec![Item {
+                id: "9".into(),
+                label: "Zed".into(),
+            }],
+            name: "x".into(),
+            user: User {
+                name: "Lin".into(),
+                active: true,
+            },
+            ..TestState::default()
+        },
+    ];
+    for (i, state) in variants.iter().enumerate() {
+        let interp = interp_tree_src(ACCESSORS, state);
+        let compiled = generated::build_accessors(state);
+        assert_eq!(
+            interp, compiled,
+            "engine drift on accessors fixture (variant #{i})"
+        );
+        let ViewNode::Column { children, .. } = &interp else {
+            panic!("{interp:?}")
+        };
+        assert!(
+            children.iter().any(|c| {
+                matches!(c, ViewNode::Text { content, .. } if content == &state.user.name)
+            }),
+            "{interp:?}"
+        );
+        let expect_empty = state.items.is_empty();
+        let has_empty = children.iter().any(|c| {
+            matches!(c, ViewNode::Text { test_id: Some(id), .. } if id == "empty-branch")
+        });
+        let has_full = children.iter().any(|c| {
+            matches!(c, ViewNode::Text { test_id: Some(id), .. } if id == "full-branch")
+        });
+        assert_eq!(has_empty, expect_empty, "variant #{i}: {interp:?}");
+        assert_eq!(has_full, !expect_empty, "variant #{i}: {interp:?}");
+    }
 }

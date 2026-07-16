@@ -114,7 +114,7 @@ Layer diagram → [[04.1-layer-diagram|§4.1]] · frame lifecycle → [[04.2-the
 | **Component catalog** | Curated built-ins; custom Rust/Canvas must still emit semantics and stay deterministic. ([[07-components|§7]]) |
 | **Purity of actions** | No I/O, clocks, randomness, threads, or blocking inside reduce — time/entropy arrive *inside* action payloads. ([[05.3-purity-rules-for-actions-enforced-by-convention-checked-by-lint|§5.3]]) |
 
-Mount-scoped ambient work uses **source elements** (`<Frames/>`, later `<Interval/>`/`<Stream/>`) or `subscriptions:` in `app!` — declarations, not `useEffect` code ([[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]]). There is **no `<if>` yet** ([[26-open-questions|§26]]); conditional mount of sources is blocked until that lands — use `subscriptions:` when mount must depend on state (see `examples/dashboard`).
+Mount-scoped ambient work uses **source elements** (`<Frames/>`, `<Interval every={ms} onTick={…}/>`, `<Stream id={…} onEvent={…}/>`) or `subscriptions:` in `app!` — declarations, not `useEffect` code ([[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]]; [[PLAN-SOURCES]]). Interval fires Instant actions via shell recurring timers; Stream mounts/queries in v1 (Ws event delivery later). **`<if test={bool}>`** ([[PLAN-IF]]) mounts sources conditionally — see `examples/dashboard`.
 
 ---
 
@@ -160,9 +160,9 @@ Example apps split tests as `tests/unit.rs`, `components.rs`, `integration.rs`, 
 
 ## 8. What is built vs remaining
 
-**Done (through Phase 3 core + ergonomics):** Phases 0–2; codegen + conformance; text-entry core (`libra-text` + Input + keyboard/clipboard); theming; AccessKit; `libra-query`; FormState/`Field`; NavStack; gallery; `#[libra::state]`/`#[libra::actions]`/`app!`; `<for>` collections; `<Frames>` sources. Naming migration complete.
+**Done (through Phase 3 core + ergonomics + item fields + `<if>` + sources + accessors):** Phases 0–2; codegen + conformance; text-entry core (`libra-text` + Input + keyboard/clipboard); theming; AccessKit; `libra-query`; FormState/`Field`; NavStack; gallery; `#[libra::state]`/`#[libra::actions]`/`app!`; `<for>` collections; loop-scoped item fields; `<if test={bool}>` / `<else>` ([[PLAN-IF]]); `<Frames>` / `<Interval>` / `<Stream>` sources ([[PLAN-SOURCES]]); top-level `{user.name}` + `len`/`isEmpty` accessors ([[PLAN-ACCESSORS]]). Naming migration complete.
 
-**Still open / do not build ahead:** remaining catalog components; Textarea/IME/touch polish; packaging; `<if>` / conditional markup; automation server polish; full Phase 4 DX (LSP, time-travel UI). Tracked in [[23-roadmap|§23]] and [[26-open-questions|§26]].
+**Still open / do not build ahead:** expanded catalog + token ramps + platform effects ([[PLAN-UI-SURFACE]]); Textarea/IME/touch polish; packaging; automation server polish; full Phase 4 DX (LSP, time-travel UI). Tracked in [[23-roadmap|§23]] and [[26-open-questions|§26]].
 
 **Non-goals** (scope fence) → [[24-non-goals|§24]]
 

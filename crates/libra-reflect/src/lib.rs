@@ -131,6 +131,51 @@ pub(crate) fn derive_model_impl(
     });
     let names = scalar_fields.iter().map(|f| f.ident.as_ref().expect("named field").to_string());
 
+    // PLAN-ACCESSORS: `{user.name}` — non-leaf scalar fields are assumed
+    // `ReflectState + Display`; dotted tails recurse into the nested
+    // impl. Leaf / generic types stay whole-value only.
+    let nested_arms = scalar_fields.iter().filter(|f| is_nestable_type(&f.ty)).map(|f| {
+        let ident = f.ident.as_ref().expect("named field");
+        let prefix = format!("{}.", ident);
+        quote! {
+            p if p.starts_with(#prefix) => {
+                ::libra_core::ReflectState::field(&self.#ident, &p[#prefix.len()..])
+            }
+        }
+    });
+
+    // PLAN-ACCESSORS: `{items.len}` / `{name.isEmpty}` (optional trailing
+    // `()` folded away below). Whitelist only — not arbitrary methods.
+    let string_accessor_arms = scalar_fields
+        .iter()
+        .filter(|f| path_ends_with(&f.ty, "String"))
+        .flat_map(|f| {
+            let ident = f.ident.as_ref().expect("named field");
+            let len = format!("{ident}.len");
+            let empty = format!("{ident}.isEmpty");
+            [
+                quote! {
+                    #len => ::core::option::Option::Some(self.#ident.len().to_string()),
+                },
+                quote! {
+                    #empty => ::core::option::Option::Some(self.#ident.is_empty().to_string()),
+                },
+            ]
+        });
+    let vec_accessor_arms = collection_fields.iter().flat_map(|f| {
+        let ident = f.ident.as_ref().expect("named field");
+        let len = format!("{ident}.len");
+        let empty = format!("{ident}.isEmpty");
+        [
+            quote! {
+                #len => ::core::option::Option::Some(self.#ident.len().to_string()),
+            },
+            quote! {
+                #empty => ::core::option::Option::Some(self.#ident.is_empty().to_string()),
+            },
+        ]
+    });
+
     let collection_arms = collection_fields.iter().map(|f| {
         let ident = f.ident.as_ref().expect("named field");
         let path = ident.to_string();
@@ -140,13 +185,35 @@ pub(crate) fn derive_model_impl(
             ),
         }
     });
+    let collection_row_arms = collection_fields.iter().map(|f| {
+        let ident = f.ident.as_ref().expect("named field");
+        let path = ident.to_string();
+        // Opaque element types stay Display-only (dashboard SeriesHandle,
+        // Vec<String>). Everything else is assumed ReflectState+Display
+        // so `{t.field}` works (PLAN-ITEM-FIELDS).
+        let row_fn = if is_opaque_vec_element(&f.ty) {
+            quote! { ::libra_core::collection_row_opaque }
+        } else {
+            quote! { ::libra_core::collection_row_from_state }
+        };
+        quote! {
+            #path => ::core::option::Option::Some(
+                self.#ident.iter().map(#row_fn).collect()
+            ),
+        }
+    });
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
         impl #impl_generics ::libra_core::ReflectState for #name #ty_generics #where_clause {
             fn field(&self, path: &str) -> ::core::option::Option<::std::string::String> {
+                // `{items.len()}` and `{items.len}` are the same binding.
+                let path = path.strip_suffix("()").unwrap_or(path);
                 match path {
                     #(#arms)*
+                    #(#string_accessor_arms)*
+                    #(#vec_accessor_arms)*
+                    #(#nested_arms)*
                     _ => ::core::option::Option::None,
                 }
             }
@@ -156,6 +223,15 @@ pub(crate) fn derive_model_impl(
             fn collection(&self, path: &str) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
                 match path {
                     #(#collection_arms)*
+                    _ => ::core::option::Option::None,
+                }
+            }
+            fn collection_rows(
+                &self,
+                path: &str,
+            ) -> ::core::option::Option<::std::vec::Vec<::libra_core::CollectionRow>> {
+                match path {
+                    #(#collection_row_arms)*
                     _ => ::core::option::Option::None,
                 }
             }
@@ -172,6 +248,78 @@ pub(crate) fn derive_model_impl(
 fn is_vec_type(ty: &syn::Type) -> bool {
     let syn::Type::Path(tp) = ty else { return false };
     tp.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
+}
+
+/// Element types that must stay whole-value Display rows (no field map).
+/// `String` and `SeriesHandle` are the two that ship today; anything
+/// else is treated as a structured `ReflectState` item.
+fn is_opaque_vec_element(ty: &syn::Type) -> bool {
+    let Some(inner) = vec_element_type(ty) else {
+        return true;
+    };
+    path_ends_with(inner, "String") || path_ends_with(inner, "SeriesHandle")
+}
+
+fn vec_element_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(tp) = ty else { return None };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Vec" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    args.args.iter().find_map(|a| match a {
+        syn::GenericArgument::Type(t) => Some(t),
+        _ => None,
+    })
+}
+
+fn path_ends_with(ty: &syn::Type, name: &str) -> bool {
+    let syn::Type::Path(tp) = ty else { return false };
+    tp.path.segments.last().is_some_and(|s| s.ident == name)
+}
+
+/// Types that may carry nested `ReflectState` for `{user.name}`
+/// (PLAN-ACCESSORS). Leaf scalars and any generic (`Remote<T,E>`,
+/// `Option<T>`, …) stay whole-value Display only — the macro can't
+/// prove ReflectState, and generating a nested arm would fail to compile.
+fn is_nestable_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(tp) = ty else {
+        return false;
+    };
+    let Some(seg) = tp.path.segments.last() else {
+        return false;
+    };
+    if !matches!(seg.arguments, syn::PathArguments::None) {
+        return false;
+    }
+    !is_leaf_ident(&seg.ident)
+}
+
+fn is_leaf_ident(ident: &syn::Ident) -> bool {
+    matches!(
+        ident.to_string().as_str(),
+        "String"
+            | "bool"
+            | "SeriesHandle"
+            | "FrameInfo"
+            | "Instant"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "f32"
+            | "f64"
+    )
 }
 
 fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
@@ -192,10 +340,13 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
     // (`onChange={titleChanged}`): the control provides the value.
     // Type detection is by name — a macro can't resolve types; a
     // false positive fails to compile, which is the goal.
-    let str_arms = single_typed_tuple_arms(name, data, "String");
+    let str_arms = single_typed_tuple_arms(name, data, "String", "value");
     // Single-FrameInfo tuple variants are §12.5's <Frames
     // onTick={ticked}> handlers — same shape, different payload type.
-    let frame_info_arms = single_typed_tuple_arms(name, data, "FrameInfo");
+    let frame_info_arms = single_typed_tuple_arms(name, data, "FrameInfo", "info");
+    // Single-Instant tuple variants are §12.5's
+    // <Interval onTick={ticked}> handlers — same shape again.
+    let instant_arms = single_typed_tuple_arms(name, data, "Instant", "instant");
     let names = data.variants.iter().map(|v| pascal_to_camel(&v.ident.to_string()));
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -225,6 +376,15 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
                     }
                 }
             }
+            fn action_with_instant(name: &str, instant: ::libra_core::Instant) -> ::core::option::Option<Self> {
+                match name {
+                    #(#instant_arms)*
+                    _ => {
+                        let _ = instant;
+                        ::core::option::Option::None
+                    }
+                }
+            }
             fn action_names() -> &'static [&'static str] {
                 &[#(#names),*]
             }
@@ -236,15 +396,18 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
 /// Arms for a `ReflectAction` handler method that dispatches by name
 /// to single-tuple-field variants whose field type's last path segment
 /// matches `ty_name` (`"String"` for `action_with_str`, `"FrameInfo"`
-/// for `action_with_frame_info`). The bound variable is always named
-/// `value`/`info` by the caller's match arm — this only builds the
+/// for `action_with_frame_info`, `"Instant"` for `action_with_instant`).
+/// `binding` is the bound variable name the caller's match arm already
+/// uses (`value`/`info`/`instant`) — this only builds the
 /// `name => Some(Variant(<binding>))` arms, generic over which binding
 /// identifier the surrounding method uses.
 fn single_typed_tuple_arms(
     enum_name: &syn::Ident,
     data: &syn::DataEnum,
     ty_name: &str,
+    binding: &str,
 ) -> Vec<proc_macro2::TokenStream> {
+    let binding = quote::format_ident!("{binding}");
     data.variants
         .iter()
         .filter_map(|v| {
@@ -258,11 +421,6 @@ fn single_typed_tuple_arms(
             if tp.path.segments.last().map(|s| s.ident != ty_name).unwrap_or(true) {
                 return None;
             }
-            let binding = if ty_name == "String" {
-                quote::format_ident!("value")
-            } else {
-                quote::format_ident!("info")
-            };
             Some(quote! {
                 #public_name => ::core::option::Option::Some(#enum_name::#ident(#binding)),
             })

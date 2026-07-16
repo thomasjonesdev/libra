@@ -96,7 +96,8 @@ now run on (completed rename/ergonomics plans live under
   `#[libra::actions]`/`libra::app!` at their documented import path
   (still needs `libra-core`/`libra-platform`/`serde` as direct deps too
   — see its doc comment)
-- `cli/libra` — `libra check`: parse+validate every .lx in microseconds
+- `cli/libra` — `libra check`: parse+validate every .lx in microseconds;
+  `libra dev`: run an app crate in debug with view hot reload (§18.2)
 - `examples/counter` — the Phase 0 reference app; §5.8's "counter in
   ~10 lines" made real
 - `examples/fetcher` — the Phase 1 reference app: fetches (GitHub zen)
@@ -127,6 +128,8 @@ now run on (completed rename/ergonomics plans live under
     cargo run -p gallery                         # component gallery; theme toggle
     cargo run -p gallery -- themes/solarized.toml   # custom TOML theme, hot-reloaded
     cargo run -p libra-cli -- check .   # validate all markup
+    libra dev examples/counter          # after `cargo install --path cli/libra`
+    libra dev -- themes/solarized.toml  # from examples/gallery, forward args
 
 Requires Rust >= 1.75. The test suite never needs a display.
 

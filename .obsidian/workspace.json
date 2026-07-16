@@ -1,0 +1,239 @@
+{
+  "main": {
+    "id": "928b43a2540bbb7f",
+    "type": "split",
+    "children": [
+      {
+        "id": "283ccf1d3f04ae7b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "987e4302a8c3c601",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "PLAN-NATIVE-INTEGRATIONS"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "d8b2024393f9b2e8",
+    "type": "split",
+    "children": [
+      {
+        "id": "f7685c86b4ff7755",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2649837536fbcf5b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "95a0c2798a9c29e0",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "a3bab029ae954836",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "10c43daeb6e55c21",
+    "type": "split",
+    "children": [
+      {
+        "id": "823b78cfa1e445ec",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "78457a392a1d54af",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for PLAN-NATIVE-INTEGRATIONS"
+            }
+          },
+          {
+            "id": "e07895f32a0eb728",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from PLAN-NATIVE-INTEGRATIONS"
+            }
+          },
+          {
+            "id": "e8e25dec6c47961c",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "8fb8bd7967616cee",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "2d92f0e65e7ca5b9",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of PLAN-NATIVE-INTEGRATIONS"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "floating": {
+    "id": "8796d15ceb85c118",
+    "type": "floating",
+    "children": [
+      {
+        "id": "aa242c9acb54e140",
+        "type": "window",
+        "children": [
+          {
+            "id": "0a628272e313539f",
+            "type": "tabs",
+            "children": [
+              {
+                "id": "8526468f49d5f9b4",
+                "type": "leaf",
+                "state": {
+                  "type": "empty",
+                  "state": {},
+                  "icon": "lucide-file",
+                  "title": "New tab"
+                }
+              }
+            ]
+          }
+        ],
+        "direction": "vertical",
+        "x": 352,
+        "y": 95,
+        "width": 1024,
+        "height": 800,
+        "maximize": false,
+        "zoom": 0
+      }
+    ]
+  },
+  "active": "987e4302a8c3c601",
+  "lastOpenFiles": [
+    "target/debug/deps/dashboard-52cd0c599af5f6e4",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.0m14vrf16winzb2nufs0t37d8.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.9jagfgwu0u6enuvwoxqxndq10.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.7gk5eegulytygysx7b798wuh5.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.2uqu7hztq1h46pc7jaaummlpa.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.76zrqny05v9r2e3nod15mn1jl.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.akw8tav7d3f2mho7opqf4fzr7.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.9taky60nk10lm0hoijv7ect6u.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.2cvcl3t4rafpvr8dzwtltvmrl.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.7wisao072yc4qfzebb3e6hwgf.00lwqet.rcgu.o",
+    "target/debug/deps/dashboard-52cd0c599af5f6e4.6mp4rf5qundt30o6okw4f9alg.00lwqet.rcgu.o",
+    "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+    "architecture/plans/PLAN-CATALOG.md",
+    "architecture/plans/PLAN-TOKENS.md",
+    "architecture/plans/PLAN-UI-SURFACE.md"
+  ]
+}

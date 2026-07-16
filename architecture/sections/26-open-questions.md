@@ -13,7 +13,7 @@ type: architecture
 
 # 26. Open Questions
 
-1. **`.lx` expression whitelist breadth** — how many pure accessors before the grammar stops being "closed"? Start minimal (`len`, `isEmpty`, format specs, generated enum predicates); every addition needs a use case the State-field pattern genuinely can't serve.
+1. **`.lx` expression whitelist breadth** — how many pure accessors before the grammar stops being "closed"? Start minimal (`len`, `isEmpty`, format specs, generated enum predicates); every addition needs a use case the State-field pattern genuinely can't serve. **Loop-scoped item fields** (`{t.text}`, `key={t.id}`, `onPress={complete(t.id)}`) landed via [[PLAN-ITEM-FIELDS]]; **top-level `{user.name}` + `len`/`isEmpty`** landed via [[PLAN-ACCESSORS]]. Remaining: format specs, enum `is*` predicates.
 2. **~~Msg payload ergonomics~~ — resolved by the action layer ([[05-state-and-actions|§5]]).** Payloads are method parameters; the struct-vs-tuple-variant question dissolves into signature style, and markup dispatch follows the reflected signature.
 3. **Multi-window model — resolved: one State, per-window view roots.** Ground-control consoles are multi-monitor; a single source of truth across a window wall is the point. Each window declares a root view in `libra.toml`; all windows dispatch into one action queue; damage/paint are per-window; snapshot tests address windows individually. Per-window state fragmentation is rejected for the same reason Context was.
 4. **`Frame` cadence off-vsync** — headless/test mode uses injected clocks; should `libra dev` offer a fixed-step mode for reproducing timing bugs live?

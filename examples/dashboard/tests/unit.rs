@@ -1,7 +1,7 @@
-//! Unit tests (§15.2): pure actions and pure subscriptions.
+//! Unit tests (§15.2): pure actions.
 
-use dashboard::{reduce, subscriptions, Action, Dashboard, SERIES};
-use libra_core::{Effect, FrameInfo, SeriesId, Sub};
+use dashboard::{reduce, Action, Dashboard, SERIES};
+use libra_core::{Effect, FrameInfo, SeriesId};
 
 #[test]
 fn init_opens_sixteen_ingests() {
@@ -12,19 +12,18 @@ fn init_opens_sixteen_ingests() {
 }
 
 #[test]
-fn toggle_closes_ingest_and_drops_the_frames_sub() {
+fn toggle_closes_ingest_and_clears_running() {
     let (mut s, _) = Dashboard::init();
-    assert_eq!(subscriptions(&s).len(), 1, "running → Sub::Frames active");
+    assert!(s.running);
 
     let fx = reduce(&mut s, Action::Toggle);
     assert!(!s.running);
     assert_eq!(fx.len(), SERIES as usize);
     assert!(matches!(fx[0], Effect::IngestClose { series: SeriesId(0) }));
-    assert!(subscriptions(&s).is_empty(), "paused → no subscriptions");
 
     let fx = reduce(&mut s, Action::Toggle);
+    assert!(s.running);
     assert!(matches!(fx[0], Effect::IngestOpen { .. }));
-    assert!(matches!(subscriptions(&s)[0], Sub::Frames { .. }));
 }
 
 #[test]

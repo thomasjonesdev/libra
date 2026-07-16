@@ -1,0 +1,9 @@
+<Column gap={8} padding={12}>
+  <if test={running}>
+    <Text testId="branch">live</Text>
+    <Frames onTick={frame} />
+    <else>
+      <Text testId="branch">paused</Text>
+    </else>
+  </if>
+</Column>

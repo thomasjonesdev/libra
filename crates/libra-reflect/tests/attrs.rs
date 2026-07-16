@@ -5,7 +5,9 @@
 //! doesn't exist yet (PLAN-ERGONOMICS.md E1) — same macros, same
 //! expansion, different import spelling.
 
-use libra_core::{Effect, FrameInfo, HttpRequest, HttpResult, IntoEffects, ReflectAction, ReflectState};
+use libra_core::{
+    Effect, FrameInfo, HttpRequest, HttpResult, Instant, IntoEffects, ReflectAction, ReflectState,
+};
 use libra_reflect::{actions, state};
 
 #[state]
@@ -59,6 +61,12 @@ impl CounterState {
     fn frame(&mut self, info: FrameInfo) {
         self.last_frame_ms = info.t_ms;
     }
+
+    // Single-Instant-arg: §12.5's <Interval every={ms} onTick={poll}>
+    // source element — same shape as `frame`, different payload type.
+    fn poll(&mut self, instant: Instant) {
+        self.last_frame_ms = instant.t_ms;
+    }
 }
 
 #[test]
@@ -76,6 +84,21 @@ fn state_derives_are_bundled_and_reflect_state_works() {
     assert_eq!(s.field("count").as_deref(), Some("3"));
     assert_eq!(s.field("quote"), None);
     assert_eq!(CounterState::field_names(), &["count"]);
+}
+
+#[test]
+fn single_instant_arg_methods_are_handlers_for_interval_source_elements() {
+    let instant = Instant::at(2500.0);
+    assert_eq!(Action::action_with_instant("poll", instant), Some(Action::Poll(instant)));
+    // Not nameable via the other two paths:
+    assert_eq!(Action::action_by_name("poll"), None);
+    assert_eq!(Action::action_with_str("poll", String::new()), None);
+    // Nor the FrameInfo path — distinct payload type, distinct handler:
+    assert_eq!(Action::action_with_frame_info("poll", FrameInfo::at(2500.0)), None);
+
+    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    reduce(&mut s, Action::Poll(instant));
+    assert_eq!(s.last_frame_ms, 2500.0);
 }
 
 #[state]
@@ -106,6 +129,46 @@ fn vec_fields_route_to_collection_not_field() {
     assert_eq!(items[1].parse::<SeriesHandle>().unwrap(), s.series[1]);
 
     assert_eq!(s.collection("nonexistent"), None);
+}
+
+#[test]
+fn structured_vec_elements_expose_fields_via_collection_rows() {
+    use libra_core::{collection_row_opaque, CollectionRow, LibraReflect};
+
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, LibraReflect)]
+    struct Row {
+        id: u32,
+        label: String,
+    }
+    impl std::fmt::Display for Row {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.id)
+        }
+    }
+
+    #[state]
+    struct ListState {
+        rows: Vec<Row>,
+    }
+
+    let s = ListState {
+        rows: vec![Row { id: 7, label: "Alpha".into() }],
+    };
+    let rows = s.collection_rows("rows").expect("rows is iterable");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].whole, "7");
+    assert_eq!(
+        rows[0].get("t.id", "t").as_deref(),
+        Some("7")
+    );
+    assert_eq!(
+        rows[0].get("t.label", "t").as_deref(),
+        Some("Alpha")
+    );
+    // Opaque SeriesHandle-style path still works via collection_row_opaque:
+    let opaque = collection_row_opaque(&"plain".to_string());
+    assert_eq!(opaque, CollectionRow::opaque("plain"));
+    assert!(opaque.fields.is_empty());
 }
 
 #[test]

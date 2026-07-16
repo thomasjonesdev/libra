@@ -28,10 +28,11 @@ pub mod a11y;
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use libra_core::{App, Effect, FrameInfo, ReflectAction, Sub};
+use libra_core::{App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub};
 use libra_text::{EditOp, EditState};
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -40,7 +41,7 @@ use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::{Damage, Renderer};
 use tiny_skia::Pixmap;
-use libra_components::{InputFocus, ItemKind, LaidTree, Role};
+use libra_components::{InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -287,6 +288,9 @@ where
         frame_cache: None,
         frames_active: false,
         markup_frame_handlers: Vec::new(),
+        markup_intervals: Vec::new(),
+        running_intervals: Vec::new(),
+        markup_streams: Vec::new(),
         focus: None,
         modifiers: ModifiersState::empty(),
         theme,
@@ -345,6 +349,21 @@ struct Shell<A: App> {
     /// `App::subscriptions()`'s `Sub::Frames` — either form (or both)
     /// keeps frame ticks flowing.
     markup_frame_handlers: Vec<String>,
+    /// §12.5: `(every_ms, onTick)` for every mounted `<Interval>` in
+    /// the current laid tree, refreshed by `relayout`. Diffed against
+    /// `running_intervals` in `sync_intervals` — mount starts a timer
+    /// thread, unmount cancels it.
+    markup_intervals: Vec<(u64, String)>,
+    /// Timer threads backing `markup_intervals`, keyed by identity
+    /// `(every_ms, handler)` — mirrors `libra-effects`' one-shot Timer
+    /// dedicated-thread pattern, just recurring. The `AtomicBool` is
+    /// each thread's cancel flag.
+    running_intervals: Vec<(u64, String, Arc<AtomicBool>)>,
+    /// §12.5: `(id, onEvent)` for every mounted `<Stream>` in the
+    /// current laid tree — grammar + mount + query only in v1 (no
+    /// event delivery yet, PLAN-SOURCES), collected so `has_source`/a
+    /// future differ can see them.
+    markup_streams: Vec<(String, String)>,
     /// §10.1 focus: focused Input id + editing state + onChange name.
     focus: Option<(String, EditState, String)>,
     modifiers: ModifiersState,
@@ -390,34 +409,60 @@ where
         let field = |p: &str| self.app.field(p);
         let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
         let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
-        let collection = |p: &str| self.app.collection(p);
+        let collection_rows = |p: &str| self.app.collection_rows(p);
         let has_frame_info_action =
             |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
+        let has_instant_action =
+            |m: &str| A::Msg::action_with_instant(m, LxInstant::at(0.0)).is_some();
         let scope = Scope {
             field: &field,
             has_action: &has_action,
             has_str_action: &has_str_action,
-            collection: &collection,
+            collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
+            has_instant_action: &has_instant_action,
         };
         match libra_interp::resolve(&self.ast, &scope) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
-                    // §12.5: collect every mounted <Frames> handler name
-                    // so sync_subscriptions/tick_frame can union them
-                    // with App::subscriptions() — the markup-declared
-                    // and Rust-declared forms are equally valid.
+                    // §12.5: collect every mounted source element's
+                    // declaration so sync_subscriptions/tick_frame/
+                    // sync_intervals can union/diff them against
+                    // App::subscriptions() and the previously-running
+                    // set — the markup-declared and Rust-declared forms
+                    // are equally valid.
                     self.markup_frame_handlers = laid
                         .items
                         .iter()
                         .filter_map(|i| match &i.kind {
-                            ItemKind::Source { on_tick } => Some(on_tick.clone()),
+                            ItemKind::Source(SourceDecl::Frames { on_tick }) => Some(on_tick.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    self.markup_intervals = laid
+                        .items
+                        .iter()
+                        .filter_map(|i| match &i.kind {
+                            ItemKind::Source(SourceDecl::Interval { every_ms, on_tick }) => {
+                                Some((*every_ms, on_tick.clone()))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    self.markup_streams = laid
+                        .items
+                        .iter()
+                        .filter_map(|i| match &i.kind {
+                            ItemKind::Source(SourceDecl::Stream { id, on_event }) => {
+                                Some((id.clone(), on_event.clone()))
+                            }
                             _ => None,
                         })
                         .collect();
                     self.laid = Some(laid);
                     self.overlay = None;
                     self.push_a11y();
+                    self.sync_intervals();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
             },
@@ -474,6 +519,62 @@ where
             self.next_frame_at = Instant::now();
         }
         self.frames_active = want;
+    }
+
+    /// §12.5: diff `markup_intervals` against the running set, starting
+    /// a dedicated timer thread per newly-mounted identity
+    /// `(every_ms, on_tick)` and cancelling threads whose identity is no
+    /// longer mounted — "mount = subscribe, unmount = cancel," the same
+    /// contract `sync_subscriptions`/`tick_frame` give `<Frames>`, just
+    /// per-cadence instead of per-vsync. Mirrors `libra-effects`' Timer
+    /// dedicated-thread pattern: a sleeping timer must not occupy a
+    /// shared pool worker.
+    fn sync_intervals(&mut self) {
+        // Dedup: a repeated <Interval> with the same identity still
+        // runs just once (same treatment tick_frame gives duplicate
+        // <Frames> handlers).
+        let mut wanted: Vec<(u64, String)> = Vec::new();
+        for id in &self.markup_intervals {
+            if !wanted.contains(id) {
+                wanted.push(id.clone());
+            }
+        }
+
+        self.running_intervals.retain(|(every_ms, name, cancel)| {
+            let keep = wanted.iter().any(|(ms, n)| ms == every_ms && n == name);
+            if !keep {
+                cancel.store(true, Ordering::Relaxed);
+            }
+            keep
+        });
+
+        for (every_ms, name) in wanted {
+            if self.running_intervals.iter().any(|(ms, n, _)| *ms == every_ms && *n == name) {
+                continue;
+            }
+            let cancel = Arc::new(AtomicBool::new(false));
+            let cancel_thread = Arc::clone(&cancel);
+            let sink = Arc::clone(&self.a11y_sink);
+            let started = self.started;
+            let handler = name.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(every_ms.max(1)));
+                if cancel_thread.load(Ordering::Relaxed) {
+                    break;
+                }
+                let t_ms = started.elapsed().as_secs_f64() * 1000.0;
+                match A::Msg::action_with_instant(&handler, LxInstant::at(t_ms)) {
+                    Some(msg) => sink(msg),
+                    None => {
+                        eprintln!(
+                            "[libra] <Interval onTick={{{handler}}}> resolved to no action — reflection out of sync"
+                        );
+                        break;
+                    }
+                }
+            });
+            self.running_intervals.push((every_ms, name, cancel));
+        }
     }
 
     /// Stage 1: match tick cadence to the window's actual monitor so

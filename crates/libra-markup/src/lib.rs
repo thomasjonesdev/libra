@@ -279,16 +279,23 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         let head = self.path()?;
-                        // `name(arg)` — an action call with one binding
-                        // argument (§6.2 item-scoped handlers). Bare
-                        // `name` stays an Ident.
+                        // `name(arg)` — action call with one binding
+                        // argument (§6.2 item-scoped handlers).
+                        // `name()` — empty parens, kept as Ident so
+                        // engines can treat `items.len()` like
+                        // `items.len` (PLAN-ACCESSORS).
                         if self.peek() == Some('(') {
                             self.bump();
                             self.skip_ws();
-                            let arg = self.path()?;
-                            self.skip_ws();
-                            self.expect(')', "to close the action argument")?;
-                            AttrValue::Call { name: head, arg }
+                            if self.peek() == Some(')') {
+                                self.bump();
+                                AttrValue::Ident(head)
+                            } else {
+                                let arg = self.path()?;
+                                self.skip_ws();
+                                self.expect(')', "to close the action argument")?;
+                                AttrValue::Call { name: head, arg }
+                            }
                         } else {
                             AttrValue::Ident(head)
                         }
@@ -353,6 +360,13 @@ impl<'a> Parser<'a> {
                     self.bump();
                     self.skip_ws();
                     let path = self.path()?;
+                    // Optional empty `()` — `{items.len()}` ≡ `{items.len}`
+                    // (PLAN-ACCESSORS). Non-empty calls aren't text binds.
+                    if self.peek() == Some('(') {
+                        self.bump();
+                        self.skip_ws();
+                        self.expect(')', "empty () after an accessor path (or omit the parens)")?;
+                    }
                     self.skip_ws();
                     self.expect('}', "to close the text binding")?;
                     text.push(Inline::Bind { path, span });
@@ -419,6 +433,18 @@ mod tests {
         assert_eq!(inl[0], Inline::Lit("count:".into()));
         assert!(matches!(&inl[1], Inline::Bind { path, .. } if path == "count"));
         assert_eq!(inl[2], Inline::Lit("·".into()));
+    }
+
+    #[test]
+    fn empty_parens_on_accessor_path_are_accepted() {
+        let root = parse("<Text>{items.len()}</Text>").unwrap();
+        let Node::Element { children, .. } = &root else { panic!() };
+        let Node::Text(inl) = &children[0] else { panic!() };
+        assert!(matches!(&inl[0], Inline::Bind { path, .. } if path == "items.len"));
+
+        let root = parse(r#"<if test={items.isEmpty()}><Text>x</Text></if>"#).unwrap();
+        let Node::Element { attrs, .. } = &root else { panic!() };
+        assert!(matches!(&attrs[0].value, AttrValue::Ident(p) if p == "items.isEmpty"));
     }
 
     #[test]

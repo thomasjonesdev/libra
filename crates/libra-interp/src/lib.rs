@@ -8,6 +8,7 @@
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
 use libra_components::{BoxStyle, TextSize, Variant, ViewNode};
+use libra_core::CollectionRow;
 
 #[derive(Debug, Clone)]
 pub struct InterpError {
@@ -62,15 +63,20 @@ pub struct Scope<'a> {
     /// Does this name resolve to a String-payload handler
     /// (`onChange={titleChanged}`)? See `ReflectAction::action_with_str`.
     pub has_str_action: &'a dyn Fn(&str) -> bool,
-    /// Resolve an iterable binding path to each element's display
-    /// text (§6.2's `<for each={path}>`). `None` means the top-level
-    /// resolve() call site doesn't support iteration (e.g. hand-built
-    /// scopes in tests that never construct a `<for>`) — every real
-    /// Scope built from `ReflectState::collection` supplies this.
-    pub collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
+    /// Resolve an iterable binding path to structured rows (§6.2's
+    /// `<for each={path}>`, including item fields). `None` means the
+    /// top-level resolve() call site doesn't support iteration (e.g.
+    /// hand-built scopes in tests that never construct a `<for>`) —
+    /// every real Scope built from `ReflectState::collection_rows`
+    /// supplies this.
+    pub collection_rows: &'a dyn Fn(&str) -> Option<Vec<CollectionRow>>,
     /// Does this name resolve to a `FrameInfo`-payload handler (§12.5's
     /// `<Frames onTick={name}>`)? See `ReflectAction::action_with_frame_info`.
     pub has_frame_info_action: &'a dyn Fn(&str) -> bool,
+    /// Does this name resolve to an `Instant`-payload handler (§12.5's
+    /// `<Interval every={ms} onTick={name}>`)? See
+    /// `ReflectAction::action_with_instant`.
+    pub has_instant_action: &'a dyn Fn(&str) -> bool,
 }
 
 pub fn resolve(ast: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
@@ -78,10 +84,10 @@ pub fn resolve(ast: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
 }
 
 /// Resolve a list of children into a flat list of ViewNodes — `<for>`
-/// expands to zero or more siblings, everything else to exactly one.
-/// Bare text between elements is an error here (matches Column/Row's
-/// existing contract: text must be wrapped in `<Text>`); `parent_name`
-/// and `parent_span` are only for that error message.
+/// and `<if>` expand to zero or more siblings, everything else to
+/// exactly one. Bare text between elements is an error here (matches
+/// Column/Row's existing contract: text must be wrapped in `<Text>`);
+/// `parent_name` and `parent_span` are only for that error message.
 fn resolve_children(
     children: &[Node],
     scope: &Scope,
@@ -98,6 +104,7 @@ fn resolve_children(
     for c in children {
         match c {
             Node::Element { name, .. } if name == "for" => out.extend(resolve_for(c, scope)?),
+            Node::Element { name, .. } if name == "if" => out.extend(resolve_if(c, scope)?),
             _ => out.push(element(c, scope)?),
         }
     }
@@ -105,18 +112,16 @@ fn resolve_children(
 }
 
 /// `<for each={path} as="name" key={...}>` (§6.2): iterate a
-/// `Vec`-typed state field, binding `name` in the body to each
-/// element's display text — the same Display/FromStr round-trip a
-/// scalar binding already uses (works today for anything `Chart`/
-/// `Sparkline` already round-trip via `SeriesHandle`).
+/// `Vec`-typed state field. Opaque elements bind `name` to the item's
+/// Display text; structured elements (`ReflectState` item types) also
+/// expose `{name.field}` for binds, keys, and item-scoped handler args
+/// (PLAN-ITEM-FIELDS).
 ///
-/// v1 scope: `key` must be the loop variable itself (`key={name}`),
-/// not a dot-path into it (`key={name.id}`) — there's no reconciler
-/// consuming identity yet (CLAUDE.md: full tree rebuild per dispatch),
-/// and dot-path access into a loop-bound Display string would need
-/// structured (non-Display) reflection this doesn't have. For a type
-/// like `SeriesHandle` whose Display already embeds its id, `key={name}`
-/// is already a unique identity per element.
+/// `key` is the loop variable itself (`key={name}`) or one field on it
+/// (`key={name.id}`). Nested paths (`name.a.b`) and keys that don't
+/// name the loop variable are span-diagnosed errors. There's no
+/// reconciler consuming identity yet (full tree rebuild per dispatch);
+/// keys are identity *data* for later.
 fn resolve_for(node: &Node, scope: &Scope) -> Result<Vec<ViewNode>, InterpError> {
     let Node::Element { attrs, children, span, .. } = node else { unreachable!() };
 
@@ -136,38 +141,121 @@ fn resolve_for(node: &Node, scope: &Scope) -> Result<Vec<ViewNode>, InterpError>
         as_name.ok_or_else(|| err(*span, "<for> requires as=\"name\" (the loop variable)"))?;
     let (key_path, kspan) = key
         .ok_or_else(|| err(*span, "<for> requires key={...} — identity for reordering (§6.2)"))?;
-    if key_path != as_name {
-        return Err(err(
-            kspan,
-            format!(
-                "<for>: key={{{key_path}}} — only key={{{as_name}}} (the loop variable itself) is \
-                 supported today; per-field keys into loop-bound values aren't implemented yet"
-            ),
-        ));
-    }
+    validate_loop_key(&key_path, &as_name, kspan)?;
 
-    let items = (scope.collection)(&path)
+    let items = (scope.collection_rows)(&path)
         .ok_or_else(|| err(espan, format!("no collection '{path}' on State")))?;
 
     let mut out = Vec::new();
-    for item in &items {
+    for row in &items {
+        let as_name = as_name.as_str();
         let item_field = |p: &str| -> Option<String> {
-            if p == as_name {
-                Some(item.clone())
-            } else {
-                (scope.field)(p)
+            if let Some(v) = row.get(p, as_name) {
+                return Some(v);
             }
+            // A failed loop-scoped path must not fall through to outer
+            // state (would hide typos like `{t.tex}` as a state lookup).
+            if p == as_name || p.starts_with(&format!("{as_name}.")) {
+                return None;
+            }
+            (scope.field)(p)
         };
         let iter_scope = Scope {
             field: &item_field,
             has_action: scope.has_action,
             has_str_action: scope.has_str_action,
-            collection: scope.collection,
+            collection_rows: scope.collection_rows,
             has_frame_info_action: scope.has_frame_info_action,
+            has_instant_action: scope.has_instant_action,
         };
         out.extend(resolve_children(children, &iter_scope, "for", *span)?);
     }
     Ok(out)
+}
+
+/// `key={as}` or `key={as.field}` — one field segment only.
+fn validate_loop_key(key_path: &str, as_name: &str, span: Span) -> Result<(), InterpError> {
+    if key_path == as_name {
+        return Ok(());
+    }
+    let Some(field) = key_path.strip_prefix(&format!("{as_name}.")) else {
+        return Err(err(
+            span,
+            format!(
+                "<for>: key={{{key_path}}} — key must be {{{as_name}}} or {{{as_name}.field}}"
+            ),
+        ));
+    };
+    if field.is_empty() || field.contains('.') {
+        return Err(err(
+            span,
+            format!(
+                "<for>: key={{{key_path}}} — only one field segment is supported \
+                 (got {{{as_name}.field}}, not nested paths)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// `<if test={flag}>…<else>…</else></if>` (§6.2 / PLAN-IF + PLAN-ACCESSORS):
+/// expand to the then-branch or else-branch children. `test` is any
+/// binding whose Display equals `"true"` (bool fields, `isEmpty`
+/// accessors). The If node itself never appears in the ViewTree.
+fn resolve_if(node: &Node, scope: &Scope) -> Result<Vec<ViewNode>, InterpError> {
+    let Node::Element { attrs, children, span, .. } = node else { unreachable!() };
+
+    let mut test: Option<(String, Span)> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("test", AttrValue::Ident(path)) => test = Some((path.clone(), a.span)),
+            _ => return Err(unknown_attr("if", a)),
+        }
+    }
+    let (path, tspan) = test.ok_or_else(|| err(*span, "<if> requires test={someBoolField}"))?;
+    let (then_kids, else_kids) = split_if_branches(children, *span)?;
+    let value = (scope.field)(&path)
+        .ok_or_else(|| err(tspan, format!("no field '{path}' on State")))?;
+    let take_then = value == "true";
+    let branch = if take_then { then_kids } else { else_kids };
+    resolve_children(branch, scope, "if", *span)
+}
+
+/// Partition `<if>` children into then / else. At most one `<else>`;
+/// it may only appear as a direct child and carries no attributes.
+fn split_if_branches<'a>(
+    children: &'a [Node],
+    span: Span,
+) -> Result<(&'a [Node], &'a [Node]), InterpError> {
+    let mut else_at: Option<usize> = None;
+    for (i, c) in children.iter().enumerate() {
+        if let Node::Element { name, .. } = c {
+            if name == "else" {
+                if else_at.is_some() {
+                    return Err(err(span, "<if> allows at most one <else>"));
+                }
+                else_at = Some(i);
+            }
+        }
+    }
+    match else_at {
+        None => Ok((children, &[])),
+        Some(i) => {
+            if i + 1 != children.len() {
+                return Err(err(
+                    span,
+                    "<if>: <else> must be the last child (nothing after </else>)",
+                ));
+            }
+            let Node::Element { attrs, children: else_kids, span: espan, .. } = &children[i] else {
+                unreachable!()
+            };
+            if !attrs.is_empty() {
+                return Err(err(*espan, "<else> takes no attributes"));
+            }
+            Ok((&children[..i], else_kids))
+        }
+    }
 }
 
 fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
@@ -356,8 +444,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         }
 
         // §12.5: invisible, zero-layout — declares a mount-scoped
-        // subscription rather than rendering anything. `Interval`/
-        // `Stream` are the same pattern, not yet implemented.
+        // subscription rather than rendering anything.
         "Frames" => {
             let mut on_tick: Option<(String, Span)> = None;
             for a in attrs {
@@ -378,12 +465,68 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::SourceFrames { on_tick: msg })
         }
 
+        // §12.5: invisible, zero-layout — a recurring timer while
+        // mounted, identity `(every_ms, on_tick)`.
+        "Interval" => {
+            let mut every: Option<(u64, Span)> = None;
+            let mut on_tick: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("every", AttrValue::Num(v)) => every = Some((*v as u64, a.span)),
+                    ("onTick", AttrValue::Ident(m)) => on_tick = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (every_ms, _espan) =
+                every.ok_or_else(|| err(*span, "<Interval> requires every={milliseconds}"))?;
+            let (msg, mspan) =
+                on_tick.ok_or_else(|| err(*span, "<Interval> requires onTick={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_instant_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not an Instant-payload Action variant (need `{msg}(Instant)`)"),
+                ));
+            }
+            Ok(ViewNode::SourceInterval { every_ms, on_tick: msg })
+        }
+
+        // §12.5: grammar + mount + query in v1 — `id` resolves like any
+        // other binding; full event delivery (Ws/Spawn) is a later
+        // change (PLAN-SOURCES).
+        "Stream" => {
+            let mut id: Option<(String, Span)> = None;
+            let mut on_event: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("id", AttrValue::Ident(path)) => id = Some((path.clone(), a.span)),
+                    ("onEvent", AttrValue::Ident(m)) => on_event = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, ispan) = id.ok_or_else(|| err(*span, "<Stream> requires id={someField}"))?;
+            let id_value = (scope.field)(&path)
+                .ok_or_else(|| err(ispan, format!("no field '{path}' on State")))?;
+            let (msg, mspan) =
+                on_event.ok_or_else(|| err(*span, "<Stream> requires onEvent={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            Ok(ViewNode::SourceStream { id: id_value, on_event: msg })
+        }
+
         "for" => Err(err(*span, "<for> is only allowed as a direct child of <Column>/<Row>")),
+        "if" => Err(err(*span, "<if> is only allowed as a direct child of <Column>/<Row>")),
+        "else" => Err(err(*span, "<else> is only allowed as a direct child of <if>")),
 
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, for"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
             ),
         )),
     }
@@ -433,8 +576,9 @@ mod tests {
             field,
             has_action,
             has_str_action: &|_| false,
-            collection: &|_| None,
+            collection_rows: &|_| None,
             has_frame_info_action: &|_| false,
+            has_instant_action: &|_| false,
         }
     }
 
@@ -507,8 +651,9 @@ mod tests {
             field,
             has_action: &|_| false,
             has_str_action,
-            collection: &|_| None,
+            collection_rows: &|_| None,
             has_frame_info_action: &|_| false,
+            has_instant_action: &|_| false,
         }
     }
 
@@ -554,15 +699,20 @@ mod tests {
 
     fn scope_with_collection<'a>(
         field: &'a dyn Fn(&str) -> Option<String>,
-        collection: &'a dyn Fn(&str) -> Option<Vec<String>>,
+        collection_rows: &'a dyn Fn(&str) -> Option<Vec<CollectionRow>>,
     ) -> Scope<'a> {
         Scope {
             field,
             has_action: &|_| true,
             has_str_action: &|_| false,
-            collection,
+            collection_rows,
             has_frame_info_action: &|_| false,
+            has_instant_action: &|_| false,
         }
+    }
+
+    fn opaque_items(items: Vec<&str>) -> Vec<CollectionRow> {
+        items.into_iter().map(|s| CollectionRow::opaque(s.to_string())).collect()
     }
 
     #[test]
@@ -572,9 +722,9 @@ mod tests {
         )
         .unwrap();
         let field = |_: &str| None;
-        let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let collection = move |p: &str| (p == "items").then(|| items.clone());
-        let view = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap();
+        let items = opaque_items(vec!["a", "b", "c"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap();
         let ViewNode::Column { children, .. } = view else { panic!() };
         assert_eq!(children.len(), 3);
         for (i, expected) in ["a", "b", "c"].iter().enumerate() {
@@ -594,9 +744,9 @@ mod tests {
         )
         .unwrap();
         let field = |p: &str| (p == "count").then(|| "7".to_string());
-        let items = vec!["a".to_string()];
-        let collection = move |p: &str| (p == "items").then(|| items.clone());
-        let view = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap();
+        let items = opaque_items(vec!["a"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap();
         let ViewNode::Column { children, .. } = view else { panic!() };
         let ViewNode::Text { content, .. } = &children[0] else { panic!() };
         assert_eq!(content, "a - 7");
@@ -606,8 +756,8 @@ mod tests {
     fn for_requires_each() {
         let ast = parse(r#"<Column><for as="x" key={x}><Text>{x}</Text></for></Column>"#).unwrap();
         let field = |_: &str| None;
-        let collection = |_: &str| None;
-        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        let collection_rows = |_: &str| None;
+        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap_err();
         assert!(e.message.contains("requires each="));
     }
 
@@ -615,23 +765,77 @@ mod tests {
     fn for_requires_key() {
         let ast = parse(r#"<Column><for each={items} as="x"><Text>{x}</Text></for></Column>"#).unwrap();
         let field = |_: &str| None;
-        let items = vec!["a".to_string()];
-        let collection = move |p: &str| (p == "items").then(|| items.clone());
-        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        let items = opaque_items(vec!["a"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap_err();
         assert!(e.message.contains("requires key="));
     }
 
     #[test]
-    fn for_key_must_be_the_loop_variable_itself() {
+    fn for_key_may_be_a_single_field_on_the_loop_variable() {
         let ast = parse(
-            r#"<Column><for each={items} as="x" key={x.id}><Text>{x}</Text></for></Column>"#,
+            r#"<Column><for each={items} as="x" key={x.id}><Text>{x.label}</Text></for></Column>"#,
         )
         .unwrap();
         let field = |_: &str| None;
-        let items = vec!["a".to_string()];
-        let collection = move |p: &str| (p == "items").then(|| items.clone());
-        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
-        assert!(e.message.contains("only key={x}"), "{}", e.message);
+        let items = vec![CollectionRow {
+            whole: "row-1".into(),
+            fields: vec![("id".into(), "1".into()), ("label".into(), "Alpha".into())],
+        }];
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        assert_eq!(content, "Alpha");
+    }
+
+    #[test]
+    fn for_key_rejects_nested_field_paths() {
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={x.id.extra}><Text>{x}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = opaque_items(vec!["a"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap_err();
+        assert!(e.message.contains("one field segment"), "{}", e.message);
+    }
+
+    #[test]
+    fn for_key_must_name_the_loop_variable() {
+        let ast = parse(
+            r#"<Column><for each={items} as="x" key={other}><Text>{x}</Text></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = opaque_items(vec!["a"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap_err();
+        assert!(e.message.contains("key must be {x}"), "{}", e.message);
+    }
+
+    #[test]
+    fn item_scoped_handler_can_bind_a_field_payload() {
+        let ast = parse(
+            r#"<Column><for each={items} as="t" key={t.id}><Button onPress={complete(t.id)}>{t.text}</Button></for></Column>"#,
+        )
+        .unwrap();
+        let field = |_: &str| None;
+        let items = vec![CollectionRow {
+            whole: "1".into(),
+            fields: vec![("id".into(), "1".into()), ("text".into(), "Buy milk".into())],
+        }];
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
+        let mut scope = scope_with_collection(&field, &collection_rows);
+        let has_str = |m: &str| m == "complete";
+        scope.has_str_action = &has_str;
+        let view = resolve(&ast, &scope).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Button { on_press, on_press_arg, label, .. } = &children[0] else { panic!() };
+        assert_eq!(on_press, "complete");
+        assert_eq!(on_press_arg.as_deref(), Some("1"));
+        assert_eq!(label, "Buy milk");
     }
 
     #[test]
@@ -641,8 +845,8 @@ mod tests {
         )
         .unwrap();
         let field = |_: &str| None;
-        let collection = |_: &str| None;
-        let e = resolve(&ast, &scope_with_collection(&field, &collection)).unwrap_err();
+        let collection_rows = |_: &str| None;
+        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows)).unwrap_err();
         assert!(e.message.contains("no collection 'nonexistent' on State"));
     }
 
@@ -651,8 +855,20 @@ mod tests {
             field: &|_| None,
             has_action: &|_| true,
             has_str_action: &|_| false,
-            collection: &|_| None,
+            collection_rows: &|_| None,
             has_frame_info_action,
+            has_instant_action: &|_| false,
+        }
+    }
+
+    fn scope_with_instant<'a>(has_instant_action: &'a dyn Fn(&str) -> bool) -> Scope<'a> {
+        Scope {
+            field: &|_| None,
+            has_action: &|_| true,
+            has_str_action: &|_| false,
+            collection_rows: &|_| None,
+            has_frame_info_action: &|_| false,
+            has_instant_action,
         }
     }
 
@@ -690,15 +906,16 @@ mod tests {
         )
         .unwrap();
         let field = |_: &str| None;
-        let items = vec!["a".to_string(), "b".to_string()];
-        let collection = move |p: &str| (p == "items").then(|| items.clone());
+        let items = opaque_items(vec!["a", "b"]);
+        let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
         let has_frame_info_action = |m: &str| m == "frame";
         let scope = Scope {
             field: &field,
             has_action: &|_| true,
             has_str_action: &|_| false,
-            collection: &collection,
+            collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
+            has_instant_action: &|_| false,
         };
         let view = resolve(&ast, &scope).unwrap();
         let ViewNode::Column { children, .. } = view else { panic!() };
@@ -706,5 +923,123 @@ mod tests {
         for child in &children {
             assert_eq!(child, &ViewNode::SourceFrames { on_tick: "frame".into() });
         }
+    }
+
+    #[test]
+    fn if_takes_the_then_branch_when_test_displays_true() {
+        let ast = parse(
+            r#"<Column><if test={running}><Text>on</Text><else><Text>off</Text></else></if></Column>"#,
+        )
+        .unwrap();
+        let field = |p: &str| (p == "running").then(|| "true".to_string());
+        let view = resolve(&ast, &scope_ok(&field, &|_| true)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(children.len(), 1);
+        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        assert_eq!(content, "on");
+    }
+
+    #[test]
+    fn if_takes_the_else_branch_when_test_is_not_true() {
+        let ast = parse(
+            r#"<Column><if test={running}><Text>on</Text><else><Text>off</Text></else></if></Column>"#,
+        )
+        .unwrap();
+        let field = |p: &str| (p == "running").then(|| "false".to_string());
+        let view = resolve(&ast, &scope_ok(&field, &|_| true)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        assert_eq!(content, "off");
+    }
+
+    #[test]
+    fn if_without_else_emits_nothing_when_false() {
+        let ast = parse(r#"<Column><if test={running}><Text>on</Text></if></Column>"#).unwrap();
+        let field = |p: &str| (p == "running").then(|| "false".to_string());
+        let view = resolve(&ast, &scope_ok(&field, &|_| true)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn if_requires_test() {
+        let ast = parse(r#"<Column><if><Text>x</Text></if></Column>"#).unwrap();
+        let e = resolve(&ast, &scope_ok(&|_| None, &|_| true)).unwrap_err();
+        assert!(e.message.contains("requires test="));
+    }
+
+    #[test]
+    fn interval_resolves_to_a_source_node_when_on_tick_names_a_real_handler() {
+        let ast = parse(r#"<Column><Interval every={1000} onTick={poll} /></Column>"#).unwrap();
+        let has_instant_action = |m: &str| m == "poll";
+        let view = resolve(&ast, &scope_with_instant(&has_instant_action)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(
+            children,
+            vec![ViewNode::SourceInterval { every_ms: 1000, on_tick: "poll".into() }]
+        );
+    }
+
+    #[test]
+    fn interval_requires_every_and_on_tick() {
+        let has_instant_action = |_: &str| true;
+        let missing_every = parse(r#"<Column><Interval onTick={poll} /></Column>"#).unwrap();
+        let e = resolve(&missing_every, &scope_with_instant(&has_instant_action)).unwrap_err();
+        assert!(e.message.contains("requires every="), "{}", e.message);
+
+        let missing_on_tick = parse(r#"<Column><Interval every={1000} /></Column>"#).unwrap();
+        let e = resolve(&missing_on_tick, &scope_with_instant(&has_instant_action)).unwrap_err();
+        assert!(e.message.contains("requires onTick="), "{}", e.message);
+    }
+
+    #[test]
+    fn interval_on_tick_must_name_an_instant_handler() {
+        let ast = parse(r#"<Column><Interval every={1000} onTick={notAHandler} /></Column>"#).unwrap();
+        let has_instant_action = |_: &str| false;
+        let e = resolve(&ast, &scope_with_instant(&has_instant_action)).unwrap_err();
+        assert!(e.message.contains("not an Instant-payload Action variant"), "{}", e.message);
+    }
+
+    #[test]
+    fn stream_resolves_to_a_source_node_with_the_resolved_id_and_a_str_handler() {
+        let ast = parse(r#"<Column><Stream id={feed} onEvent={packet} /></Column>"#).unwrap();
+        let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
+        let has_str = |m: &str| m == "packet";
+        let view = resolve(&ast, &scope_item(&field, &has_str)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        assert_eq!(
+            children,
+            vec![ViewNode::SourceStream { id: "telemetry".into(), on_event: "packet".into() }]
+        );
+    }
+
+    #[test]
+    fn stream_requires_id_and_on_event() {
+        let has_str = |_: &str| true;
+        let missing_id = parse(r#"<Column><Stream onEvent={packet} /></Column>"#).unwrap();
+        let e = resolve(&missing_id, &scope_item(&|_| None, &has_str)).unwrap_err();
+        assert!(e.message.contains("requires id="), "{}", e.message);
+
+        let missing_on_event = parse(r#"<Column><Stream id={feed} /></Column>"#).unwrap();
+        let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
+        let e = resolve(&missing_on_event, &scope_item(&field, &has_str)).unwrap_err();
+        assert!(e.message.contains("requires onEvent="), "{}", e.message);
+    }
+
+    #[test]
+    fn stream_on_event_must_name_a_str_handler() {
+        let ast = parse(r#"<Column><Stream id={feed} onEvent={notAHandler} /></Column>"#).unwrap();
+        let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
+        let has_str = |_: &str| false;
+        let e = resolve(&ast, &scope_item(&field, &has_str)).unwrap_err();
+        assert!(e.message.contains("not a String-payload Action variant"), "{}", e.message);
+    }
+
+    #[test]
+    fn stream_id_must_resolve_to_a_real_binding() {
+        let ast = parse(r#"<Column><Stream id={gone} onEvent={packet} /></Column>"#).unwrap();
+        let has_str = |m: &str| m == "packet";
+        let e = resolve(&ast, &scope_item(&|_| None, &has_str)).unwrap_err();
+        assert!(e.message.contains("no field 'gone' on State"), "{}", e.message);
     }
 }

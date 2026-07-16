@@ -3,7 +3,34 @@
 //! node. `TestState`/`TestAction` exercise every binding & handler kind
 //! the grammar knows.
 
-use libra_core::{FrameInfo, LibraReflect, SeriesHandle, SeriesId};
+use libra_core::{FrameInfo, Instant, LibraReflect, SeriesHandle, SeriesId};
+
+#[derive(Debug, Clone, PartialEq, LibraReflect)]
+pub struct Item {
+    pub id: String,
+    pub label: String,
+}
+
+impl std::fmt::Display for Item {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Whole-value fallback for key={t} — id is unique.
+        write!(f, "{}", self.id)
+    }
+}
+
+/// Nested ReflectState for `{user.name}` / `test={user.active}`
+/// (PLAN-ACCESSORS).
+#[derive(Debug, Clone, PartialEq, LibraReflect)]
+pub struct User {
+    pub name: String,
+    pub active: bool,
+}
+
+impl std::fmt::Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, LibraReflect)]
 pub struct TestState {
@@ -15,6 +42,17 @@ pub struct TestState {
     /// for_loop fixture, not kitchen_sink (kept separate so this
     /// addition can't disturb kitchen_sink's existing tree shape).
     pub series: Vec<SeriesHandle>,
+    /// §6.2 item fields (`{t.label}`, `key={t.id}`, `onPress={…(t.id)}`)
+    /// — exercised by for_item_fields. Structured via LibraReflect on
+    /// [`Item`]; `series` stays opaque whole-value.
+    pub items: Vec<Item>,
+    /// §6.2 `<if test={running}>` — exercised by if_else. Bool Display
+    /// is `"true"`/`"false"`; codegen uses a typed `if state.running`.
+    pub running: bool,
+    /// §12.5 `<Stream id={feed}>` — string id for the mount/query v1.
+    pub feed: String,
+    /// PLAN-ACCESSORS — nested path + accessors fixture.
+    pub user: User,
 }
 
 impl Default for TestState {
@@ -29,6 +67,13 @@ impl Default for TestState {
                 SeriesHandle::new(SeriesId(2), 2000.0),
                 SeriesHandle::new(SeriesId(3), 3000.0),
             ],
+            items: vec![
+                Item { id: "1".into(), label: "Alpha".into() },
+                Item { id: "2".into(), label: "Beta".into() },
+            ],
+            running: true,
+            feed: "telemetry".into(),
+            user: User { name: "Ada".into(), active: true },
         }
     }
 }
@@ -43,15 +88,22 @@ pub enum TestAction {
     /// §12.5's `<Frames onTick={frame}>` — exercised by the frames
     /// fixture, not kitchen_sink/for_loop.
     Frame(FrameInfo),
+    /// §12.5's `<Interval onTick={poll}>` — Instant-payload tick.
+    Poll(Instant),
+    /// §12.5's `<Stream onEvent={packet}>` — String body for v1.
+    Packet(String),
 }
 
 /// The codegen engine's output, compiled into this crate. Any type
 /// mismatch between markup and State/Action is a rustc error here —
 /// §6.5's compile-time promise, mechanically kept.
 pub mod generated {
-    use super::*;
     include!(concat!(env!("OUT_DIR"), "/kitchen_sink.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_loop.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_actions.rs"));
+    include!(concat!(env!("OUT_DIR"), "/for_item_fields.rs"));
+    include!(concat!(env!("OUT_DIR"), "/if_else.rs"));
     include!(concat!(env!("OUT_DIR"), "/frames.rs"));
+    include!(concat!(env!("OUT_DIR"), "/interval_stream.rs"));
+    include!(concat!(env!("OUT_DIR"), "/accessors.rs"));
 }

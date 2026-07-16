@@ -181,17 +181,19 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             // interpreter's `has_str_action` check, and carry the loop
             // binding's Display as the `on_press_arg` payload.
             let (check, arg_expr) = match &arg {
-                Some(binding) => (
-                    format!(
-                        "let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref};",
-                        msg_ty = cfg.action,
-                        variant_ref = pascalize(&msg),
-                    ),
-                    format!(
-                        "::core::option::Option::Some(::std::string::ToString::to_string(&{}))",
-                        display_ref_expr(binding, bound)
-                    ),
-                ),
+                Some(binding) => {
+                    let value_ref = display_ref_expr(binding, bound).map_err(|m| err(mspan, m))?;
+                    (
+                        format!(
+                            "let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref};",
+                            msg_ty = cfg.action,
+                            variant_ref = pascalize(&msg),
+                        ),
+                        format!(
+                            "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                        ),
+                    )
+                }
                 None => (
                     format!("let _ = &{msg_ty}::{variant_ref};", msg_ty = cfg.action, variant_ref = pascalize(&msg)),
                     "::core::option::Option::None".to_string(),
@@ -276,7 +278,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             // String-payload variant" a type error at the .lx line.
             // Variant reference PascalCased from the markup name, same
             // as Button's onPress above.
-            let value_ref = display_ref_expr(&path, bound);
+            let value_ref = display_ref_expr(&path, bound).map_err(|m| err(vspan, m))?;
             Ok(format!(
                 "{i}::libra_components::ViewNode::Input {{ {at}\n\
                  {i}    value: ::std::string::ToString::to_string(&{value_ref}), {vat}\n\
@@ -297,8 +299,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
 
         // §12.5: invisible, zero-layout — declares a mount-scoped
         // subscription, matching libra-interp's "Frames" arm exactly
-        // (both engines share §6.4's no-drift guarantee). `Interval`/
-        // `Stream` are the same pattern, not yet implemented.
+        // (both engines share §6.4's no-drift guarantee).
         "Frames" => {
             let mut on_tick: Option<(String, Span)> = None;
             for a in attrs {
@@ -325,15 +326,84 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+        // §12.5: invisible, zero-layout — a recurring timer while
+        // mounted, matching libra-interp's "Interval" arm exactly.
+        "Interval" => {
+            let mut every: Option<(u64, Span)> = None;
+            let mut on_tick: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("every", AttrValue::Num(v)) => every = Some((*v as u64, a.span)),
+                    ("onTick", AttrValue::Ident(m)) => on_tick = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (every_ms, _espan) =
+                every.ok_or_else(|| err(*span, "<Interval> requires every={milliseconds}"))?;
+            let (msg, mspan) =
+                on_tick.ok_or_else(|| err(*span, "<Interval> requires onTick={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            // `let _: fn(Instant) -> Action` makes "not an
+            // Instant-payload variant" a type error at the .lx line,
+            // same trick as Frames' FrameInfo check.
+            Ok(format!(
+                "{i}::libra_components::ViewNode::SourceInterval {{ {at}\n\
+                 {i}    every_ms: {every_ms}u64,\n\
+                 {i}    on_tick: {{ let _: fn(::libra_core::Instant) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+            ))
+        }
+
+        // §12.5: grammar + mount + query in v1, matching libra-interp's
+        // "Stream" arm exactly. Full event delivery is a later change.
+        "Stream" => {
+            let mut id: Option<(String, Span)> = None;
+            let mut on_event: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("id", AttrValue::Ident(path)) => id = Some((path.clone(), a.span)),
+                    ("onEvent", AttrValue::Ident(m)) => on_event = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, ispan) = id.ok_or_else(|| err(*span, "<Stream> requires id={someField}"))?;
+            let (msg, mspan) =
+                on_event.ok_or_else(|| err(*span, "<Stream> requires onEvent={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let value_ref = display_ref_expr(&path, bound).map_err(|m| err(ispan, m))?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::SourceStream {{ {at}\n\
+                 {i}    id: ::std::string::ToString::to_string(&{value_ref}), {iat}\n\
+                 {i}    on_event: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                iat = at(cfg, ispan),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+            ))
+        }
+
         "for" => Err(err(
             *span,
             "<for> is only allowed as a direct child of <Column>/<Row>",
         )),
+        "if" => Err(err(
+            *span,
+            "<if> is only allowed as a direct child of <Column>/<Row>",
+        )),
+        "else" => Err(err(*span, "<else> is only allowed as a direct child of <if>")),
 
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, for"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
             ),
         )),
     }
@@ -367,7 +437,7 @@ fn gen_text_content(
                     stmts.push_str(&format!("{i}out.push_str({});\n", str_lit(s)));
                 }
                 Inline::Bind { path, span } => {
-                    let value_ref = display_ref_expr(path, bound);
+                    let value_ref = display_ref_expr(path, bound).map_err(|m| err(*span, m))?;
                     stmts.push_str(&format!(
                         "{i}out.push_str(&::std::string::ToString::to_string(&{value_ref})); {}\n",
                         at(cfg, *span)
@@ -383,7 +453,7 @@ fn gen_text_content(
 }
 
 /// Resolve a list of children into an expression producing
-/// `Vec<ViewNode>` — `<for>` expands to zero or more siblings
+/// `Vec<ViewNode>` — `<for>` / `<if>` expand to zero or more siblings
 /// (`.extend`), everything else to exactly one (`.push`). Bare text
 /// between elements is an error here, same contract as before this
 /// helper existed (`parent_name`/`parent_span` are just for that
@@ -405,9 +475,14 @@ fn gen_children(
     let i = indent(d);
     let mut stmts = String::new();
     for c in children {
-        if let Node::Element { name, attrs, children: for_children, span } = c {
+        if let Node::Element { name, attrs, children: body, span } = c {
             if name == "for" {
-                let extend_expr = gen_for(attrs, for_children, cfg, d, bound, *span)?;
+                let extend_expr = gen_for(attrs, body, cfg, d, bound, *span)?;
+                stmts.push_str(&format!("{i}children.extend({extend_expr});\n"));
+                continue;
+            }
+            if name == "if" {
+                let extend_expr = gen_if(attrs, body, cfg, d, bound, *span)?;
                 stmts.push_str(&format!("{i}children.extend({extend_expr});\n"));
                 continue;
             }
@@ -422,12 +497,100 @@ fn gen_children(
     ))
 }
 
+/// `<if test={…}>…<else>…</else></if>` (§6.2 / PLAN-IF + PLAN-ACCESSORS):
+/// compiles to a typed Rust `if`. `test` may be a bool field
+/// (`state.running`, `state.user.active`) or the `isEmpty` accessor on
+/// a string/collection (`state.items.is_empty()`).
+fn gen_if(
+    attrs: &[Attr],
+    body_children: &[Node],
+    cfg: &Config,
+    d: usize,
+    bound: &[String],
+    span: Span,
+) -> Result<String, CodegenError> {
+    let mut test: Option<(String, Span)> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("test", AttrValue::Ident(path)) => test = Some((path.clone(), a.span)),
+            _ => return Err(unknown_attr("if", a)),
+        }
+    }
+    let (path, tspan) = test.ok_or_else(|| err(span, "<if> requires test={someBoolField}"))?;
+    let root = path.split('.').next().unwrap_or(path.as_str());
+    if bound.iter().any(|b| b == root) {
+        return Err(err(
+            tspan,
+            format!("<if>: test={{{path}}} — loop-bound tests aren't supported in v1"),
+        ));
+    }
+    let cond = if_condition_expr(&path).map_err(|m| err(tspan, m))?;
+    let (then_kids, else_kids) = split_if_branches(body_children, span)?;
+    let then_expr = gen_children(then_kids, cfg, d + 1, bound, "if", span)?;
+    let else_expr = gen_children(else_kids, cfg, d + 1, bound, "if", span)?;
+    Ok(format!("if {cond} {{ {then_expr} }} else {{ {else_expr} }}"))
+}
+
+/// Rust boolean expression for `<if test={path}>`.
+fn if_condition_expr(path: &str) -> Result<String, String> {
+    let path = strip_accessor_parens(path);
+    if let Some((base, acc)) = split_whitelist_accessor(path) {
+        return match acc {
+            "isEmpty" => Ok(format!("state.{base}.is_empty()")),
+            "len" => Err(format!(
+                "<if>: test={{{path}}} — `len` is not a bool; use `isEmpty` \
+                 or a bool field"
+            )),
+            _ => unreachable!(),
+        };
+    }
+    Ok(format!("state.{path}"))
+}
+
+/// Partition `<if>` children into then / else. At most one `<else>`;
+/// it may only appear as a direct child and carries no attributes.
+fn split_if_branches<'a>(
+    children: &'a [Node],
+    span: Span,
+) -> Result<(&'a [Node], &'a [Node]), CodegenError> {
+    let mut else_at: Option<usize> = None;
+    for (i, c) in children.iter().enumerate() {
+        if let Node::Element { name, .. } = c {
+            if name == "else" {
+                if else_at.is_some() {
+                    return Err(err(span, "<if> allows at most one <else>"));
+                }
+                else_at = Some(i);
+            }
+        }
+    }
+    match else_at {
+        None => Ok((children, &[])),
+        Some(i) => {
+            if i + 1 != children.len() {
+                return Err(err(
+                    span,
+                    "<if>: <else> must be the last child (nothing after </else>)",
+                ));
+            }
+            let Node::Element { attrs, children: else_kids, span: espan, .. } = &children[i] else {
+                unreachable!()
+            };
+            if !attrs.is_empty() {
+                return Err(err(*espan, "<else> takes no attributes"));
+            }
+            Ok((&children[..i], else_kids))
+        }
+    }
+}
+
 /// `<for each={path} as="name" key={...}>` (§6.2): compiles to
 /// `{state-or-bound}.{path}.iter().flat_map(|name| { ...body Vec... })`.
-/// Same v1 scope as the interpreter (see libra-interp's `resolve_for`
-/// doc comment): `key` must be the loop variable itself, and iterating
-/// a loop-bound collection (nested `<for>` over a `Vec<Vec<T>>`) isn't
-/// supported — both produce a span-diagnosed error, not a panic.
+///
+/// `key` is the loop variable itself or one field on it (`key={name.id}`
+/// — PLAN-ITEM-FIELDS). Nested paths and keys that don't name the loop
+/// variable are span-diagnosed errors. Iterating a loop-bound collection
+/// (nested `<for>` over a `Vec<Vec<T>>`) isn't supported.
 fn gen_for(
     attrs: &[Attr],
     body_children: &[Node],
@@ -452,15 +615,7 @@ fn gen_for(
         as_name.ok_or_else(|| err(span, "<for> requires as=\"name\" (the loop variable)"))?;
     let (key_path, kspan) = key
         .ok_or_else(|| err(span, "<for> requires key={...} — identity for reordering (§6.2)"))?;
-    if key_path != as_name {
-        return Err(err(
-            kspan,
-            format!(
-                "<for>: key={{{key_path}}} — only key={{{as_name}}} (the loop variable itself) is \
-                 supported today; per-field keys into loop-bound values aren't implemented yet"
-            ),
-        ));
-    }
+    validate_loop_key(&key_path, &as_name, kspan)?;
     let root = path.split('.').next().unwrap_or(&path);
     if bound.iter().any(|b| b == root) {
         return Err(err(
@@ -475,34 +630,102 @@ fn gen_for(
     Ok(format!("state.{path}.iter().flat_map(|{as_name}| {body})"))
 }
 
+/// `key={as}` or `key={as.field}` — one field segment only (§6.2).
+fn validate_loop_key(key_path: &str, as_name: &str, span: Span) -> Result<(), CodegenError> {
+    if key_path == as_name {
+        return Ok(());
+    }
+    let Some(field) = key_path.strip_prefix(&format!("{as_name}.")) else {
+        return Err(err(
+            span,
+            format!(
+                "<for>: key={{{key_path}}} — key must be {{{as_name}}} or {{{as_name}.field}}"
+            ),
+        ));
+    };
+    if field.is_empty() || field.contains('.') {
+        return Err(err(
+            span,
+            format!(
+                "<for>: key={{{key_path}}} — only one field segment is supported \
+                 (got {{{as_name}.field}}, not nested paths)"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// A binding path's Rust expression when it will be used behind `&`
 /// for a `ToString`/Display context (text content, `Input::value`).
 /// Loop-bound roots (§6.2) resolve to the bare loop variable — `&x`
 /// where `x: &T` still satisfies `ToString` via std's blanket `impl<T:
 /// Display> Display for &T` applied twice, so no deref is needed here
 /// (contrast `typed_value_expr`, which does need one).
-fn display_ref_expr(path: &str, bound: &[String]) -> String {
+///
+/// Loop-scoped field paths (`t.id`) emit as Rust field access on the
+/// iterator item (PLAN-ITEM-FIELDS). Nested paths (`t.a.b`) are rejected.
+/// Top-level dots (`user.name`) and accessors (`items.len` /
+/// `items.isEmpty`, optional `()`) emit as `state.…` (PLAN-ACCESSORS).
+fn display_ref_expr(path: &str, bound: &[String]) -> Result<String, String> {
+    let path = strip_accessor_parens(path);
+    if let Some((base, acc)) = split_whitelist_accessor(path) {
+        let root = base.split('.').next().unwrap_or(base);
+        if bound.iter().any(|b| b == root) {
+            return Err(format!(
+                "'{path}' — accessors on loop-bound values aren't supported yet; \
+                 bind a State field or use a projection"
+            ));
+        }
+        let base_expr = format!("state.{base}");
+        return Ok(match acc {
+            "len" => format!("{base_expr}.len()"),
+            "isEmpty" => format!("{base_expr}.is_empty()"),
+            _ => unreachable!(),
+        });
+    }
     let root = path.split('.').next().unwrap_or(path);
     if bound.iter().any(|b| b == root) {
-        path.to_string()
+        let parts: Vec<&str> = path.split('.').collect();
+        if parts.len() > 2 {
+            return Err(format!(
+                "'{path}' — only one loop-bound field segment is supported \
+                 ({{loopVar.field}}, not nested paths)"
+            ));
+        }
+        Ok(path.to_string())
     } else {
-        format!("state.{path}")
+        Ok(format!("state.{path}"))
     }
+}
+
+/// `{items.len}` / `{items.len()}` → (`items`, `len`). Only the
+/// PLAN-ACCESSORS whitelist (`len`, `isEmpty`).
+fn split_whitelist_accessor(path: &str) -> Option<(&str, &str)> {
+    let (base, last) = path.rsplit_once('.')?;
+    if last == "len" || last == "isEmpty" {
+        Some((base, last))
+    } else {
+        None
+    }
+}
+
+fn strip_accessor_parens(path: &str) -> &str {
+    path.strip_suffix("()").unwrap_or(path)
 }
 
 /// A binding path's Rust expression when the caller needs the actual
 /// typed value, not a reference (`Chart`/`Sparkline`'s `handle:`).
-/// Loop-bound roots deref the `.iter()` reference (§6.2's v1 scope:
-/// the bound value must be `Copy`, true for `SeriesHandle`, the only
-/// current use case) — dot-path access into a loop-bound value isn't
-/// supported, same restriction as `<for>`'s `key`.
+/// Loop-bound roots deref the `.iter()` reference — the bound value
+/// must be `Copy` (true for `SeriesHandle`, the chart use case).
+/// Dot-path access into a loop-bound value isn't supported here:
+/// Chart needs the whole handle, not a field of it.
 fn typed_value_expr(path: &str, bound: &[String]) -> Result<String, String> {
     let root = path.split('.').next().unwrap_or(path);
     if bound.iter().any(|b| b == root) {
         if path.contains('.') {
             return Err(format!(
-                "'{path}' — loop-bound sub-field access isn't supported yet; \
-                 bind the whole loop variable instead"
+                "'{path}' — loop-bound sub-field access isn't supported for typed \
+                 props; bind the whole loop variable instead"
             ));
         }
         Ok(format!("*{path}"))
@@ -681,25 +904,106 @@ mod tests {
     }
 
     #[test]
-    fn for_key_must_be_the_loop_variable_itself() {
+    fn for_key_may_be_a_single_field_on_the_loop_variable() {
         let ast = libra_markup::parse(
-            r#"<Column><for each={series} as="s" key={s.id}><Chart series={s} height={90} /></for></Column>"#,
+            r#"<Column><for each={series} as="s" key={s.id}><Text>{s}</Text></for></Column>"#,
+        )
+        .unwrap();
+        // Key shape is accepted at codegen time; rustc enforces that
+        // the element type actually has `.id` when this compiles in an app.
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("state.series.iter().flat_map(|s|"), "{code}");
+    }
+
+    #[test]
+    fn for_key_rejects_nested_field_paths() {
+        let ast = libra_markup::parse(
+            r#"<Column><for each={series} as="s" key={s.id.extra}><Text>{s}</Text></for></Column>"#,
         )
         .unwrap();
         let e = generate(&ast, &cfg()).unwrap_err();
-        assert!(e.message.contains("only key={s}"), "{}", e.message);
+        assert!(e.message.contains("one field segment"), "{}", e.message);
     }
 
     #[test]
     fn for_loop_bound_subfield_access_is_a_diagnosed_error_not_a_panic() {
         // series={s.id} inside the loop — Chart's handle needs the
-        // WHOLE loop variable, not a dot-path into it (v1 scope).
+        // WHOLE loop variable, not a field of it.
         let ast = libra_markup::parse(
             r#"<Column><for each={series} as="s" key={s}><Chart series={s.id} height={90} /></for></Column>"#,
         )
         .unwrap();
         let e = generate(&ast, &cfg()).unwrap_err();
         assert!(e.message.contains("loop-bound sub-field access"), "{}", e.message);
+    }
+
+    #[test]
+    fn for_item_field_bind_compiles_to_field_access_on_the_loop_var() {
+        let ast = libra_markup::parse(
+            r#"<Column><for each={items} as="t" key={t.id}><Button onPress={nameChanged(t.id)}>{t.label}</Button></for></Column>"#,
+        )
+        .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("state.items.iter().flat_map(|t|"), "{code}");
+        assert!(code.contains("to_string(&t.label)"), "{code}");
+        assert!(code.contains("to_string(&t.id)"), "{code}");
+    }
+
+    #[test]
+    fn if_compiles_to_a_typed_bool_branch() {
+        let ast = libra_markup::parse(
+            r#"<Column><if test={running}><Text>on</Text><else><Text>off</Text></else></if></Column>"#,
+        )
+        .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("if state.running {"), "{code}");
+        assert!(code.contains("} else {"), "{code}");
+        assert!(code.contains("\"on\""), "{code}");
+        assert!(code.contains("\"off\""), "{code}");
+    }
+
+    #[test]
+    fn if_compiles_is_empty_accessor_to_is_empty_call() {
+        let ast = libra_markup::parse(
+            r#"<Column><if test={items.isEmpty}><Text>empty</Text><else><Text>full</Text></else></if></Column>"#,
+        )
+        .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("if state.items.is_empty() {"), "{code}");
+    }
+
+    #[test]
+    fn if_compiles_nested_bool_dot_path() {
+        let ast = libra_markup::parse(
+            r#"<Column><if test={user.active}><Text>on</Text></if></Column>"#,
+        )
+        .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("if state.user.active {"), "{code}");
+    }
+
+    #[test]
+    fn accessor_len_compiles_to_len_call() {
+        let ast = libra_markup::parse(r#"<Column><Text>{items.len()}</Text></Column>"#).unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("to_string(&state.items.len())"), "{code}");
+    }
+
+    #[test]
+    fn nested_field_bind_compiles_to_dot_access() {
+        let ast = libra_markup::parse(r#"<Column><Text>{user.name}</Text></Column>"#).unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("to_string(&state.user.name)"), "{code}");
+    }
+
+    #[test]
+    fn if_rejects_len_as_a_bool_test() {
+        let ast = libra_markup::parse(
+            r#"<Column><if test={items.len}><Text>x</Text></if></Column>"#,
+        )
+        .unwrap();
+        let e = generate(&ast, &cfg()).unwrap_err();
+        assert!(e.message.contains("not a bool"), "{}", e.message);
     }
 
     #[test]
@@ -717,5 +1021,51 @@ mod tests {
         let ast = libra_markup::parse("<Column><Frames /></Column>").unwrap();
         let e = generate(&ast, &cfg()).unwrap_err();
         assert!(e.message.contains("requires onTick="));
+    }
+
+    #[test]
+    fn interval_compiles_to_a_source_interval_view_node_with_a_typed_handler_check() {
+        let ast = libra_markup::parse(r#"<Column><Interval every={1000} onTick={poll} /></Column>"#)
+            .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("::libra_components::ViewNode::SourceInterval"), "{code}");
+        assert!(code.contains("every_ms: 1000u64"), "{code}");
+        assert!(code.contains("fn(::libra_core::Instant) -> crate::TestAction"), "{code}");
+        assert!(code.contains("crate::TestAction::Poll"), "{code}");
+        assert!(code.contains("\"poll\".to_string()"), "{code}");
+    }
+
+    #[test]
+    fn interval_requires_every_and_on_tick() {
+        let missing_every = libra_markup::parse("<Column><Interval onTick={poll} /></Column>").unwrap();
+        let e = generate(&missing_every, &cfg()).unwrap_err();
+        assert!(e.message.contains("requires every="), "{}", e.message);
+
+        let missing_on_tick = libra_markup::parse("<Column><Interval every={1000} /></Column>").unwrap();
+        let e = generate(&missing_on_tick, &cfg()).unwrap_err();
+        assert!(e.message.contains("requires onTick="), "{}", e.message);
+    }
+
+    #[test]
+    fn stream_compiles_to_a_source_stream_view_node_with_a_typed_handler_check() {
+        let ast = libra_markup::parse(r#"<Column><Stream id={feed} onEvent={packet} /></Column>"#)
+            .unwrap();
+        let code = generate(&ast, &cfg()).unwrap();
+        assert!(code.contains("::libra_components::ViewNode::SourceStream"), "{code}");
+        assert!(code.contains("to_string(&state.feed)"), "{code}");
+        assert!(code.contains("fn(::std::string::String) -> crate::TestAction"), "{code}");
+        assert!(code.contains("crate::TestAction::Packet"), "{code}");
+        assert!(code.contains("\"packet\".to_string()"), "{code}");
+    }
+
+    #[test]
+    fn stream_requires_id_and_on_event() {
+        let missing_id = libra_markup::parse("<Column><Stream onEvent={packet} /></Column>").unwrap();
+        let e = generate(&missing_id, &cfg()).unwrap_err();
+        assert!(e.message.contains("requires id="), "{}", e.message);
+
+        let missing_on_event = libra_markup::parse("<Column><Stream id={feed} /></Column>").unwrap();
+        let e = generate(&missing_on_event, &cfg()).unwrap_err();
+        assert!(e.message.contains("requires onEvent="), "{}", e.message);
     }
 }

@@ -128,7 +128,7 @@ pub fn action_for(snap: &A11ySnapshot, node_id: u64) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libra_components::{Item, ItemKind, Semantics};
+    use libra_components::{Item, ItemKind, Semantics, SourceDecl};
 
     fn laid() -> LaidTree {
         let item = |role, text: &str, on_press: Option<&str>, test_id: Option<&str>| Item {
@@ -161,7 +161,7 @@ mod tests {
         // Role::Container's transparent boxes.
         let mut l = laid();
         l.items.push(Item {
-            kind: ItemKind::Source { on_tick: "Tick".into() },
+            kind: ItemKind::Source(SourceDecl::Frames { on_tick: "Tick".into() }),
             rect: libra_draw::Rect::new(0.0, 0.0, 0.0, 0.0),
             semantics: Semantics { role: Role::Source, text: "frames".into(), test_id: None },
             on_press: None,

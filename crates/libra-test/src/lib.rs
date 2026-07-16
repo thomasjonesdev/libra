@@ -17,7 +17,7 @@
 //! byte difference fails with expected/actual/diff-heatmap paths.
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
-use libra_core::{App, Effect, FrameInfo, HttpResult, KvResult, ReflectAction, SeriesId};
+use libra_core::{App, Effect, FrameInfo, HttpResult, Instant, KvResult, ReflectAction, SeriesId};
 use libra_data::SeriesStore;
 use libra_interp::Scope;
 use libra_markup::Node;
@@ -55,8 +55,8 @@ pub enum Selector {
     TestId(String),
     Text(String),
     Role(Role),
-    /// A mounted source element (§12.5), matched by kind — `"frames"`
-    /// today; `"interval"`/`"stream"` join once those land.
+    /// A mounted source element (§12.5), matched by kind —
+    /// `"frames"` / `"interval"` / `"stream"`.
     Source(String),
 }
 
@@ -542,15 +542,17 @@ fn rebuild<A: App>(
     let field = |p: &str| app.field(p);
     let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
     let has_str_action = |m: &str| A::Msg::action_with_str(m, String::new()).is_some();
-    let collection = |p: &str| app.collection(p);
+    let collection_rows = |p: &str| app.collection_rows(p);
     let has_frame_info_action =
         |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
+    let has_instant_action = |m: &str| A::Msg::action_with_instant(m, Instant::at(0.0)).is_some();
     let scope = Scope {
         field: &field,
         has_action: &has_action,
         has_str_action: &has_str_action,
-        collection: &collection,
+        collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
+        has_instant_action: &has_instant_action,
     };
     let view = libra_interp::resolve(ast, &scope)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
