@@ -140,6 +140,7 @@ mod tests {
                 test_id: test_id.map(String::from),
             },
             on_press: on_press.map(String::from),
+            on_press_arg: None,
         };
         LaidTree {
             items: vec![
@@ -164,6 +165,7 @@ mod tests {
             rect: libra_draw::Rect::new(0.0, 0.0, 0.0, 0.0),
             semantics: Semantics { role: Role::Source, text: "frames".into(), test_id: None },
             on_press: None,
+            on_press_arg: None,
         });
         let before = snapshot(&laid(), 1.0, None).items.len();
         let after = snapshot(&l, 1.0, None).items.len();

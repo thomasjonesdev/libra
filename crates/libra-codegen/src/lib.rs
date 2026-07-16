@@ -144,7 +144,8 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
 
         "Button" => {
             let mut variant = "Secondary";
-            let mut on_press: Option<(String, Span)> = None;
+            // (handler name, optional arg binding, span)
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -161,32 +162,50 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                             }
                         }
                     }
-                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), a.span)),
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let (msg, mspan) =
+            let (msg, arg, mspan) =
                 on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
             require_camel_case(&msg, mspan)?;
             let label = gen_text_content(children, cfg, *span, d + 1, bound)?;
-            // `let _ = &Action::X;` — a typo'd handler is a rustc error
-            // at the line carrying the .lx span (§6.5). The variant
-            // reference is PascalCased from the markup name (§3.3,
-            // `#[libra::actions]`'s camelCase mapping inverted) — the
-            // *stored* handler name (`name_lit`) stays the markup's own
-            // text, matching what the interpreter's ReflectAction-based
-            // resolution compares against.
+            // The `let _` line makes a typo'd handler a rustc error at the
+            // .lx span (§6.5). Unit handlers reference the variant value
+            // (`&Action::X`); item-scoped handlers (`onPress={toggle(item)}`)
+            // pin the constructor to `fn(String) -> Action`, matching the
+            // interpreter's `has_str_action` check, and carry the loop
+            // binding's Display as the `on_press_arg` payload.
+            let (check, arg_expr) = match &arg {
+                Some(binding) => (
+                    format!(
+                        "let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref};",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(&msg),
+                    ),
+                    format!(
+                        "::core::option::Option::Some(::std::string::ToString::to_string(&{}))",
+                        display_ref_expr(binding, bound)
+                    ),
+                ),
+                None => (
+                    format!("let _ = &{msg_ty}::{variant_ref};", msg_ty = cfg.action, variant_ref = pascalize(&msg)),
+                    "::core::option::Option::None".to_string(),
+                ),
+            };
             Ok(format!(
                 "{i}::libra_components::ViewNode::Button {{ {at}\n\
                  {i}    label: {label},\n\
                  {i}    variant: ::libra_components::Variant::{variant},\n\
-                 {i}    on_press: {{ let _ = &{msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_press: {{ {check} {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_press_arg: {arg_expr},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
-                msg_ty = cfg.action,
-                variant_ref = pascalize(&msg),
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = opt_str(&test_id),

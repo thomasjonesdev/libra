@@ -244,9 +244,17 @@ impl<A: App> Harness<A> {
             self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
             return;
         }
-        let msg = A::Msg::action_by_name(&name).unwrap_or_else(|| {
-            panic!("handler '{name}' resolved to no Action — reflection out of sync")
-        });
+        // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch
+        // the String-payload action with the resolved loop-binding value;
+        // otherwise a plain unit action by name.
+        let msg = match hit.on_press_arg.clone() {
+            Some(arg) => A::Msg::action_with_str(&name, arg).unwrap_or_else(|| {
+                panic!("handler '{name}' resolved to no String-payload Action — reflection out of sync")
+            }),
+            None => A::Msg::action_by_name(&name).unwrap_or_else(|| {
+                panic!("handler '{name}' resolved to no Action — reflection out of sync")
+            }),
+        };
         self.dispatch(msg);
     }
 

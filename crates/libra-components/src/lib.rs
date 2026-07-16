@@ -60,7 +60,17 @@ pub enum ViewNode {
     Column { style: BoxStyle, children: Vec<ViewNode> },
     Row { style: BoxStyle, children: Vec<ViewNode> },
     Text { content: String, size: TextSize, bold: bool, muted: bool, grow: bool, test_id: Option<String> },
-    Button { label: String, variant: Variant, on_press: String, test_id: Option<String> },
+    /// `on_press` is the handler action name; `on_press_arg`, when
+    /// `Some`, is the resolved `String` payload for an item-scoped
+    /// handler (`onPress={toggle(item)}`, §6.2) — the dispatch uses
+    /// `action_with_str` instead of `action_by_name`.
+    Button {
+        label: String,
+        variant: Variant,
+        on_press: String,
+        on_press_arg: Option<String>,
+        test_id: Option<String>,
+    },
     /// Time-series line chart (§7.1 Data): reads its ring at paint time,
     /// M4-downsampled to pixel width. Grows to fill width; fixed height.
     Chart { handle: SeriesHandle, height: f32, test_id: Option<String> },
@@ -137,6 +147,10 @@ pub struct Item {
     pub semantics: Semantics,
     /// Handler name to dispatch on press (Buttons only in Phase 0).
     pub on_press: Option<String>,
+    /// Resolved `String` payload for an item-scoped handler
+    /// (`onPress={toggle(item)}`, §6.2). `Some` ⇒ dispatch via
+    /// `action_with_str(on_press, arg)`; `None` ⇒ `action_by_name`.
+    pub on_press_arg: Option<String>,
 }
 
 pub struct LaidTree {
@@ -162,7 +176,7 @@ pub fn layout(
     theme: &Theme,
 ) -> Result<LaidTree, LayoutError> {
     let mut tree: TaffyTree<()> = TaffyTree::new();
-    let mut meta: Vec<(NodeId, ItemKind, Semantics, Option<String>)> = Vec::new();
+    let mut meta: Vec<(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)> = Vec::new();
 
     let root = build(&mut tree, &mut meta, view, measurer, theme)
         .map_err(|e| LayoutError(format!("{e:?}")))?;
@@ -192,15 +206,21 @@ fn flatten(
     tree: &TaffyTree<()>,
     node: NodeId,
     origin: (f32, f32),
-    meta: &[(NodeId, ItemKind, Semantics, Option<String>)],
+    meta: &[(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)],
     out: &mut Vec<Item>,
 ) -> Result<(), LayoutError> {
     let l = tree.layout(node).map_err(|e| LayoutError(format!("{e:?}")))?;
     let abs = (origin.0 + l.location.x, origin.1 + l.location.y);
     let rect = Rect::new(abs.0, abs.1, l.size.width, l.size.height);
 
-    if let Some((_, kind, sem, on_press)) = meta.iter().find(|(id, ..)| *id == node) {
-        out.push(Item { kind: kind.clone(), rect, semantics: sem.clone(), on_press: on_press.clone() });
+    if let Some((_, kind, sem, press)) = meta.iter().find(|(id, ..)| *id == node) {
+        out.push(Item {
+            kind: kind.clone(),
+            rect,
+            semantics: sem.clone(),
+            on_press: press.as_ref().map(|(name, _)| name.clone()),
+            on_press_arg: press.as_ref().and_then(|(_, arg)| arg.clone()),
+        });
     }
     for child in tree.children(node).map_err(|e| LayoutError(format!("{e:?}")))? {
         flatten(tree, child, abs, meta, out)?;
@@ -228,7 +248,7 @@ fn box_style(s: &BoxStyle, dir: FlexDirection) -> Style {
 
 fn build(
     tree: &mut TaffyTree<()>,
-    meta: &mut Vec<(NodeId, ItemKind, Semantics, Option<String>)>,
+    meta: &mut Vec<(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)>,
     view: &ViewNode,
     m: &dyn TextMeasurer,
     theme: &Theme,
@@ -281,7 +301,7 @@ fn build(
             ));
             Ok(id)
         }
-        ViewNode::Button { label, variant, on_press, test_id } => {
+        ViewNode::Button { label, variant, on_press, on_press_arg, test_id } => {
             let px = theme.type_md;
             let (tw, th) = m.measure(label, px, FontStyle::Regular);
             let (w, h) = (tw + 2.0 * theme.btn_pad_x, th + 2.0 * theme.btn_pad_y);
@@ -294,7 +314,7 @@ fn build(
                 id,
                 ItemKind::Button { label: label.clone(), px, variant: *variant },
                 Semantics { role: Role::Button, text: label.clone(), test_id: test_id.clone() },
-                Some(on_press.clone()),
+                Some((on_press.clone(), on_press_arg.clone())),
             ));
             Ok(id)
         }
@@ -347,8 +367,9 @@ fn build(
                 },
                 // Clicking focuses rather than dispatching; the shell/
                 // harness special-case TextInput hits. on_change rides
-                // in `on_press` storage (it is "the handler name").
-                Some(on_change.clone()),
+                // in `on_press` storage (it is "the handler name"); no
+                // markup-bound payload (the control supplies the text).
+                Some((on_change.clone(), None)),
             ));
             Ok(id)
         }

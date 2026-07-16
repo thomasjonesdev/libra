@@ -52,5 +52,6 @@ pub mod generated {
     use super::*;
     include!(concat!(env!("OUT_DIR"), "/kitchen_sink.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_loop.rs"));
+    include!(concat!(env!("OUT_DIR"), "/for_actions.rs"));
     include!(concat!(env!("OUT_DIR"), "/frames.rs"));
 }

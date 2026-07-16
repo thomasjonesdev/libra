@@ -233,7 +233,8 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
 
         "Button" => {
             let mut variant = Variant::Secondary;
-            let mut on_press: Option<(String, Span)> = None;
+            // (handler name, optional arg binding, span)
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
             let mut test_id = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -250,19 +251,46 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                             }
                         }
                     }
-                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), a.span)),
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let (msg, mspan) =
+            let (msg, arg, mspan) =
                 on_press.ok_or_else(|| err(*span, "<Button> requires onPress={someAction}"))?;
             require_camel_case(&msg, mspan)?;
-            if !(scope.has_action)(&msg) {
-                return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
-            }
+            // Item-scoped handler `onPress={toggle(item)}`: the arg names a
+            // binding (the loop variable) whose value is the action's String
+            // payload — so the handler must be a String-payload action, and
+            // the binding must resolve (§6.2).
+            let on_press_arg = match &arg {
+                Some(binding) => {
+                    if !(scope.has_str_action)(&msg) {
+                        return Err(err(
+                            mspan,
+                            format!(
+                                "action '{msg}' takes no payload — `onPress={{{msg}({binding})}}` \
+                                 needs a String-payload action (fn {msg}(&mut self, s: String))"
+                            ),
+                        ));
+                    }
+                    let value = (scope.field)(binding).ok_or_else(|| {
+                        err(mspan, format!("no binding '{binding}' in scope for onPress={{{msg}({binding})}}"))
+                    })?;
+                    Some(value)
+                }
+                None => {
+                    if !(scope.has_action)(&msg) {
+                        return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
+                    }
+                    None
+                }
+            };
             let label = text_content(children, scope, *span)?;
-            Ok(ViewNode::Button { label, variant, on_press: msg, test_id })
+            Ok(ViewNode::Button { label, variant, on_press: msg, on_press_arg, test_id })
         }
 
         "Chart" | "Sparkline" => {
@@ -466,6 +494,53 @@ mod tests {
         let has_action = |_: &str| true;
         let e = resolve(&ast, &scope_ok(&field, &has_action)).unwrap_err();
         assert!(e.message.contains("no field 'cuont' on State"));
+    }
+
+    // Scope where `toggle` is a String-payload action and `item` is a
+    // bound value — the shape a `<for>` body sees for an item-scoped
+    // handler (§6.2).
+    fn scope_item<'a>(
+        field: &'a dyn Fn(&str) -> Option<String>,
+        has_str_action: &'a dyn Fn(&str) -> bool,
+    ) -> Scope<'a> {
+        Scope {
+            field,
+            has_action: &|_| false,
+            has_str_action,
+            collection: &|_| None,
+            has_frame_info_action: &|_| false,
+        }
+    }
+
+    #[test]
+    fn item_scoped_handler_binds_the_loop_value_as_payload() {
+        let ast = parse(r#"<Column><Button onPress={toggle(item)}>x</Button></Column>"#).unwrap();
+        let field = |p: &str| (p == "item").then(|| "todo-42".to_string());
+        let has_str = |m: &str| m == "toggle";
+        let view = resolve(&ast, &scope_item(&field, &has_str)).unwrap();
+        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Button { on_press, on_press_arg, .. } = &children[0] else { panic!() };
+        assert_eq!(on_press, "toggle");
+        assert_eq!(on_press_arg.as_deref(), Some("todo-42"));
+    }
+
+    #[test]
+    fn item_scoped_handler_on_a_unit_action_is_an_error() {
+        // `toggle` takes no String payload → `toggle(item)` is rejected.
+        let ast = parse(r#"<Column><Button onPress={toggle(item)}>x</Button></Column>"#).unwrap();
+        let field = |p: &str| (p == "item").then(|| "todo-42".to_string());
+        let has_str = |_: &str| false;
+        let e = resolve(&ast, &scope_item(&field, &has_str)).unwrap_err();
+        assert!(e.message.contains("takes no payload"), "{}", e.message);
+    }
+
+    #[test]
+    fn item_scoped_handler_with_unbound_arg_is_an_error() {
+        let ast = parse(r#"<Column><Button onPress={toggle(gone)}>x</Button></Column>"#).unwrap();
+        let field = |_: &str| None;
+        let has_str = |m: &str| m == "toggle";
+        let e = resolve(&ast, &scope_item(&field, &has_str)).unwrap_err();
+        assert!(e.message.contains("no binding 'gone'"), "{}", e.message);
     }
 
     #[test]

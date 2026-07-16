@@ -39,6 +39,11 @@ pub enum AttrValue {
     /// Whether it is a handler or a binding is decided by the consumer
     /// from the attribute name (`on*` = handler).
     Ident(String),
+    /// Braced action call with one binding argument: `onPress={toggle(item)}`
+    /// (§6.2). Used for item-scoped handlers inside `<for>` — the arg names
+    /// a binding (the loop variable) whose value becomes the action's
+    /// `String` payload. `arg` is a single binding path, not an expression.
+    Call { name: String, arg: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -272,7 +277,22 @@ impl<'a> Parser<'a> {
                             .map_err(|_| self.err(format!("'{n}' is not a valid number")))?;
                         AttrValue::Num(v)
                     }
-                    _ => AttrValue::Ident(self.path()?),
+                    _ => {
+                        let head = self.path()?;
+                        // `name(arg)` — an action call with one binding
+                        // argument (§6.2 item-scoped handlers). Bare
+                        // `name` stays an Ident.
+                        if self.peek() == Some('(') {
+                            self.bump();
+                            self.skip_ws();
+                            let arg = self.path()?;
+                            self.skip_ws();
+                            self.expect(')', "to close the action argument")?;
+                            AttrValue::Call { name: head, arg }
+                        } else {
+                            AttrValue::Ident(head)
+                        }
+                    }
                 };
                 self.skip_ws();
                 self.expect('}', "to close the braced attribute value")?;

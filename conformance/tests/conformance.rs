@@ -7,6 +7,7 @@ use libra_core::{FrameInfo, ReflectAction, ReflectState, SeriesHandle, SeriesId}
 
 const KITCHEN_SINK: &str = include_str!("../fixtures/kitchen_sink.lx");
 const FOR_LOOP: &str = include_str!("../fixtures/for_loop.lx");
+const FOR_ACTIONS: &str = include_str!("../fixtures/for_actions.lx");
 const FRAMES: &str = include_str!("../fixtures/frames.lx");
 
 fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
@@ -127,6 +128,34 @@ fn for_loop_produces_identical_trees_across_series_counts() {
         assert_eq!(
             interp, compiled,
             "engine drift on for_loop fixture with {} series (variant #{i})",
+            state.series.len()
+        );
+    }
+}
+
+/// §6.2's item-scoped handler `onPress={nameChanged(s)}` inside a
+/// `<for>` — the payload is the loop binding's Display, resolved by
+/// interp via `scope.field` and by codegen via `to_string(&s)`. Both
+/// engines must agree on `on_press_arg` for every item, across item
+/// counts (empty, one, several) so the loop-boundary can't hide drift.
+#[test]
+fn for_actions_item_scoped_handlers_produce_identical_trees() {
+    let variants = [
+        Vec::<SeriesHandle>::new(),
+        vec![SeriesHandle::new(SeriesId(7), 1500.0)],
+        vec![
+            SeriesHandle::new(SeriesId(1), 1000.0),
+            SeriesHandle::new(SeriesId(2), 2000.0),
+            SeriesHandle::new(SeriesId(3), 3000.0),
+        ],
+    ];
+    for (i, series) in variants.into_iter().enumerate() {
+        let state = TestState { series, ..TestState::default() };
+        let interp = interp_tree_src(FOR_ACTIONS, &state);
+        let compiled = generated::build_for_actions(&state);
+        assert_eq!(
+            interp, compiled,
+            "engine drift on for_actions fixture with {} series (variant #{i})",
             state.series.len()
         );
     }

@@ -1,0 +1,9 @@
+<Column gap={8} padding={12}>
+  <Text bold>Pick a series</Text>
+  <for each={series} as="s" key={s}>
+    <Row gap={8} cross="center">
+      <Button variant="primary" onPress={nameChanged(s)} testId="pick">{s}</Button>
+      <Button variant="ghost" onPress={reset}>x</Button>
+    </Row>
+  </for>
+</Column>

@@ -1,0 +1,30 @@
+<Column gap={12} padding={16}>
+  <Row gap={8} cross="center">
+    <Text bold grow>Todos</Text>
+    <Text size="sm" muted testId="summary">{summary}</Text>
+  </Row>
+  <Row gap={8} cross="center">
+    <Input value={draft} placeholder="what needs doing…" onChange={draftChanged} testId="draft" />
+    <Button variant="primary" onPress={add} testId="add">Add</Button>
+  </Row>
+
+  <Text bold muted>Active</Text>
+  <for each={active} as="t" key={t}>
+    <Row gap={8} cross="center">
+      <Button variant="secondary" onPress={complete(t)}>{t}</Button>
+      <Button variant="ghost" onPress={remove(t)}>×</Button>
+    </Row>
+  </for>
+
+  <Text bold muted>Done</Text>
+  <for each={done} as="t" key={t}>
+    <Row gap={8} cross="center">
+      <Button variant="ghost" onPress={uncomplete(t)}>{t}</Button>
+      <Button variant="ghost" onPress={remove(t)}>×</Button>
+    </Row>
+  </for>
+
+  <Row gap={8}>
+    <Button variant="ghost" onPress={clearCompleted} testId="clear">Clear completed</Button>
+  </Row>
+</Column>
