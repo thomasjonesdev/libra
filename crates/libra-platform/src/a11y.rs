@@ -68,6 +68,7 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             Role::Button => AkRole::Button,
             Role::Chart => AkRole::Image, // closest stable mapping for a plot
             Role::TextInput => AkRole::TextInput,
+            Role::Separator => AkRole::GenericContainer, // visual rule; non-interactive
             // Unreachable: snapshot() already filters Role::Source out
             // (§12.5 — source elements never reach the AccessKit
             // projection). Matched here only so this stays exhaustive.

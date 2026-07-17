@@ -13,7 +13,7 @@
 //!
 //! Snapshot tests: render through the canonical executor and compare
 //! PNG bytes exactly. Missing snapshot → recorded (first run);
-//! LIBRA_BLESS=1 → re-record after intentional changes; otherwise any
+//! LIBRA_VALIDATE=1 → re-record (validate) after intentional changes; otherwise any
 //! byte difference fails with expected/actual/diff-heatmap paths.
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
@@ -48,6 +48,11 @@ pub struct Harness<A: App> {
     /// §11: the theme this harness renders under — part of snapshot
     /// identity (a snapshot's name should say which theme it is).
     theme: Theme,
+    /// Hover as an explicit, deterministic paint input (ListItem
+    /// washes). `None` (the default) renders the canonical no-hover
+    /// frame; `hover(sel)` pins it to an item's center for hover
+    /// snapshots.
+    hover: Option<(f32, f32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -176,7 +181,20 @@ impl<A: App> Harness<A> {
             store: Arc::new(SeriesStore::new()),
             focus: None,
             theme,
+            hover: None,
         }
+    }
+
+    /// Pin the hover point to the selected item's center (§7.1
+    /// ListItem hover wash) — an explicit input, so hover snapshots
+    /// stay byte-exact. `blur_hover()` clears it.
+    pub fn hover(&mut self, sel: Selector) {
+        let item = self.find(&sel).unwrap_or_else(|| panic!("hover: no item matches {sel:?}"));
+        self.hover = Some(item.rect.center());
+    }
+
+    pub fn blur_hover(&mut self) {
+        self.hover = None;
     }
 
     /// Render under a named theme (§11): `.theme("libra-light")`.
@@ -437,16 +455,19 @@ impl<A: App> Harness<A> {
     /// writes `<name>.actual.png` and `<name>.diff.png` (heatmap: red
     /// where pixels differ, dimmed expected elsewhere).
     pub fn assert_snapshot(&self, name: &str) {
-        let cmds = self.laid.paint(&self.renderer, &self.store, self.focus_paint().as_ref(), &self.theme);
+        let cmds = self.laid.paint_full(&self.renderer, &self.store, self.focus_paint().as_ref(), self.hover, &self.theme, 1.0);
         let actual = self.renderer.render_png(&cmds, self.viewport.0, self.viewport.1);
         let path = self.snapshot_dir.join(format!("{name}.png"));
 
-        let bless = std::env::var("LIBRA_BLESS").ok().as_deref() == Some("1");
-        if bless || !path.exists() {
+        if std::env::var("LIBRA_BLESS").is_ok() {
+            panic!("LIBRA_BLESS was renamed — set LIBRA_VALIDATE=1 to accept new renderings");
+        }
+        let validate = std::env::var("LIBRA_VALIDATE").ok().as_deref() == Some("1");
+        if validate || !path.exists() {
             std::fs::create_dir_all(&self.snapshot_dir).expect("snapshot dir");
             std::fs::write(&path, &actual).expect("write snapshot");
-            if bless {
-                eprintln!("[libra-test] blessed snapshot '{name}' ({} bytes)", actual.len());
+            if validate {
+                eprintln!("[libra-test] validated snapshot '{name}' ({} bytes)", actual.len());
             } else {
                 eprintln!("[libra-test] recorded new snapshot '{name}' ({} bytes)", actual.len());
             }
@@ -468,7 +489,7 @@ impl<A: App> Harness<A> {
                 None => String::new(),
             };
             panic!(
-                "snapshot '{name}' differs byte-for-byte\n  expected: {}\n  actual:   {}{diff_note}\n  (LIBRA_BLESS=1 to accept the new rendering)",
+                "snapshot '{name}' differs byte-for-byte\n  expected: {}\n  actual:   {}{diff_note}\n  (LIBRA_VALIDATE=1 to accept the new rendering)",
                 path.display(),
                 actual_path.display()
             );
@@ -477,7 +498,7 @@ impl<A: App> Harness<A> {
 
     /// Raw PNG bytes of the current frame (for hashing/inspection).
     pub fn frame_png(&self) -> Vec<u8> {
-        let cmds = self.laid.paint(&self.renderer, &self.store, self.focus_paint().as_ref(), &self.theme);
+        let cmds = self.laid.paint_full(&self.renderer, &self.store, self.focus_paint().as_ref(), self.hover, &self.theme, 1.0);
         self.renderer.render_png(&cmds, self.viewport.0, self.viewport.1)
     }
 }

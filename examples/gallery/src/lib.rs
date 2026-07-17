@@ -13,6 +13,8 @@ pub struct Gallery {
     pub count: i64,
     pub draft: String,
     pub filled: String,
+    /// Multi-line cell for `<Textarea>`.
+    pub body: String,
     pub theme: String,
     pub wave: SeriesHandle,
 }
@@ -24,6 +26,7 @@ impl Gallery {
                 count: 42,
                 draft: String::new(),
                 filled: "filled input".into(),
+                body: "line one\nline two".into(),
                 theme: "libra-dark".into(),
                 wave: SeriesHandle::new(WAVE, 2000.0),
             },
@@ -52,6 +55,10 @@ impl Gallery {
 
     pub fn filled_changed(&mut self, s: String) {
         self.filled = s;
+    }
+
+    pub fn body_changed(&mut self, s: String) {
+        self.body = s;
     }
 }
 

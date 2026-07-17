@@ -57,6 +57,7 @@ See [[04-system-overview|§4 System Overview]] and [[04.1-layer-diagram|§4.1 La
 - [[05.6-time-travel-and-replay-as-a-consequence|5.6 Time travel & replay as a consequence]]
 - [[05.7-scaling-state-slices-not-fragmentation|5.7 Scaling state: slices, not fragmentation]]
 - [[05.8-app-assembly-one-declaration|5.8 App assembly: one declaration]]
+- [[05.9-app-module-layout-splitting-lib-rs-without-breaking-the-macros|5.9 App module layout: splitting lib.rs without breaking the macros]]
 
 ### [[06-the-view-layer-and-markup|6. The View Layer & Markup]]
 

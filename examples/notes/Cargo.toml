@@ -9,6 +9,7 @@ libra.workspace = true
 libra-core.workspace = true
 libra-platform.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true

@@ -47,8 +47,17 @@ pub enum EditOp {
     Right(bool),
     WordLeft(bool),
     WordRight(bool),
+    /// Caret to the start/end of the *current line* (== text start/end
+    /// for single-line values, so Input behavior is unchanged).
     Home(bool),
     End(bool),
+    /// Multi-line caret navigation (§10.1, Textarea): previous/next
+    /// line at the same column (char offset from line start), clamped
+    /// to the target line's length. First line Up → text start; last
+    /// line Down → text end. Sticky column is a later refinement —
+    /// the column is recomputed from the caret each move.
+    Up(bool),
+    Down(bool),
     SelectAll,
     /// Place the caret at a byte offset (clamped to a char boundary).
     SetCaret { byte: usize, select: bool },
@@ -144,11 +153,39 @@ impl EditState {
             }
             EditOp::Home(select) => {
                 self.last_kind = OpKind::Other;
-                self.move_caret(0, select);
+                let to = line_start(&self.text, self.caret);
+                self.move_caret(to, select);
             }
             EditOp::End(select) => {
                 self.last_kind = OpKind::Other;
-                self.move_caret(self.text.len(), select);
+                let to = line_end(&self.text, self.caret);
+                self.move_caret(to, select);
+            }
+            EditOp::Up(select) => {
+                self.last_kind = OpKind::Other;
+                let start = line_start(&self.text, self.caret);
+                let to = if start == 0 {
+                    0 // first line: platform convention is caret to start
+                } else {
+                    let col = self.text[start..self.caret].chars().count();
+                    let prev_start = line_start(&self.text, start - 1);
+                    advance_columns(&self.text, prev_start, start - 1, col)
+                };
+                self.move_caret(to, select);
+            }
+            EditOp::Down(select) => {
+                self.last_kind = OpKind::Other;
+                let end = line_end(&self.text, self.caret);
+                let to = if end == self.text.len() {
+                    self.text.len() // last line: caret to end
+                } else {
+                    let start = line_start(&self.text, self.caret);
+                    let col = self.text[start..self.caret].chars().count();
+                    let next_start = end + 1;
+                    let next_end = line_end(&self.text, next_start);
+                    advance_columns(&self.text, next_start, next_end, col)
+                };
+                self.move_caret(to, select);
             }
             EditOp::SelectAll => {
                 self.last_kind = OpKind::Other;
@@ -201,6 +238,22 @@ impl EditState {
             self.anchor = to;
         }
     }
+}
+
+/// Byte offset of the current line's first char (0 on the first line).
+fn line_start(text: &str, caret: usize) -> usize {
+    text[..caret].rfind('\n').map(|i| i + 1).unwrap_or(0)
+}
+
+/// Byte offset of the current line's `\n` (== text end on the last line).
+fn line_end(text: &str, caret: usize) -> usize {
+    caret + text[caret..].find('\n').unwrap_or(text.len() - caret)
+}
+
+/// Advance from `start` by up to `cols` chars, stopping at `end` —
+/// "same column on the target line, clamped to its length."
+fn advance_columns(text: &str, start: usize, end: usize, cols: usize) -> usize {
+    text[start..end].char_indices().nth(cols).map(|(i, _)| start + i).unwrap_or(end)
 }
 
 fn boundary_char(ch: char) -> bool {
@@ -410,5 +463,76 @@ mod tests {
         assert_eq!(e.text(), "x: pasted content");
         e.apply(EditOp::Undo);
         assert_eq!(e.text(), "x: ");
+    }
+
+    // ---- multi-line (§10.1 Textarea core) ----
+
+    #[test]
+    fn up_and_down_keep_the_column_when_it_fits() {
+        let mut e = typed("alpha\nbravo\ncharlie");
+        e.apply(EditOp::SetCaret { byte: 15, select: false }); // "cha|rlie" col 3
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), 9, "bravo col 3: 'bra|vo'");
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), 3, "alpha col 3: 'alp|ha'");
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), 9);
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), 15);
+    }
+
+    #[test]
+    fn up_and_down_clamp_to_shorter_lines() {
+        let mut e = typed("long first line\nab\nlong third line");
+        e.apply(EditOp::SetCaret { byte: 10, select: false }); // col 10, line 1
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), 18, "line 2 has 2 chars: clamps to its end ('ab|')");
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), 21, "column re-derived from caret (col 2), not sticky");
+    }
+
+    #[test]
+    fn up_on_first_line_goes_to_start_down_on_last_goes_to_end() {
+        let mut e = typed("one\ntwo");
+        e.apply(EditOp::SetCaret { byte: 2, select: false });
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), 0);
+        e.apply(EditOp::SetCaret { byte: 5, select: false });
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), e.text().len());
+    }
+
+    #[test]
+    fn home_and_end_are_line_scoped_on_multiline_text() {
+        let mut e = typed("first\nsecond");
+        e.apply(EditOp::SetCaret { byte: 9, select: false }); // "sec|ond"
+        e.apply(EditOp::Home(false));
+        assert_eq!(e.caret(), 6, "start of the *line*, not the text");
+        e.apply(EditOp::End(false));
+        assert_eq!(e.caret(), 12, "end of the line == end of text on the last line");
+        // Single-line values keep the old text-start/end behavior.
+        let mut s = typed("plain");
+        s.apply(EditOp::Home(false));
+        assert_eq!(s.caret(), 0);
+        s.apply(EditOp::End(false));
+        assert_eq!(s.caret(), 5);
+    }
+
+    #[test]
+    fn shift_up_extends_a_selection_across_lines() {
+        let mut e = typed("aa\nbb\ncc");
+        e.apply(EditOp::SetCaret { byte: 7, select: false }); // "c|c"
+        e.apply(EditOp::Up(true));
+        assert_eq!(e.selection(), 4..7, "'b' to 'c' selected, caret on line 2 col 1");
+    }
+
+    #[test]
+    fn up_down_are_multibyte_safe() {
+        let mut e = typed("héllo\nwörld");
+        e.apply(EditOp::End(false));
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), e.text().find('\n').unwrap(), "clamps to a char boundary");
+        e.apply(EditOp::Down(false));
+        assert_eq!(e.caret(), e.text().len());
     }
 }

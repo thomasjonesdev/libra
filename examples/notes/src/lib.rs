@@ -1,68 +1,46 @@
-//! The Phase 3 reference app: text entry through the pure loop.
-//! Typing runs the §10.1 editing core (in the shell/harness), each
-//! keystroke dispatches `titleChanged(String)` — state stays the
-//! single source of truth (controlled input) — and Save persists via
-//! the effects runtime.
+//! Notes — the feature-parity reference app for [[PLAN-NOTES-APP]]:
+//! folders sidebar · note list · editor, modeled after the
+//! `vercel-labs/native` notes example (capability parity, not their
+//! APIs — every feature lands through Libra's own contracts).
+//!
+//! **M0:** `Folder`/`Note` are the source of truth (`#[libra(skip)]`);
+//! `folder_rows`/`note_rows`/`has_trash`/… are §6.3 display
+//! projections, rebuilt after every action by the `#[project]` hook so
+//! title/snippet/word-count/relative-time can never go stale. Soft
+//! delete (`deleted_ms`) backs "Recently Deleted". The whole store
+//! round-trips through one `Effect::KvGet`/`KvSet` (`STORE_KEY`) as
+//! versioned JSON with v1→v2 migration; boot restores before first
+//! render; edits debounce through `Effect::Timer` with exactly one
+//! save in flight (`save_gen` supersession, per §12.3).
+//!
+//! **M1:** a three-pane view built from shipped components
+//! (`Column`/`Row`/`Text`/`Button`/`Input`, `<for>`, `<if>`,
+//! `<Interval>`). Interim limits upgraded by later stages: the editor
+//! is a single-line `Input` until `Textarea` lands ([[PLAN-TEXTAREA]]),
+//! rows are `Button` + `Text` until `ListItem` lands ([[PLAN-CATALOG]]).
+//!
+//! Module layout follows §5.9: `model.rs` (pure domain — types, store
+//! format, derivations), `state.rs` (the `#[libra::state]` struct +
+//! helpers), `actions.rs` (the one `#[libra::actions]` block), and
+//! this file (wiring: re-exports + `app!`). The re-exports below are
+//! the §5.9 contract — `app!` and the tests resolve `Action`/`reduce`/
+//! `Notes` at the crate root, same flat surface as a single-file app.
 
-use libra::{actions, app, state};
-use libra_core::{Effect, KvResult};
+mod actions;
+mod model;
+mod state;
 
-pub const TITLE_KEY: &str = "notes/title";
+pub use actions::{reduce, Action};
+pub use model::{
+    Folder, FolderRow, Note, NoteRow, AUTOSAVE_DEBOUNCE_MS, MAX_BODY_BYTES, MAX_FOLDERS,
+    MAX_NOTES, RECENTLY_DELETED, STORE_KEY,
+};
+pub use state::Notes;
 
-#[state]
-pub struct Notes {
-    pub title: String,
-    pub status: String,
-    /// Current theme name — mirrored to state so the toggle knows
-    /// where it is (the shell owns the *applied* theme).
-    pub theme: String,
-}
-
-impl Notes {
-    pub fn init() -> (Notes, Vec<Effect<Action>>) {
-        (
-            Notes { title: String::new(), status: "unsaved".into(), theme: "libra-dark".into() },
-            vec![Effect::kv_get(TITLE_KEY, Action::TitleLoaded)],
-        )
-    }
-}
-
-#[actions]
-impl Notes {
-    pub fn title_changed(&mut self, text: String) {
-        self.title = text;
-        self.status = "unsaved".into();
-    }
-
-    pub fn save(&mut self) -> Effect<Action> {
-        Effect::kv_set_acked(TITLE_KEY, self.title.clone().into_bytes(), Action::Saved)
-    }
-
-    pub fn toggle_theme(&mut self) -> Effect<Action> {
-        self.theme =
-            if self.theme == "libra-dark" { "libra-light".into() } else { "libra-dark".into() };
-        Effect::SetTheme { name: self.theme.clone() }
-    }
-
-    // Continuations (§5.2): effect-result payloads, not markup handlers.
-    fn title_loaded(&mut self, bytes: Option<Vec<u8>>) {
-        let Some(bytes) = bytes else { return };
-        self.title = String::from_utf8_lossy(&bytes).into_owned();
-        self.status = "loaded".into();
-    }
-
-    fn saved(&mut self, result: KvResult) {
-        self.status = match result {
-            KvResult::Ok => "saved".into(),
-            KvResult::Err(e) => format!("save failed: {e}"),
-        };
-    }
-}
-
-app! {
+libra::app! {
     state: Notes,
     view: "../views/notes.lx",
     init: Notes::init,
-    window: (520.0, 200.0),
+    window: (900.0, 600.0),
     title: "Libra Notes",
 }

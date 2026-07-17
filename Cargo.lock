@@ -1588,6 +1588,7 @@ dependencies = [
  "libra-test",
  "libra-text",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

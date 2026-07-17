@@ -63,6 +63,7 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
   - [[05.6-time-travel-and-replay-as-a-consequence|5.6 Time travel & replay as a consequence]]
   - [[05.7-scaling-state-slices-not-fragmentation|5.7 Scaling state: slices, not fragmentation]]
   - [[05.8-app-assembly-one-declaration|5.8 App assembly: one declaration]]
+  - [[05.9-app-module-layout-splitting-lib-rs-without-breaking-the-macros|5.9 App module layout: splitting lib.rs without breaking the macros]]
 - [[06-the-view-layer-and-markup|6. The View Layer & Markup]]
   - [[06.1-the-lx-file|6.1 The `.lx` file]]
   - [[06.2-the-closed-grammar-what-markup-can-do|6.2 The closed grammar — what markup CAN do]]

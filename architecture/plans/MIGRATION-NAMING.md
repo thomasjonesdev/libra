@@ -12,6 +12,8 @@ type: plan
 
 **Status: complete.** All 8 stages landed, snapshot-neutral throughout — see [[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]]/[[21-workspace-and-crate-layout|§21]] for the closing summary. This checklist is kept as the historical execution record.
 
+> **Post-migration addendum (2026-07-17):** the snapshot-acceptance verb was renamed **bless → validate** (`LIBRA_BLESS=1` → `LIBRA_VALIDATE=1`; setting the old var is a hard error naming the new one). Live docs/§15.5/§18.1 use the new word; historical plan notes keep the old one as record, per this plan's own rule.
+
 Executes the vocabulary rename adopted in [[03.1-the-vocabulary-five-words-all-of-them-already-yours|§3.1]]–[[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]] (2026-07 revision):
 **Model → State · Msg → Action · update → reduce · Cmd → Effect · widget → component · tiers → named test kinds.**
 Scheduled as a Phase-4 backlog item ([[23-roadmap|§23]]); the doc leads, this checklist makes the code follow.

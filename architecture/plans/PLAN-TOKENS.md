@@ -11,9 +11,20 @@ type: plan
 
 # Design tokens — customizable by default
 
-**Status: planned.** Makes [[11-theming-and-design-tokens|§11]] real enough
-that the expanded catalog ([[PLAN-CATALOG]]) can stay beautiful **and**
-themeable without per-component forks. Umbrella: [[PLAN-UI-SURFACE]].
+**Status: in progress — T1 landed 2026-07-16 (T2 partially).** Makes
+[[11-theming-and-design-tokens|§11]] real enough that the expanded catalog
+([[PLAN-CATALOG]]) can stay beautiful **and** themeable without
+per-component forks. Umbrella: [[PLAN-UI-SURFACE]].
+
+**T1 decision:** extended the existing flat `Theme` struct with named
+fields (`surface_raised`, `hairline`, `danger`/`warning`/`success`/`info`)
+rather than introducing a separate `TokenTable` — one lookup path, TOML
+override + hot reload keep working unchanged, and dark stayed
+byte-identical because new keys are only read by post-T1 components
+(`Separator` is the first consumer). The TOML parser gained the new keys
+(T2's key-set growth; unknown keys already error with line numbers —
+suggestions still open). Revisit `TokenTable` only if/when markup token
+refs (T5) need string-keyed lookup.
 
 ## Why now
 

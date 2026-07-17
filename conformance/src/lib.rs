@@ -9,6 +9,9 @@ use libra_core::{FrameInfo, Instant, LibraReflect, SeriesHandle, SeriesId};
 pub struct Item {
     pub id: String,
     pub label: String,
+    /// Bool row field — `selected={t.active}` on `<ListItem>` (both
+    /// engines resolve it via the shared Display-"true" rule).
+    pub active: bool,
 }
 
 impl std::fmt::Display for Item {
@@ -68,8 +71,8 @@ impl Default for TestState {
                 SeriesHandle::new(SeriesId(3), 3000.0),
             ],
             items: vec![
-                Item { id: "1".into(), label: "Alpha".into() },
-                Item { id: "2".into(), label: "Beta".into() },
+                Item { id: "1".into(), label: "Alpha".into(), active: true },
+                Item { id: "2".into(), label: "Beta".into(), active: false },
             ],
             running: true,
             feed: "telemetry".into(),
@@ -106,4 +109,6 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/frames.rs"));
     include!(concat!(env!("OUT_DIR"), "/interval_stream.rs"));
     include!(concat!(env!("OUT_DIR"), "/accessors.rs"));
+    include!(concat!(env!("OUT_DIR"), "/chrome.rs"));
+    include!(concat!(env!("OUT_DIR"), "/list_textarea.rs"));
 }

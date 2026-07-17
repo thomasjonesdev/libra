@@ -27,6 +27,7 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 5.6 | `sections/05.6-time-travel-and-replay-as-a-consequence.md` |
 | 5.7 | `sections/05.7-scaling-state-slices-not-fragmentation.md` |
 | 5.8 | `sections/05.8-app-assembly-one-declaration.md` |
+| 5.9 | `sections/05.9-app-module-layout-splitting-lib-rs-without-breaking-the-macros.md` |
 | 6 | `sections/06-the-view-layer-and-markup.md` |
 | 6.1 | `sections/06.1-the-lx-file.md` |
 | 6.2 | `sections/06.2-the-closed-grammar-what-markup-can-do.md` |

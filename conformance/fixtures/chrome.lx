@@ -1,0 +1,24 @@
+<Column gap={8} padding={12}>
+  <Row gap={6} cross="center">
+    <Text bold>left</Text>
+    <Spacer />
+    <Text muted>right</Text>
+  </Row>
+  <Separator />
+  <Row gap={0} grow>
+    <Column width={180} padding={8}>
+      <Text size="sm">sidebar</Text>
+      <Spacer grow />
+      <Text size="sm" muted>pinned</Text>
+    </Column>
+    <Separator vertical />
+    <Column padding={8} grow={1.5}>
+      <Text>content</Text>
+      <Spacer size={24} />
+      <Text muted>{status}</Text>
+    </Column>
+    <Column padding={8} grow={2.5}>
+      <Text>wide pane</Text>
+    </Column>
+  </Row>
+</Column>

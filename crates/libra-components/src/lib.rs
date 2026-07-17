@@ -48,11 +48,18 @@ pub enum Variant {
 pub struct BoxStyle {
     pub gap: f32,
     pub padding: f32,
-    pub grow: bool,
+    /// Flex-grow weight. `0.0` = none; the bare `grow` flag = `1.0`;
+    /// `grow={2.5}` = weighted share — panes stay proportional as the
+    /// window resizes (responsive by construction, no breakpoints).
+    pub grow: f32,
     /// align-items: center
     pub cross_center: bool,
     /// justify-content: center
     pub main_center: bool,
+    /// Fixed main-axis-independent width in logical px (`width={240}`)
+    /// — pane sizing for sidebar/list/editor layouts (§7.1 Layout).
+    /// `None` = auto (content / flex).
+    pub width: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,6 +89,34 @@ pub enum ViewNode {
     /// `test_id` is required — it is the focus identity until the
     /// reconciler brings structural IDs.
     Input { value: String, placeholder: String, on_change: String, test_id: String },
+    /// `<ListItem>` (§7.1, PLAN-CATALOG): a pressable list row —
+    /// title line, optional muted `subtitle`/`meta` lines, `selected`
+    /// wash (`theme.surface_raised`; also the hover wash). The whole
+    /// row is the press target; `on_press_arg` carries the item-scoped
+    /// payload exactly like Button (§6.2).
+    ListItem {
+        title: String,
+        subtitle: String,
+        meta: String,
+        selected: bool,
+        on_press: String,
+        on_press_arg: Option<String>,
+        test_id: Option<String>,
+    },
+    /// `<Textarea>` (§10.1, PLAN-TEXTAREA stage 1): multi-line
+    /// controlled text entry on the same pure editing core as Input.
+    /// Hard newlines only (no soft wrap yet); grows to fill its column.
+    Textarea { value: String, placeholder: String, on_change: String, test_id: String },
+    /// `<Spacer/>` (§7.1 Layout, PLAN-CATALOG wave 1): pure layout —
+    /// `size: Some(px)` takes fixed room on the parent's main axis,
+    /// `None` is a flex spring (`grow`) pushing siblings apart. Paints
+    /// nothing.
+    Spacer { size: Option<f32> },
+    /// `<Separator/>` (§7.1 Layout, PLAN-CATALOG wave 1): a 1px
+    /// hairline rule across the parent's cross axis — horizontal in a
+    /// `Column`, `vertical` for pane seams in a `Row`. Paints
+    /// `theme.hairline` (PLAN-TOKENS T1).
+    Separator { vertical: bool },
     /// `<Frames onTick={name}>` (§12.5): an invisible, zero-layout
     /// source element — declares "subscribe to vsync-coalesced frame
     /// ticks while this is mounted," diffed by the runtime like
@@ -114,6 +149,9 @@ pub enum Role {
     Button,
     Chart,
     TextInput,
+    /// A visual divider (`<Separator>`); maps to a non-interactive
+    /// generic node in the AccessKit projection.
+    Separator,
     /// A mounted source element (§12.5) — test-query-only; the a11y
     /// layer excludes this role from the AccessKit projection.
     Source,
@@ -141,11 +179,19 @@ pub trait TextMeasurer {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ItemKind {
-    Box, // Column/Row (no visual in Phase 0; containers are transparent)
+    Box, // Column/Row/Spacer (no visual; containers are transparent)
+    /// `<Separator>` — paints a `theme.hairline` rect over its rect.
+    Separator,
     Text { content: String, px: f32, style: FontStyle, color: Color },
     Button { label: String, px: f32, variant: Variant },
     Chart { handle: SeriesHandle, panel: bool },
     Input { value: String, placeholder: String, px: f32 },
+    /// Multi-line sibling of Input (§10.1 stage 1) — same focus
+    /// machinery, line-aware paint.
+    Textarea { value: String, placeholder: String, px: f32 },
+    /// Pressable list row; `selected`/hover paint a `surface_raised`
+    /// wash behind the text lines.
+    ListItem { title: String, subtitle: String, meta: String, selected: bool, px_md: f32, px_sm: f32 },
     /// §12.5 source element — zero-size, paints nothing. Carries which
     /// kind mounted (see `SourceDecl`) so the shell/harness can
     /// dispatch/query by kind without re-deriving it from `ViewNode`.
@@ -278,12 +324,22 @@ fn box_style(s: &BoxStyle, dir: FlexDirection) -> Style {
             top: length(s.padding),
             bottom: length(s.padding),
         },
-        flex_grow: if s.grow { 1.0 } else { 0.0 },
+        flex_grow: s.grow,
+        // A fixed pane width must not be flexed away by siblings.
+        flex_shrink: if s.width.is_some() { 0.0 } else { 1.0 },
+        size: Size {
+            width: s.width.map(length).unwrap_or(auto()),
+            height: auto(),
+        },
         align_items: if s.cross_center { Some(AlignItems::Center) } else { None },
         justify_content: if s.main_center { Some(JustifyContent::Center) } else { None },
         ..Default::default()
     }
 }
+
+/// Vertical gap between Textarea lines (added to the measured line
+/// height). A fixed constant — deterministic, theme-independent.
+pub const TEXTAREA_LEADING: f32 = 4.0;
 
 /// §12.5: is this child a mounted source element? Used to keep all
 /// three kinds (`Frames`/`Interval`/`Stream`) out of the flex tree —
@@ -433,6 +489,109 @@ fn build(
             ));
             Ok(id)
         }
+        ViewNode::ListItem {
+            title,
+            subtitle,
+            meta: meta_line,
+            selected,
+            on_press,
+            on_press_arg,
+            test_id,
+        } => {
+            let px_md = theme.type_md;
+            let px_sm = theme.type_sm;
+            let (_, th_md) = m.measure("Ag", px_md, FontStyle::Regular);
+            let (_, th_sm) = m.measure("Ag", px_sm, FontStyle::Regular);
+            let lines = 1 + usize::from(!subtitle.is_empty()) + usize::from(!meta_line.is_empty());
+            let h = 2.0 * theme.btn_pad_y
+                + th_md
+                + if lines > 1 { (lines - 1) as f32 * (th_sm + 2.0) } else { 0.0 };
+            let id = tree.new_leaf(Style {
+                size: Size { width: auto(), height: length(h) },
+                flex_shrink: 0.0,
+                ..Default::default()
+            })?;
+            meta.push((
+                id,
+                ItemKind::ListItem {
+                    title: title.clone(),
+                    subtitle: subtitle.clone(),
+                    meta: meta_line.clone(),
+                    selected: *selected,
+                    px_md,
+                    px_sm,
+                },
+                Semantics { role: Role::Button, text: title.clone(), test_id: test_id.clone() },
+                Some((on_press.clone(), on_press_arg.clone())),
+            ));
+            Ok(id)
+        }
+        ViewNode::Textarea { value, placeholder, on_change, test_id } => {
+            let px = theme.type_md;
+            let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+            // Minimum three lines; grows to fill the column.
+            let min_h = 3.0 * (th + TEXTAREA_LEADING) + 2.0 * theme.btn_pad_y;
+            let id = tree.new_leaf(Style {
+                size: Size { width: auto(), height: auto() },
+                min_size: Size { width: auto(), height: length(min_h) },
+                flex_grow: 1.0,
+                flex_shrink: 1.0,
+                ..Default::default()
+            })?;
+            meta.push((
+                id,
+                ItemKind::Textarea { value: value.clone(), placeholder: placeholder.clone(), px },
+                Semantics {
+                    role: Role::TextInput,
+                    text: value.clone(),
+                    test_id: Some(test_id.clone()),
+                },
+                Some((on_change.clone(), None)),
+            ));
+            Ok(id)
+        }
+        ViewNode::Spacer { size } => {
+            // Pure layout: fixed room along the parent's main axis
+            // (flex-basis is main-axis-relative, so one node works in
+            // both Column and Row), or a flex spring when sizeless.
+            let style = match size {
+                Some(s) => Style { flex_basis: length(*s), flex_shrink: 0.0, ..Default::default() },
+                None => Style { flex_grow: 1.0, ..Default::default() },
+            };
+            let id = tree.new_leaf(style)?;
+            meta.push((
+                id,
+                ItemKind::Box,
+                Semantics { role: Role::Container, text: String::new(), test_id: None },
+                None,
+            ));
+            Ok(id)
+        }
+        ViewNode::Separator { vertical } => {
+            // 1px along the parent's main axis, stretched across the
+            // cross axis (taffy's default align-items: stretch).
+            let style = if *vertical {
+                Style {
+                    size: Size { width: length(1.0), height: auto() },
+                    flex_shrink: 0.0,
+                    ..Default::default()
+                }
+            } else {
+                Style {
+                    size: Size { width: auto(), height: length(1.0) },
+                    flex_shrink: 0.0,
+                    ..Default::default()
+                }
+            };
+            let id = tree.new_leaf(style)?;
+            meta.push((
+                id,
+                ItemKind::Separator,
+                Semantics { role: Role::Separator, text: String::new(), test_id: None },
+                None,
+            ));
+            Ok(id)
+        }
         ViewNode::SourceFrames { on_tick } => {
             let id = tree.new_leaf(Style {
                 size: Size { width: length(0.0), height: length(0.0) },
@@ -508,19 +667,14 @@ impl LaidTree {
         focus: Option<&InputFocus>,
         theme: &Theme,
     ) -> Vec<DrawCmd> {
-        self.paint_at_density(measurer, store, focus, theme, 1.0)
+        self.paint_full(measurer, store, focus, None, theme, 1.0)
     }
 
-    /// `paint`, but Chart items compute their M4 columns at `density`×
-    /// resolution instead of the item's logical width (PLAN-DASHBOARD-PERF.md
-    /// Stage 6). `density` is a *presentation* hint — the windowed shell
-    /// passes its window scale factor so a Retina display gets one
-    /// column per physical pixel instead of one per two; the shell then
-    /// scales the resulting cmds by the same factor, so a column lands
-    /// exactly 1 physical pixel wide. `chart_columns`'s cache keys on
-    /// (series, window, width_px), so both densities' queries are each
-    /// independently deterministic (§14.3) — this never touches the
-    /// canonical density-1.0 path or its snapshots.
+    /// `paint` with an explicit hover point (logical px). Hover is a
+    /// *deterministic input* like focus, not ambient pointer state:
+    /// the shell feeds its cursor, the harness feeds `None` by default
+    /// (snapshots unchanged) or an explicit point for hover snapshots.
+    /// Only `ListItem` reacts today (a `surface_raised` wash).
     pub fn paint_at_density(
         &self,
         measurer: &dyn TextMeasurer,
@@ -529,11 +683,73 @@ impl LaidTree {
         theme: &Theme,
         density: f32,
     ) -> Vec<DrawCmd> {
+        self.paint_full(measurer, store, focus, None, theme, density)
+    }
+
+    /// The full paint entry point: `density` is the PLAN-DASHBOARD-PERF
+    /// Stage 6 presentation hint (charts compute M4 columns at
+    /// `density`× resolution; the windowed shell passes its scale
+    /// factor — never the canonical density-1.0 snapshot path), and
+    /// `hover` is the optional pointer point (see `paint_at_density`'s
+    /// doc for the determinism argument).
+    pub fn paint_full(
+        &self,
+        measurer: &dyn TextMeasurer,
+        store: &SeriesStore,
+        focus: Option<&InputFocus>,
+        hover: Option<(f32, f32)>,
+        theme: &Theme,
+        density: f32,
+    ) -> Vec<DrawCmd> {
         let mut cmds = vec![DrawCmd::Clear(theme.bg)];
         for item in &self.items {
             match &item.kind {
                 ItemKind::Box => {}
                 ItemKind::Source(_) => {}
+                ItemKind::Separator => {
+                    cmds.push(DrawCmd::Rect { rect: item.rect, color: theme.hairline });
+                }
+                ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm } => {
+                    let hovered = hover.is_some_and(|(hx, hy)| item.rect.contains(hx, hy));
+                    if *selected || hovered {
+                        cmds.push(DrawCmd::RRect {
+                            rect: item.rect,
+                            radius: theme.radius_md,
+                            color: theme.surface_raised,
+                        });
+                    }
+                    let (tx, mut ty) = (item.rect.x + theme.btn_pad_x, item.rect.y + theme.btn_pad_y);
+                    let (_, th_md) = measurer.measure("Ag", *px_md, FontStyle::Regular);
+                    let (_, th_sm) = measurer.measure("Ag", *px_sm, FontStyle::Regular);
+                    cmds.push(DrawCmd::Text {
+                        x: tx,
+                        y: ty,
+                        content: title.clone(),
+                        px: *px_md,
+                        style: FontStyle::Regular,
+                        color: theme.text,
+                    });
+                    ty += th_md + 2.0;
+                    for line in [subtitle, meta] {
+                        if line.is_empty() {
+                            continue;
+                        }
+                        cmds.push(DrawCmd::Text {
+                            x: tx,
+                            y: ty,
+                            content: line.clone(),
+                            px: *px_sm,
+                            style: FontStyle::Regular,
+                            color: theme.text_muted,
+                        });
+                        ty += th_sm + 2.0;
+                    }
+                }
+                ItemKind::Textarea { value, placeholder, px } => {
+                    let focused = focus
+                        .filter(|f| item.semantics.test_id.as_deref() == Some(f.test_id.as_str()));
+                    paint_textarea(&mut cmds, item.rect, value, placeholder, *px, focused, measurer, theme);
+                }
                 ItemKind::Chart { handle, panel } => {
                     paint_chart(&mut cmds, item.rect, handle, *panel, store, theme, density);
                 }
@@ -654,6 +870,100 @@ fn paint_input(
             rect: Rect::new(cx, ty, 1.0, th),
             color: theme.text,
         });
+    }
+}
+
+/// Textarea painting (§10.1 stage 1): field chrome, hard-newline lines
+/// (no soft wrap yet), muted placeholder when empty, and — when
+/// focused — the focus ring, per-line selection bands, and a
+/// line-positioned caret. Line height is measured height +
+/// [`TEXTAREA_LEADING`]; x positions come from prefix advances within
+/// the caret's line, same measurer that laid the text.
+#[allow(clippy::too_many_arguments)]
+fn paint_textarea(
+    cmds: &mut Vec<DrawCmd>,
+    rect: Rect,
+    value: &str,
+    placeholder: &str,
+    px: f32,
+    focus: Option<&InputFocus>,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+) {
+    cmds.push(DrawCmd::RRect { rect, radius: theme.radius_md, color: theme.secondary });
+    if focus.is_some() {
+        let c = theme.accent;
+        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y, rect.w, 1.0), color: c });
+        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y + rect.h - 1.0, rect.w, 1.0), color: c });
+        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y, 1.0, rect.h), color: c });
+        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x + rect.w - 1.0, rect.y, 1.0, rect.h), color: c });
+    }
+    let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
+    let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+    let line_h = th + TEXTAREA_LEADING;
+
+    if value.is_empty() {
+        if !placeholder.is_empty() {
+            cmds.push(DrawCmd::Text {
+                x: tx,
+                y: ty,
+                content: placeholder.to_string(),
+                px,
+                style: FontStyle::Regular,
+                color: theme.text_muted,
+            });
+        }
+    }
+
+    // Walk lines with their byte ranges so selection/caret map exactly.
+    let mut line_start = 0usize;
+    let mut row = 0usize;
+    loop {
+        let rest = &value[line_start..];
+        let line_len = rest.find('\n').unwrap_or(rest.len());
+        let line = &value[line_start..line_start + line_len];
+        let ly = ty + row as f32 * line_h;
+
+        if let Some(f) = focus {
+            // Selection band: this line's overlap with the selection.
+            let sel = &f.selection;
+            let (ls, le) = (line_start, line_start + line_len);
+            let s = sel.start.max(ls);
+            let e = sel.end.min(le);
+            if s < e {
+                let x0 = tx + m.measure(&value[ls..s], px, FontStyle::Regular).0;
+                let x1 = tx + m.measure(&value[ls..e], px, FontStyle::Regular).0;
+                cmds.push(DrawCmd::Rect {
+                    rect: Rect::new(x0, ly, (x1 - x0).max(1.0), th),
+                    color: theme.selection,
+                });
+            }
+        }
+        if !line.is_empty() {
+            cmds.push(DrawCmd::Text {
+                x: tx,
+                y: ly,
+                content: line.to_string(),
+                px,
+                style: FontStyle::Regular,
+                color: theme.text,
+            });
+        }
+        if let Some(f) = focus {
+            let caret = f.caret.min(value.len());
+            if caret >= line_start && caret <= line_start + line_len {
+                let cx = tx + m.measure(&value[line_start..caret], px, FontStyle::Regular).0;
+                cmds.push(DrawCmd::Rect { rect: Rect::new(cx, ly, 1.0, th), color: theme.text });
+            }
+        }
+
+        match rest.find('\n') {
+            Some(nl) => {
+                line_start += nl + 1;
+                row += 1;
+            }
+            None => break,
+        }
     }
 }
 

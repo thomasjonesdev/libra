@@ -23,6 +23,7 @@ type: architecture
 - [[05.6-time-travel-and-replay-as-a-consequence]]
 - [[05.7-scaling-state-slices-not-fragmentation]]
 - [[05.8-app-assembly-one-declaration]]
+- [[05.9-app-module-layout-splitting-lib-rs-without-breaking-the-macros]]
 
 ---
 

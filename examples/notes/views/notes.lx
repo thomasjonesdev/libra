@@ -1,14 +1,70 @@
-<Column gap={12} padding={16}>
-  <Row gap={8} cross="center">
-    <Text bold grow>Notes</Text>
-    <Text size="sm" muted testId="status">{status}</Text>
-    <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
+<Column gap={0}>
+  <Interval every={30000} onTick={tick} />
+
+  <Row gap={0} grow>
+    <Column gap={4} padding={12} grow={1}>
+      <Text bold>Folders</Text>
+      <for each={folder_rows} as="f" key={f.id}>
+        <ListItem title={f.name} meta={f.count} selected={f.selected} onPress={selectFolder(f.id)} />
+      </for>
+      <if test={has_trash}>
+        <ListItem title="Recently Deleted" meta={trash_count} onPress={openRecentlyDeleted} testId="trash-folder" />
+      </if>
+      <Spacer />
+      <Separator />
+      <Row gap={6} cross="center">
+        <Input value={new_folder_name} placeholder="new folder…" onChange={newFolderNameChanged} testId="new-folder" />
+        <Button variant="secondary" onPress={addFolder} testId="add-folder">Add</Button>
+      </Row>
+    </Column>
+
+    <Separator vertical />
+
+    <Column gap={4} padding={12} grow={1.5}>
+      <Row gap={8} cross="center">
+        <Text bold grow testId="folder-name">{folder_name}</Text>
+        <Button variant="primary" onPress={newNote} testId="new-note">New</Button>
+      </Row>
+      <Row gap={6} cross="center">
+        <Input value={query} placeholder="search…" onChange={queryChanged} testId="search" />
+        <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
+      </Row>
+      <Separator />
+      <if test={note_rows.isEmpty}>
+        <Text muted testId="empty">{empty_message}</Text>
+      </if>
+      <for each={note_rows} as="n" key={n.id}>
+        <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} />
+      </for>
+    </Column>
+
+    <Separator vertical />
+
+    <Column gap={8} padding={12} grow={2.5}>
+      <Row gap={8} cross="center">
+        <Text size="sm" muted testId="meta">{selected_meta}</Text>
+        <Spacer />
+        <Text size="sm" muted testId="status">{status}</Text>
+        <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
+      </Row>
+      <if test={selected_is_trashed}>
+        <Row gap={8}>
+          <Button variant="secondary" onPress={restoreNote} testId="restore">Restore</Button>
+          <Button variant="ghost" onPress={deleteNotePermanently} testId="delete-forever">Delete Forever</Button>
+        </Row>
+        <else>
+          <Row gap={8}>
+            <Button variant="ghost" onPress={deleteNote} testId="delete-note">Delete</Button>
+            <Button variant="ghost" onPress={deleteFolder} testId="delete-folder">Delete Folder</Button>
+          </Row>
+        </else>
+      </if>
+      <Textarea value={editor_body} placeholder="write something…" onChange={bodyChanged} testId="editor-body" />
+    </Column>
   </Row>
-  <Row gap={8} cross="center">
-    <Input value={title} placeholder="note title…" onChange={titleChanged} testId="title" />
-    <Button variant="primary" onPress={save} testId="save">Save</Button>
-  </Row>
-  <Row gap={8}>
-    <Text size="sm" muted testId="echo">title is {title}</Text>
+
+  <Separator />
+  <Row gap={8} padding={8} cross="center">
+    <Text size="sm" muted testId="list-summary">{list_summary}</Text>
   </Row>
 </Column>

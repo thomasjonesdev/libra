@@ -78,7 +78,7 @@ now run on (completed rename/ergonomics plans live under
 - `libra-test` — the Harness: component-test queries (`by::test_id`/
   `text`/`role`/`source`) + real-hit-test clicks; integration-test
   effect interception (`expect_effect` / `resolve_*` / `expect_no_effects`);
-  snapshot tests with diff heatmaps (LIBRA_BLESS=1 to re-record);
+  snapshot tests with diff heatmaps (LIBRA_VALIDATE=1 to re-record);
   §10.1 verbs: type_text / edit(EditOp) / focused_edit drive the same
   editing core the shell drives; `has_source(kind)` checks a mounted
   §12.5 source element

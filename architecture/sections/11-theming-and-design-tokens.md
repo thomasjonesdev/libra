@@ -20,10 +20,13 @@ type: architecture
 - Tokens are part of the determinism contract: a snapshot test's identity includes the theme hash.
 
 **Implementation status:** a flat `Theme` struct + TOML override subset is
-shipped (`libra-dark` byte-identical to legacy tokens). Full named ramps,
-density, and semantic status colors are staged in [[PLAN-TOKENS]] (under
-[[PLAN-UI-SURFACE]]). Catalog growth must not invent paint literals —
-extend the token table instead.
+shipped (`libra-dark` byte-identical to legacy tokens). [[PLAN-TOKENS]] T1
+(2026-07-16) added the first named keys — `surface_raised`, `hairline`,
+and semantic status colors (`danger`/`warning`/`success`/`info`) — as flat
+fields with TOML overrides; `Separator` is the first consumer. Full
+ramps (`space.*`, `type.*` scale), density, and markup token refs remain
+staged in [[PLAN-TOKENS]] (under [[PLAN-UI-SURFACE]]). Catalog growth
+must not invent paint literals — extend the token table instead.
 
 ---
 

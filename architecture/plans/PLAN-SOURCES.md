@@ -42,9 +42,9 @@ fixture; `cargo test --workspace` green.
 
 ## Acceptance
 
-- [ ] Conformance: Interval (+ Stream nodes) interp≡codegen
-- [ ] Shell ticks Interval while mounted; cancel on unmount / `<if>` flip
-- [ ] `cargo test --workspace` green
+- [x] Conformance: Interval (+ Stream nodes) interp≡codegen
+- [x] Shell ticks Interval while mounted; cancel on unmount / `<if>` flip
+- [x] `cargo test --workspace` green
 
 ---
 

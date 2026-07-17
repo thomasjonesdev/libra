@@ -15,7 +15,7 @@ type: architecture
 
 **Phase 0 — Spike (weeks 1–2).** `libra-core` loop + `libra-markup` parser + interpreter + minimal components (Column/Row/Text/Button) + taffy + tiny-skia + winit window. Counter runs; unit and component tests pass; a snapshot test passes byte-exact in a container. *Go/no-go gate: the determinism claim proven end-to-end.*
 
-**Phase 1 — The testable foundation (months 1–2).** Effects runtime + redb KV + Harness with effect interception (integration tests) + snapshot infrastructure with bless/diff + hot reload with state rehydration + error overlay + `libra check`. `Remote<T,E>` + error boundaries land here. The counter-that-fetches-and-persists example, fully tested at every kind.
+**Phase 1 — The testable foundation (months 1–2).** Effects runtime + redb KV + Harness with effect interception (integration tests) + snapshot infrastructure with validate/diff + hot reload with state rehydration + error overlay + `libra check`. `Remote<T,E>` + error boundaries land here. The counter-that-fetches-and-persists example, fully tested at every kind.
 
 **Phase 2 — The data plane (months 2–4).** Ring buffers, ingest, tapes, M4, Chart/Sparkline/LogView/VirtualList/Table, damage tracking + layer cache hardened, `Sub::frames`, the `dashboard` benchmark app hitting [[22-performance-budgets|§22]] budgets.
 

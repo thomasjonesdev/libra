@@ -1,0 +1,7 @@
+<Column gap={8} padding={12}>
+  <for each={items} as="t" key={t.id}>
+    <ListItem title={t.label} subtitle="row subtitle" meta={t.id} selected={t.active} onPress={nameChanged(t.id)} />
+  </for>
+  <ListItem title="static row" meta={status} selected onPress={increment} testId="static-row" />
+  <Textarea value={name} placeholder="write…" onChange={nameChanged} testId="body" />
+</Column>

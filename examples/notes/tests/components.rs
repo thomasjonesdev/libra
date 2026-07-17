@@ -1,63 +1,140 @@
-//! Component tests (§15.3): §10.1's harness verbs in anger — type_text
-//! drives the same pure editing core the shell drives, dispatching
-//! onChange through the real update per keystroke.
+//! Component tests (§15.3): harness verbs driving the real semantics
+//! tree — folder/note selection, search filtering, trash flow, the
+//! editor's controlled `Input` (until Textarea lands, [[PLAN-TEXTAREA]]).
 
+use libra_core::{Effect, KvResult};
 use libra_test::{by, fx, Harness};
-use libra_text::EditOp;
-use notes::{Notes, TITLE_KEY, VIEW};
+use notes::{Action, Notes, STORE_KEY, VIEW};
 
 fn harness() -> Harness<Notes> {
-    let mut h = Harness::<Notes>::with_viewport(VIEW, 520, 200);
-    let load = h.expect_effect(fx::kv_get(TITLE_KEY));
+    let mut h = Harness::<Notes>::with_viewport(VIEW, 900, 600);
+    let load = h.expect_effect(fx::kv_get(STORE_KEY));
     h.resolve_kv_get(load, None);
     h
 }
 
-#[test]
-fn type_text_flows_keystrokes_through_update() {
-    let mut h = harness();
-    h.type_text(by::test_id("title"), "Hello");
-    h.query(by::test_id("echo")).assert_text("title is Hello");
-    assert_eq!(h.state().title, "Hello");
-    assert_eq!(h.state().status, "unsaved");
+/// Fires every pending debounce/immediate timer and resolves every
+/// resulting `KvSet`, until the autosave machinery is fully settled.
+fn settle_save(h: &mut Harness<Notes>) {
+    loop {
+        if h.pending_effects().any(|e| matches!(e, Effect::Timer { .. })) {
+            let t = h.expect_effect(fx::timer());
+            h.fire_timer(t);
+            continue;
+        }
+        if h.pending_effects().any(|e| matches!(e, Effect::KvSet { .. })) {
+            let kv = h.expect_effect(fx::kv_set(STORE_KEY));
+            h.resolve_kv_set(kv, KvResult::Ok);
+            continue;
+        }
+        break;
+    }
+}
+
+fn add_note(h: &mut Harness<Notes>, body: &str) {
+    h.click(by::test_id("new-note"));
+    settle_save(h);
+    if !body.is_empty() {
+        h.type_text(by::test_id("editor-body"), body);
+        settle_save(h);
+    }
 }
 
 #[test]
-fn backspace_and_word_ops_edit_the_state() {
+fn new_note_appears_untitled_and_becomes_the_editor_body() {
     let mut h = harness();
-    h.type_text(by::test_id("title"), "hello world");
-    h.edit(EditOp::Backspace);
-    h.query(by::test_id("echo")).assert_text("title is hello worl");
-    // Select the last word and replace it:
-    h.edit(EditOp::WordLeft(true));
-    h.edit(EditOp::Insert('W'));
-    h.query(by::test_id("echo")).assert_text("title is hello W");
+    h.click(by::test_id("new-note"));
+    assert_eq!(h.state().note_rows.len(), 1);
+    assert_eq!(h.state().note_rows[0].title, "Untitled");
+    assert_eq!(h.state().editor_body, "");
+    settle_save(&mut h);
 }
 
 #[test]
-fn undo_round_trips_through_state() {
+fn typing_in_the_editor_updates_the_derived_title_live() {
     let mut h = harness();
-    h.type_text(by::test_id("title"), "abc def");
-    h.edit(EditOp::Undo); // word-grouped: drops "def"
-    assert_eq!(h.state().title, "abc ");
-    h.edit(EditOp::Redo);
-    assert_eq!(h.state().title, "abc def");
+    add_note(&mut h, "");
+    h.type_text(by::test_id("editor-body"), "Hello world");
+    h.query(by::test_id("folder-name")).assert_text("Notes");
+    assert_eq!(h.state().note_rows[0].title, "Hello world");
+    assert_eq!(h.state().editor_body, "Hello world");
+    settle_save(&mut h);
 }
 
 #[test]
-fn select_all_then_type_replaces() {
+fn search_hides_and_shows_notes_live() {
     let mut h = harness();
-    h.type_text(by::test_id("title"), "old title");
-    h.edit(EditOp::SelectAll);
-    h.edit(EditOp::Insert('N'));
-    assert_eq!(h.state().title, "N");
+    add_note(&mut h, "Alpha project notes");
+    add_note(&mut h, "Beta rollout plan");
+    assert_eq!(h.state().note_rows.len(), 2);
+
+    h.type_text(by::test_id("search"), "alpha");
+    assert_eq!(h.state().note_rows.len(), 1);
+    assert_eq!(h.state().note_rows[0].title, "Alpha project notes");
+
+    h.click(by::test_id("clear-search"));
+    assert_eq!(h.state().note_rows.len(), 2);
 }
 
 #[test]
-fn multibyte_typing_is_safe() {
+fn empty_state_message_differs_for_no_notes_vs_no_matches() {
     let mut h = harness();
-    h.type_text(by::test_id("title"), "héllo 🎉");
-    assert_eq!(h.state().title, "héllo 🎉");
-    h.edit(EditOp::Backspace);
-    assert_eq!(h.state().title, "héllo ");
+    h.query(by::test_id("empty")).assert_text("No notes yet");
+    add_note(&mut h, "Only note");
+    h.type_text(by::test_id("search"), "nonexistent");
+    h.query(by::test_id("empty")).assert_text("No matches");
+}
+
+#[test]
+fn delete_note_moves_it_to_recently_deleted_and_it_can_be_restored() {
+    let mut h = harness();
+    add_note(&mut h, "Temporary");
+    assert!(!h.state().has_trash);
+
+    h.click(by::test_id("delete-note"));
+    settle_save(&mut h);
+    assert!(h.state().has_trash);
+    assert_eq!(h.state().note_rows.len(), 0, "trashed notes leave the folder's own list");
+
+    h.click(by::test_id("trash-folder"));
+    assert_eq!(h.state().note_rows.len(), 1);
+    assert!(h.state().selected_is_trashed);
+
+    h.click(by::test_id("restore"));
+    settle_save(&mut h);
+    assert!(!h.state().has_trash);
+}
+
+#[test]
+fn recently_deleted_row_is_absent_until_something_is_trashed() {
+    let mut h = harness();
+    add_note(&mut h, "Whatever");
+    assert!(!h.state().has_trash);
+    h.click(by::test_id("delete-note"));
+    settle_save(&mut h);
+    h.query(by::test_id("trash-folder")).assert_text("Recently Deleted");
+}
+
+#[test]
+fn adding_a_folder_and_switching_shows_its_own_notes() {
+    let mut h = harness();
+    add_note(&mut h, "In Notes folder");
+
+    h.type_text(by::test_id("new-folder"), "Work");
+    h.click(by::test_id("add-folder"));
+    settle_save(&mut h);
+
+    // Switched to the new (empty) folder automatically.
+    h.query(by::test_id("folder-name")).assert_text("Work");
+    assert_eq!(h.state().note_rows.len(), 0);
+
+    let notes_folder_id = h.state().folder_rows[0].id;
+    h.dispatch(Action::SelectFolder(notes_folder_id.to_string()));
+    assert_eq!(h.state().note_rows.len(), 1);
+}
+
+#[test]
+fn interval_source_is_mounted_for_live_relative_timestamps() {
+    let h = harness();
+    assert!(h.has_source("interval"));
 }

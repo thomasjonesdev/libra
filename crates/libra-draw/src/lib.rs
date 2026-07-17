@@ -164,12 +164,25 @@ pub struct Theme {
     pub name: String,
     pub bg: Color,
     pub surface: Color,
+    /// One step above `surface`: hover washes, raised panels, list-row
+    /// selection backgrounds (PLAN-TOKENS T1).
+    pub surface_raised: Color,
     pub text: Color,
     pub text_muted: Color,
     pub accent: Color,
     pub accent_text: Color,
     pub secondary: Color,
     pub selection: Color,
+    /// 1px rules: `Separator`, pane seams, table row dividers
+    /// (PLAN-TOKENS T1). Sits between `bg` and `secondary` so it reads
+    /// as structure, not content.
+    pub hairline: Color,
+    /// Semantic status colors (PLAN-TOKENS T1) — `Badge`/`Status`/
+    /// `Toast` variants resolve these by meaning, never by hex.
+    pub danger: Color,
+    pub warning: Color,
+    pub success: Color,
+    pub info: Color,
     pub radius_md: f32,
     pub type_sm: f32,
     pub type_md: f32,
@@ -180,18 +193,27 @@ pub struct Theme {
 
 impl Theme {
     /// The mission-control default. Byte-identical to the Phase 0
-    /// token values — existing snapshots are recorded under it.
+    /// token values — existing snapshots are recorded under it. New
+    /// T1 keys (`surface_raised`/`hairline`/status colors) are only
+    /// read by post-T1 components, so adding them cannot disturb any
+    /// committed snapshot.
     pub fn dark() -> Theme {
         Theme {
             name: "libra-dark".to_string(),
             bg: tokens::BG,
             surface: tokens::SURFACE,
+            surface_raised: Color::rgb(0x1B, 0x22, 0x2E),
             text: tokens::TEXT,
             text_muted: tokens::TEXT_MUTED,
             accent: tokens::ACCENT,
             accent_text: tokens::ACCENT_TEXT,
             secondary: tokens::SECONDARY,
             selection: Color::rgb(0x2A, 0x4A, 0x7A),
+            hairline: Color::rgb(0x1E, 0x25, 0x31),
+            danger: Color::rgb(0xE5, 0x53, 0x4B),
+            warning: Color::rgb(0xD9, 0xA4, 0x3F),
+            success: Color::rgb(0x3F, 0xB9, 0x50),
+            info: tokens::ACCENT,
             radius_md: tokens::RADIUS_MD,
             type_sm: tokens::TYPE_SM,
             type_md: tokens::TYPE_MD,
@@ -206,12 +228,18 @@ impl Theme {
             name: "libra-light".to_string(),
             bg: Color::rgb(0xF5, 0xF6, 0xF8),
             surface: Color::rgb(0xFF, 0xFF, 0xFF),
+            surface_raised: Color::rgb(0xEC, 0xEF, 0xF3),
             text: Color::rgb(0x1A, 0x20, 0x2B),
             text_muted: Color::rgb(0x6B, 0x74, 0x84),
             accent: Color::rgb(0x2A, 0x66, 0xD9),
             accent_text: Color::rgb(0xFF, 0xFF, 0xFF),
             secondary: Color::rgb(0xE4, 0xE7, 0xEC),
             selection: Color::rgb(0xB8, 0xD0, 0xF5),
+            hairline: Color::rgb(0xDD, 0xE1, 0xE7),
+            danger: Color::rgb(0xC7, 0x35, 0x2E),
+            warning: Color::rgb(0xA9, 0x71, 0x08),
+            success: Color::rgb(0x1F, 0x87, 0x3D),
+            info: Color::rgb(0x2A, 0x66, 0xD9),
             radius_md: tokens::RADIUS_MD,
             type_sm: tokens::TYPE_SM,
             type_md: tokens::TYPE_MD,
@@ -260,12 +288,18 @@ impl Theme {
                 "name" => t.name = unquote(value).to_string(),
                 "bg" => t.bg = color(value)?,
                 "surface" => t.surface = color(value)?,
+                "surface_raised" => t.surface_raised = color(value)?,
                 "text" => t.text = color(value)?,
                 "text_muted" => t.text_muted = color(value)?,
                 "accent" => t.accent = color(value)?,
                 "accent_text" => t.accent_text = color(value)?,
                 "secondary" => t.secondary = color(value)?,
                 "selection" => t.selection = color(value)?,
+                "hairline" => t.hairline = color(value)?,
+                "danger" => t.danger = color(value)?,
+                "warning" => t.warning = color(value)?,
+                "success" => t.success = color(value)?,
+                "info" => t.info = color(value)?,
                 "radius_md" => t.radius_md = num(value)?,
                 "type_sm" => t.type_sm = num(value)?,
                 "type_md" => t.type_md = num(value)?,

@@ -20,6 +20,25 @@
     <Input value={draft} placeholder="empty input (placeholder)" onChange={draftChanged} testId="empty" />
     <Input value={filled} placeholder="unused" onChange={filledChanged} testId="filled" />
   </Row>
+  <Separator />
+  <Row gap={8} cross="center">
+    <Text size="sm" muted>left of spring</Text>
+    <Spacer />
+    <Text size="sm" muted>spacer size=32 →</Text>
+    <Spacer size={32} />
+    <Separator vertical />
+    <Text size="sm" muted>right of rule</Text>
+  </Row>
+  <Row gap={8}>
+    <Column gap={2} grow={1}>
+      <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="row-selected" />
+      <ListItem title="Plain row" subtitle="hover me in a hover snapshot" onPress={noop} testId="row-plain" />
+      <ListItem title="Title only" onPress={noop} testId="row-bare" />
+    </Column>
+    <Column gap={2} grow={1}>
+      <Textarea value={body} placeholder="unused" onChange={bodyChanged} testId="textarea" />
+    </Column>
+  </Row>
   <Row gap={8} cross="center" grow>
     <Chart series={wave} height={90} testId="chart" />
     <Sparkline series={wave} width={90} height={26} testId="spark" />

@@ -273,7 +273,11 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => style.gap = *v,
                     ("padding", AttrValue::Num(v)) => style.padding = *v,
-                    ("grow", AttrValue::Flag) => style.grow = true,
+                    ("grow", AttrValue::Flag) => style.grow = 1.0,
+                    // Weighted grow (`grow={2.5}`): proportional pane
+                    // shares that stay responsive under window resize.
+                    ("grow", AttrValue::Num(v)) => style.grow = *v,
+                    ("width", AttrValue::Num(v)) => style.width = Some(*v),
                     ("cross", AttrValue::Str(s)) if s == "center" => style.cross_center = true,
                     ("main", AttrValue::Str(s)) if s == "center" => style.main_center = true,
                     _ => return Err(unknown_attr(name, a)),
@@ -443,6 +447,142 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Input { value, placeholder, on_change: msg, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG): a pressable list row — title/subtitle/
+        // meta lines + a `selected` wash. Attrs are literals or
+        // bindings (loop fields included); `selected` follows the
+        // `<if>` bool rule: resolved Display equals "true".
+        "ListItem" => {
+            let mut title: Option<String> = None;
+            let mut subtitle = String::new();
+            let mut meta = String::new();
+            let mut selected = false;
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
+                (scope.field)(path)
+                    .ok_or_else(|| err(aspan, format!("no binding '{path}' in scope")))
+            };
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", AttrValue::Str(s)) => title = Some(s.clone()),
+                    ("title", AttrValue::Ident(p)) => title = Some(resolve(p, a.span)?),
+                    ("subtitle", AttrValue::Str(s)) => subtitle = s.clone(),
+                    ("subtitle", AttrValue::Ident(p)) => subtitle = resolve(p, a.span)?,
+                    ("meta", AttrValue::Str(s)) => meta = s.clone(),
+                    ("meta", AttrValue::Ident(p)) => meta = resolve(p, a.span)?,
+                    ("selected", AttrValue::Flag) => selected = true,
+                    ("selected", AttrValue::Ident(p)) => selected = resolve(p, a.span)? == "true",
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<ListItem> takes no children — use title/subtitle/meta attrs"));
+            }
+            let title =
+                title.ok_or_else(|| err(*span, "<ListItem> requires title={binding} or title=\"…\""))?;
+            let (msg, arg, mspan) =
+                on_press.ok_or_else(|| err(*span, "<ListItem> requires onPress={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let on_press_arg = match &arg {
+                Some(binding) => {
+                    if !(scope.has_str_action)(&msg) {
+                        return Err(err(
+                            mspan,
+                            format!(
+                                "action '{msg}' takes no payload — `onPress={{{msg}({binding})}}` \
+                                 needs a String-payload action (fn {msg}(&mut self, s: String))"
+                            ),
+                        ));
+                    }
+                    Some(resolve(binding, mspan)?)
+                }
+                None => {
+                    if !(scope.has_action)(&msg) {
+                        return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
+                    }
+                    None
+                }
+            };
+            Ok(ViewNode::ListItem { title, subtitle, meta, selected, on_press: msg, on_press_arg, test_id })
+        }
+
+        // §10.1 stage 1 (PLAN-TEXTAREA): multi-line controlled entry —
+        // the Input contract verbatim, one node kind over.
+        "Textarea" => {
+            let mut value: Option<(String, Span)> = None;
+            let mut placeholder = String::new();
+            let mut on_change: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
+                    ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, vspan) =
+                value.ok_or_else(|| err(*span, "<Textarea> requires value={someField}"))?;
+            let value = (scope.field)(&path)
+                .ok_or_else(|| err(vspan, format!("no field '{path}' on State")))?;
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Textarea> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Textarea> requires testId=\"…\" (focus identity)"))?;
+            Ok(ViewNode::Textarea { value, placeholder, on_change: msg, test_id })
+        }
+
+        // §7.1 Layout (PLAN-CATALOG wave 1): pure layout — fixed room
+        // or a flex spring. No children, no handlers.
+        "Spacer" => {
+            let mut size: Option<f32> = None;
+            let mut grow = false;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("size", AttrValue::Num(v)) => size = Some(*v),
+                    ("grow", AttrValue::Flag) => grow = true,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if size.is_some() && grow {
+                return Err(err(*span, "<Spacer> takes size={px} or grow, not both"));
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Spacer> takes no children"));
+            }
+            // Bare <Spacer/> is a spring, same muscle memory as SwiftUI.
+            Ok(ViewNode::Spacer { size })
+        }
+
+        // §7.1 Layout (PLAN-CATALOG wave 1): a 1px hairline rule —
+        // horizontal by default (Column), `vertical` for Row seams.
+        "Separator" => {
+            let mut vertical = false;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("vertical", AttrValue::Flag) => vertical = true,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Separator> takes no children"));
+            }
+            Ok(ViewNode::Separator { vertical })
+        }
+
         // §12.5: invisible, zero-layout — declares a mount-scoped
         // subscription rather than rendering anything.
         "Frames" => {
@@ -526,7 +666,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

@@ -162,7 +162,7 @@ Example apps split tests as `tests/unit.rs`, `components.rs`, `integration.rs`, 
 
 **Done (through Phase 3 core + ergonomics + item fields + `<if>` + sources + accessors):** Phases 0–2; codegen + conformance; text-entry core (`libra-text` + Input + keyboard/clipboard); theming; AccessKit; `libra-query`; FormState/`Field`; NavStack; gallery; `#[libra::state]`/`#[libra::actions]`/`app!`; `<for>` collections; loop-scoped item fields; `<if test={bool}>` / `<else>` ([[PLAN-IF]]); `<Frames>` / `<Interval>` / `<Stream>` sources ([[PLAN-SOURCES]]); top-level `{user.name}` + `len`/`isEmpty` accessors ([[PLAN-ACCESSORS]]). Naming migration complete.
 
-**Still open / do not build ahead:** expanded catalog + token ramps + platform effects ([[PLAN-UI-SURFACE]]); Textarea/IME/touch polish; packaging; automation server polish; full Phase 4 DX (LSP, time-travel UI). Tracked in [[23-roadmap|§23]] and [[26-open-questions|§26]].
+**Still open / do not build ahead:** expanded catalog (Scroll next; token ramps T2+; platform effects) — [[PLAN-UI-SURFACE]], demand-ordered by the notes reference app ([[PLAN-NOTES-APP]]); Textarea IME/soft-wrap/touch ([[PLAN-TEXTAREA]] stages 2–4); packaging; automation server polish; full Phase 4 DX (LSP, time-travel UI). Tracked in [[23-roadmap|§23]] and [[26-open-questions|§26]]. *Shipped along the way (2026-07-16/17): PLAN-TOKENS T1, Spacer/Separator/`width`/weighted `grow`, ListItem (+hover-as-paint-input), Textarea stage 1; snapshot verb renamed bless→validate (`LIBRA_VALIDATE=1`).*
 
 **Non-goals** (scope fence) → [[24-non-goals|§24]]
 
@@ -174,7 +174,7 @@ Example apps split tests as `tests/unit.rs`, `components.rs`, `integration.rs`, 
 2. **Respect Appendix A** — if a change breaks determinism, purity, closed grammar, or interceptable effects, it is wrong unless the vault is deliberately updated in the same change.
 3. **Cite § in doc comments** the way existing crates do (`ARCHITECTURE.md §N.N`).
 4. **Grammar change** → update interp *and* codegen *and* add/adjust a `conformance/` fixture; keep `interp_and_codegen_produce_identical_trees` green.
-5. **Visual change** → expect snapshot diffs; bless deliberately (`LIBRA_BLESS=1`); update README hashes with PNGs.
+5. **Visual change** → expect snapshot diffs; validate deliberately (`LIBRA_VALIDATE=1`); update README hashes with PNGs.
 6. **Edit the vault note**, not a revived root mega-doc. New subsections need: note + parent links + `SECTION-INDEX` row + Home/MOC outline entries.
 7. **Don't invent ahead of §23/§26**; keep shapes compatible with later phases.
 

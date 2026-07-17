@@ -688,6 +688,18 @@ where
             Key::Named(NamedKey::Home) => Some(EditOp::Home(shift)),
             Key::Named(NamedKey::End) => Some(EditOp::End(shift)),
             Key::Named(NamedKey::Space) => Some(EditOp::Insert(' ')),
+            // Multi-line ops apply only when the focused control is a
+            // Textarea (§10.1 stage 1): Enter inserts a newline, and
+            // Up/Down navigate lines. In an Input, Enter is inert and
+            // Up/Down fall through as no-ops.
+            Key::Named(NamedKey::Enter) if self.focused_is_textarea() => {
+                self.apply_edit(EditOp::Insert('\n'));
+                return;
+            }
+            Key::Named(NamedKey::ArrowUp) if self.focused_is_textarea() => Some(EditOp::Up(shift)),
+            Key::Named(NamedKey::ArrowDown) if self.focused_is_textarea() => {
+                Some(EditOp::Down(shift))
+            }
             Key::Named(NamedKey::Escape) => {
                 self.focus = None;
                 self.request_redraw();
@@ -722,8 +734,13 @@ where
             Key::Character(c) if cmd && c.as_str() == "v" => {
                 if let Ok(mut cb) = arboard::Clipboard::new() {
                     if let Ok(text) = cb.get_text() {
-                        // Single-line field: newlines become spaces.
-                        let text = text.replace(['\r', '\n'], " ");
+                        // Single-line fields flatten newlines to spaces;
+                        // a Textarea keeps them (normalized to '\n').
+                        let text = if self.focused_is_textarea() {
+                            text.replace("\r\n", "\n").replace('\r', "\n")
+                        } else {
+                            text.replace(['\r', '\n'], " ")
+                        };
                         self.apply_edit(EditOp::InsertStr(text));
                     }
                 }
@@ -764,6 +781,17 @@ where
             test_id: id.clone(),
             caret: e.caret(),
             selection: e.selection(),
+        })
+    }
+
+    /// Is the focused control a `Textarea`? Decides the multi-line key
+    /// bindings (Enter/Up/Down) and paste newline handling (§10.1).
+    fn focused_is_textarea(&self) -> bool {
+        let Some((id, ..)) = &self.focus else { return false };
+        let Some(laid) = &self.laid else { return false };
+        laid.items.iter().any(|i| {
+            i.semantics.test_id.as_deref() == Some(id.as_str())
+                && matches!(i.kind, libra_components::ItemKind::Textarea { .. })
         })
     }
 
@@ -826,6 +854,13 @@ where
     fn present(&mut self) {
         let t0 = Instant::now();
         let focus_paint = self.focus_paint();
+        // Hover as an explicit paint input (ListItem washes): the
+        // shell's live cursor in logical px. Presentation-side only —
+        // the canonical harness frame defaults to no hover.
+        let hover = {
+            let s = self.scale();
+            Some((self.cursor.0 as f32 / s, self.cursor.1 as f32 / s))
+        };
         let theme = &self.theme;
         let Some(laid) = &self.laid else { return };
         let Some(gfx) = &mut self.gfx else { return };
@@ -851,7 +886,7 @@ where
             // (Retina: 1 column per physical pixel) — presentation-only,
             // off the determinism contract (§21); the canonical density
             // stays 1.0 (`LaidTree::paint`, everywhere else).
-            let mut cmds = laid.paint_at_density(renderer, store, focus_paint.as_ref(), &theme, scale);
+            let mut cmds = laid.paint_full(renderer, store, focus_paint.as_ref(), hover, &theme, scale);
             if let Some(text) = &overlay {
                 overlay_cmds(&mut cmds, text, logical_w, &theme);
             }
@@ -1005,6 +1040,10 @@ where
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                // Hover is a paint input (ListItem washes); damage
+                // tracking absorbs the repaint cost when nothing under
+                // the pointer actually changes.
+                self.request_redraw();
             }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::KeyboardInput { event, .. } => self.key(&event),

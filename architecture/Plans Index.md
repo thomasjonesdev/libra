@@ -21,6 +21,7 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-IF]] | complete | [[06.2-the-closed-grammar-what-markup-can-do|§6.2]], [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]], [[26-open-questions|§26]] |
 | [[PLAN-SOURCES]] | complete | [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]], [[12.1-the-effect-vocabulary-closed-versioned|§12.1]] |
 | [[PLAN-ACCESSORS]] | complete | [[06.2-the-closed-grammar-what-markup-can-do|§6.2]], [[26-open-questions|§26]] |
+| [[PLAN-NOTES-APP]] | in progress (M0/M1 done) | [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]], [[07.1-the-built-in-catalog-closed-curated|§7.1]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-TEXTAREA]] | planned | [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]] |
 | [[PLAN-UI-SURFACE]] | planned | [[07.1-the-built-in-catalog-closed-curated|§7.1]], [[11-theming-and-design-tokens|§11]], [[19-platform-integration|§19]] |
 | [[PLAN-TOKENS]] | planned | [[11-theming-and-design-tokens|§11]], [[PLAN-UI-SURFACE]] |

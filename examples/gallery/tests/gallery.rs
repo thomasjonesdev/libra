@@ -41,6 +41,27 @@ fn snapshot_gallery_focused_input_dark() {
     h.assert_snapshot("gallery_focus_dark");
 }
 
+/// Hover is an explicit paint input (§7.1 ListItem wash) — pinned to
+/// an item's center, the frame is byte-exact like any other.
+#[test]
+fn snapshot_gallery_hovered_row_dark() {
+    let mut h = harness("libra-dark");
+    h.hover(by::test_id("row-plain"));
+    h.assert_snapshot("gallery_hover_dark");
+}
+
+/// The hover wash renders and clears — hovered ≠ resting bytes, and
+/// clearing restores the exact resting frame.
+#[test]
+fn hover_wash_appears_and_clears() {
+    let mut h = harness("libra-dark");
+    let resting = h.frame_png();
+    h.hover(by::test_id("row-plain"));
+    assert_ne!(h.frame_png(), resting, "hover wash changes the frame");
+    h.blur_hover();
+    assert_eq!(h.frame_png(), resting, "clearing hover restores identical bytes");
+}
+
 #[test]
 fn theme_toggle_round_trips() {
     let mut h = harness("libra-dark");

@@ -49,10 +49,10 @@ Truthiness: field Display equals `"true"` (case-sensitive). Codegen emits `if st
 
 ## Acceptance
 
-- [ ] `interp_and_codegen_produce_identical_trees` for `if_else` across `running: true/false`
-- [ ] Dashboard: no `subscriptions:` field; `<if test={running}><Frames …/></if>` in view; snapshots byte-identical (invisible source)
-- [ ] Nested `<if>` under `<for>` works; bare `<else>` outside `<if>` is a span error
-- [ ] `cargo test --workspace` green
+- [x] `interp_and_codegen_produce_identical_trees` for `if_else` across `running: true/false`
+- [x] Dashboard: no `subscriptions:` field; `<if test={running}><Frames …/></if>` in view; snapshots byte-identical (invisible source)
+- [x] Nested `<if>` under `<for>` works; bare `<else>` outside `<if>` is a span error
+- [x] `cargo test --workspace` green
 
 ---
 

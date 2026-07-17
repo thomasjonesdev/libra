@@ -79,12 +79,16 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
         "Column" | "Row" => {
             // Mirror of interp's BoxStyle table.
             let (mut gap, mut padding, mut grow, mut cross, mut main) =
-                (0.0f32, 0.0f32, false, false, false);
+                (0.0f32, 0.0f32, 0.0f32, false, false);
+            let mut width: Option<f32> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => gap = *v,
                     ("padding", AttrValue::Num(v)) => padding = *v,
-                    ("grow", AttrValue::Flag) => grow = true,
+                    ("grow", AttrValue::Flag) => grow = 1.0,
+                    // Weighted grow (`grow={2.5}`) — responsive panes.
+                    ("grow", AttrValue::Num(v)) => grow = *v,
+                    ("width", AttrValue::Num(v)) => width = Some(*v),
                     ("cross", AttrValue::Str(s)) if s == "center" => cross = true,
                     ("main", AttrValue::Str(s)) if s == "center" => main = true,
                     _ => return Err(unknown_attr(name, a)),
@@ -93,12 +97,62 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
             Ok(format!(
                 "{i}::libra_components::ViewNode::{name} {{ {at}\n\
-                 {i}    style: ::libra_components::BoxStyle {{ gap: {gap}, padding: {padding}, grow: {grow}, cross_center: {cross}, main_center: {main} }},\n\
+                 {i}    style: ::libra_components::BoxStyle {{ gap: {gap}, padding: {padding}, grow: {grow}, cross_center: {cross}, main_center: {main}, width: {width} }},\n\
                  {i}    children: {kids},\n\
                  {i}}}",
                 at = at(cfg, *span),
                 gap = f32_lit(gap),
                 padding = f32_lit(padding),
+                grow = f32_lit(grow),
+                width = opt_f32(width),
+            ))
+        }
+
+        // §7.1 Layout (PLAN-CATALOG wave 1), matching libra-interp's
+        // "Spacer" arm exactly: size xor grow; bare = spring.
+        "Spacer" => {
+            let mut size: Option<f32> = None;
+            let mut grow = false;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("size", AttrValue::Num(v)) => size = Some(*v),
+                    ("grow", AttrValue::Flag) => grow = true,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if size.is_some() && grow {
+                return Err(err(*span, "<Spacer> takes size={px} or grow, not both"));
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Spacer> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Spacer {{ {at}\n\
+                 {i}    size: {size},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                size = opt_f32(size),
+            ))
+        }
+
+        // §7.1 Layout (PLAN-CATALOG wave 1), matching libra-interp's
+        // "Separator" arm exactly.
+        "Separator" => {
+            let mut vertical = false;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("vertical", AttrValue::Flag) => vertical = true,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Separator> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Separator {{ {at}\n\
+                 {i}    vertical: {vertical},\n\
+                 {i}}}",
+                at = at(cfg, *span),
             ))
         }
 
@@ -211,6 +265,139 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1 (PLAN-CATALOG), matching libra-interp's "ListItem" arm
+        // exactly: title/subtitle/meta as literal or binding, the
+        // `selected` bool via the shared Display-"true" rule, and the
+        // Button-shaped onPress/arg machinery.
+        "ListItem" => {
+            // (expr, is_literal) for the three text lines.
+            let text_attr = |v: &AttrValue, aspan: Span| -> Result<String, CodegenError> {
+                match v {
+                    AttrValue::Str(s) => Ok(format!("{}.to_string()", str_lit(s))),
+                    AttrValue::Ident(p) => {
+                        let expr = display_ref_expr(p, bound).map_err(|m| err(aspan, m))?;
+                        Ok(format!("::std::string::ToString::to_string(&{expr})"))
+                    }
+                    _ => Err(err(aspan, "expected a string literal or a {binding}")),
+                }
+            };
+            let mut title: Option<String> = None;
+            let mut subtitle = "::std::string::String::new()".to_string();
+            let mut meta = "::std::string::String::new()".to_string();
+            let mut selected = "false".to_string();
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", v @ (AttrValue::Str(_) | AttrValue::Ident(_))) => {
+                        title = Some(text_attr(v, a.span)?)
+                    }
+                    ("subtitle", v @ (AttrValue::Str(_) | AttrValue::Ident(_))) => {
+                        subtitle = text_attr(v, a.span)?
+                    }
+                    ("meta", v @ (AttrValue::Str(_) | AttrValue::Ident(_))) => {
+                        meta = text_attr(v, a.span)?
+                    }
+                    ("selected", AttrValue::Flag) => selected = "true".to_string(),
+                    ("selected", AttrValue::Ident(p)) => {
+                        // Same bool rule as interp: resolved Display == "true".
+                        let expr = display_ref_expr(p, bound).map_err(|m| err(a.span, m))?;
+                        selected =
+                            format!("::std::string::ToString::to_string(&{expr}) == \"true\"");
+                    }
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<ListItem> takes no children — use title/subtitle/meta attrs"));
+            }
+            let title = title
+                .ok_or_else(|| err(*span, "<ListItem> requires title={binding} or title=\"…\""))?;
+            let (msg, arg, mspan) =
+                on_press.ok_or_else(|| err(*span, "<ListItem> requires onPress={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let (check, arg_expr) = match &arg {
+                Some(binding) => {
+                    let value_ref = display_ref_expr(binding, bound).map_err(|m| err(mspan, m))?;
+                    (
+                        format!(
+                            "let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref};",
+                            msg_ty = cfg.action,
+                            variant_ref = pascalize(&msg),
+                        ),
+                        format!(
+                            "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                        ),
+                    )
+                }
+                None => (
+                    format!("let _ = &{msg_ty}::{variant_ref};", msg_ty = cfg.action, variant_ref = pascalize(&msg)),
+                    "::core::option::Option::None".to_string(),
+                ),
+            };
+            Ok(format!(
+                "{i}::libra_components::ViewNode::ListItem {{ {at}\n\
+                 {i}    title: {title},\n\
+                 {i}    subtitle: {subtitle},\n\
+                 {i}    meta: {meta},\n\
+                 {i}    selected: {selected},\n\
+                 {i}    on_press: {{ {check} {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_press_arg: {arg_expr},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §10.1 stage 1 (PLAN-TEXTAREA), matching libra-interp's
+        // "Textarea" arm exactly — the Input contract, one node over.
+        "Textarea" => {
+            let mut value: Option<(String, Span)> = None;
+            let mut placeholder = String::new();
+            let mut on_change: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
+                    ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, vspan) =
+                value.ok_or_else(|| err(*span, "<Textarea> requires value={someField}"))?;
+            let value_ref = display_ref_expr(&path, bound).map_err(|m| err(vspan, m))?;
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Textarea> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Textarea> requires testId=\"…\" (focus identity)"))?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Textarea {{ {at}\n\
+                 {i}    value: ::std::string::ToString::to_string(&{value_ref}),\n\
+                 {i}    placeholder: {ph}.to_string(),\n\
+                 {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                ph = str_lit(&placeholder),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = str_lit(&test_id),
             ))
         }
 
@@ -749,6 +936,13 @@ fn str_lit(s: &str) -> String {
 fn opt_str(s: &Option<String>) -> String {
     match s {
         Some(v) => format!("::core::option::Option::Some({}.to_string())", str_lit(v)),
+        None => "::core::option::Option::None".to_string(),
+    }
+}
+
+fn opt_f32(v: Option<f32>) -> String {
+    match v {
+        Some(v) => format!("::core::option::Option::Some({})", f32_lit(v)),
         None => "::core::option::Option::None".to_string(),
     }
 }

@@ -32,9 +32,9 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Column` | `Column` | **shipped** | |
 | `ScrollContainer` | `Scroll` | planned | Vertical/horizontal; §7.1 |
 | `SafeArea` | `SafeArea` | planned | Shell insets — [[PLAN-NATIVE-INTEGRATIONS]] |
-| `Spacer` | `Spacer` | planned (§7.1) | Fixed size or `grow` |
+| `Spacer` | `Spacer` | **shipped** 2026-07-16 | `<Spacer/>` spring or `size={px}`; pure layout, paints nothing |
 | `Pressable` | (Button / pressable slot) | partial | Prefer real controls; generic Pressable only if composition needs it |
-| `Divider` | `Separator` | planned (§7.1) | H/V |
+| `Divider` | `Separator` | **shipped** 2026-07-16 | H default / `vertical`; 1px `theme.hairline` (first T1 token consumer) |
 | `Heading` | `Heading` or `Text size=` | planned | Levels h1–h4 → type tokens |
 | `Paragraph` | `Text` / `Paragraph` | partial | Body defaults |
 | `Label` | `Label` | planned | Caption / form label |
@@ -43,7 +43,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Badge` | `Badge` | planned (§7.1) | Semantic variants via tokens |
 | `Chip` | `Chip` | planned | Select / remove events |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
-| `TextInput` | `Input` (+ `Textarea`) | partial | Multiline → [[PLAN-TEXTAREA]] |
+| `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
 | `Switch` | `Switch` | planned | |
 | `Checkbox` | `Checkbox` | planned | |
 | `Slider` | `Slider` | planned | |
@@ -51,7 +51,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Spinner` | `Spinner` | planned | Deterministic frame, not wall-clock spin in snapshots |
 | `ProgressBar` | `Progress` | planned | 0…1 value |
 | `Card` | `Card` | planned | Prefer composition; elevate via tokens |
-| `ListItem` | `ListItem` | planned | Title/subtitle/leading/trailing |
+| `ListItem` | `ListItem` | **shipped** 2026-07-17 | title/subtitle/meta + `selected` (bound bool) + hover wash (`surface_raised`); leading/trailing slots later |
 | `Modal` | `Dialog` / `Modal` | planned | In-tree chrome **and/or** OS dialog — see native plan |
 
 ## Libra ops extras (not in json-render RN; keep)
@@ -76,8 +76,8 @@ never invents colors.
 
 | Wave | Components | Why this order |
 |---|---|---|
-| **0** | Token table expansion | Shared foundation |
-| **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness; unblocks long UIs |
+| **0** | Token table expansion | Shared foundation — **done** ([[PLAN-TOKENS]] T1) |
+| **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **Spacer/Separator done** (+ `width={px}` pane sizing on Column/Row, `chrome` conformance fixture); `Scroll` remains |
 | **2** | `Heading`/`Label` polish, `Badge`, `Progress`, `Spinner` | Visible “product” chrome, low interaction risk |
 | **3** | `Switch`, `Checkbox`, `Slider`, `Search` | Control set parity with RN catalog |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
