@@ -141,6 +141,7 @@ See [[04-system-overview|§4 System Overview]] and [[04.1-layer-diagram|§4.1 La
 ### [[19-platform-integration|19. Platform Integration]]
 
 - [[19.1-touch|19.1 Touch (first-class, not an afterthought)]]
+- [[19.2-keyboard-shortcuts-declarations-not-handlers|19.2 Keyboard shortcuts: declarations, not handlers]]
 
 ### [[20-packaging|20. Packaging & Distribution]]
 

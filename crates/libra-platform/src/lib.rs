@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use libra_core::{App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub};
+use libra_core::{shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub};
 use libra_text::{EditOp, EditState};
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -260,6 +260,10 @@ where
         },
         None => Theme::dark(),
     };
+    // §19.2: validate the app's shortcut declarations up front — a bad
+    // chord or action name is a startup error, not a silent dead key.
+    let shortcut_table = libra_core::build_shortcut_table::<A::Msg>(A::shortcuts())
+        .unwrap_or_else(|e| panic!("[libra] invalid shortcuts: {e}"));
     let mut shell = Shell {
         opts,
         app,
@@ -270,6 +274,7 @@ where
         overlay: None,
         cursor: (0.0, 0.0),
         scroll_state: libra_components::ScrollState::new(),
+        shortcut_table,
         gfx: None,
         watch_mtime,
         next_watch_check: Instant::now() + WATCH_INTERVAL,
@@ -328,6 +333,9 @@ struct Shell<A: App> {
     /// wheel. Applied to the laid tree in `relayout` (like the harness's
     /// `scroll()`); empty = every viewport at the top.
     scroll_state: libra_components::ScrollState,
+    /// §19.2: the app's validated chord → action table (built once at
+    /// startup from `A::shortcuts()`).
+    shortcut_table: Vec<(libra_core::Chord, libra_core::Shortcut)>,
     gfx: Option<Gfx>,
     watch_mtime: Option<std::time::SystemTime>,
     next_watch_check: Instant,
@@ -699,11 +707,80 @@ where
         }
     }
 
+    /// §19.2: map the key event onto the validated shortcut table.
+    /// Precedence: a focused text control owns un-modified keys and the
+    /// editing-reserved `cmd` chords — only unclaimed `cmd` chords fall
+    /// through to the table while typing; unfocused, the whole table is
+    /// live. Returns true if a shortcut dispatched.
+    fn try_shortcut(&mut self, event: &KeyEvent) -> bool {
+        use libra_core::ChordKey;
+        if self.shortcut_table.is_empty() {
+            return false;
+        }
+        let mods = self.modifiers;
+        let key = match &event.logical_key {
+            Key::Named(NamedKey::Escape) => ChordKey::Escape,
+            Key::Named(NamedKey::Backspace) => ChordKey::Backspace,
+            Key::Named(NamedKey::Delete) => ChordKey::Delete,
+            Key::Named(NamedKey::Enter) => ChordKey::Enter,
+            Key::Named(NamedKey::Space) => ChordKey::Space,
+            Key::Named(NamedKey::Tab) => ChordKey::Tab,
+            Key::Named(NamedKey::ArrowUp) => ChordKey::Up,
+            Key::Named(NamedKey::ArrowDown) => ChordKey::Down,
+            Key::Named(NamedKey::ArrowLeft) => ChordKey::Left,
+            Key::Named(NamedKey::ArrowRight) => ChordKey::Right,
+            Key::Character(c) => {
+                let mut chars = c.as_str().chars();
+                match (chars.next(), chars.next()) {
+                    // Shift is carried by the modifier flag; the char
+                    // itself normalizes to lowercase for matching.
+                    (Some(ch), None) => match ch.to_lowercase().next() {
+                        Some(lc) => ChordKey::Char(lc),
+                        None => return false,
+                    },
+                    _ => return false,
+                }
+            }
+            _ => return false,
+        };
+        let chord = libra_core::Chord {
+            // v1: the platform-primary modifier — Super or Ctrl both
+            // read as `cmd`, matching the §10.1 editing keymap.
+            cmd: mods.super_key() || mods.control_key(),
+            ctrl: false,
+            alt: mods.alt_key(),
+            shift: mods.shift_key(),
+            key,
+        };
+        if self.focus.is_some() && !shortcut_fires_while_focused(&chord) {
+            return false;
+        }
+        let Some((_, s)) = self.shortcut_table.iter().find(|(c, _)| *c == chord) else {
+            return false;
+        };
+        let msg = match &s.arg {
+            Some(arg) => A::Msg::action_with_str(&s.action, arg.clone()),
+            None => A::Msg::action_by_name(&s.action),
+        }
+        .expect("shortcut table validated at startup");
+        self.dispatch(msg);
+        self.request_redraw();
+        true
+    }
+
     /// §10.1 keyboard model: platform-conventional bindings mapped to
     /// editing-core ops. Text-changing ops dispatch the Input's
     /// onChange msg; navigation just repaints the caret.
     fn key(&mut self, event: &KeyEvent) {
-        if event.state != ElementState::Pressed || self.focus.is_none() {
+        if event.state != ElementState::Pressed {
+            return;
+        }
+        // §19.2: shortcuts get first look; the precedence check inside
+        // guarantees they never shadow the editing keymap.
+        if self.try_shortcut(event) {
+            return;
+        }
+        if self.focus.is_none() {
             return;
         }
         let mods = self.modifiers;

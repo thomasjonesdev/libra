@@ -29,6 +29,7 @@ libra::app! {
     state: Notes,
     view: "../views/notes.lx",
     init: Notes::init,
+    shortcuts: Notes::shortcuts,
     window: (900.0, 600.0),
     title: "Libra Notes",
 }

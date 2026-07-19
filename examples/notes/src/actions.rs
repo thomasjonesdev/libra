@@ -161,6 +161,27 @@ impl Notes {
         Some(self.schedule_save(0))
     }
 
+    // ---- keyboard navigation (§19.2 shortcuts) ----
+
+    /// `cmd+alt+down` — next note in the visible (sorted/filtered) list.
+    pub fn select_next_note(&mut self) {
+        self.step_selection(1);
+    }
+
+    /// `cmd+alt+up` — previous note in the visible list.
+    pub fn select_prev_note(&mut self) {
+        self.step_selection(-1);
+    }
+
+    /// `cmd+1`…`cmd+6` — jump to the nth folder (1-based, declaration
+    /// order). The arg is the §19.2 static payload.
+    pub fn jump_folder(&mut self, n: String) {
+        let Ok(n) = n.parse::<usize>() else { return };
+        let Some(folder) = self.folders.get(n.saturating_sub(1)) else { return };
+        let id = folder.id.to_string();
+        self.select_folder(id);
+    }
+
     // ---- ambient ----
 
     /// `<Interval every={30000} onTick={tick}>` — the only clock input

@@ -107,6 +107,38 @@ impl Notes {
         serde_json::to_vec(&store).unwrap_or_default()
     }
 
+    /// §19.2 declarations — validated against the reflected actions at
+    /// startup (a typo'd action name is a launch error, not a dead key).
+    pub fn shortcuts() -> Vec<libra_core::Shortcut> {
+        use libra_core::Shortcut;
+        let mut s = vec![
+            Shortcut::action("cmd+n", "newNote"),
+            Shortcut::action("cmd+backspace", "deleteNote"),
+            Shortcut::action("cmd+alt+down", "selectNextNote"),
+            Shortcut::action("cmd+alt+up", "selectPrevNote"),
+            Shortcut::action("escape", "clearQuery"),
+        ];
+        for n in 1..=crate::model::MAX_FOLDERS {
+            s.push(Shortcut::with_arg(&format!("cmd+{n}"), "jumpFolder", &n.to_string()));
+        }
+        s
+    }
+
+    /// Move the note selection by `delta` within the visible (projected)
+    /// row order — the keyboard-navigation core.
+    pub(crate) fn step_selection(&mut self, delta: i64) {
+        if self.note_rows.is_empty() {
+            return;
+        }
+        let idx = self
+            .note_rows
+            .iter()
+            .position(|r| r.id == self.selected_note)
+            .map(|i| (i as i64 + delta).clamp(0, self.note_rows.len() as i64 - 1) as usize)
+            .unwrap_or(0);
+        self.selected_note = self.note_rows[idx].id;
+    }
+
     /// Bumps the save generation and schedules the (possibly-debounced)
     /// autosave timer. A timer whose generation no longer matches
     /// `save_gen` when it fires was superseded by a later edit and is a

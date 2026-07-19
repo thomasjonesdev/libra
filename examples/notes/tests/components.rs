@@ -139,6 +139,69 @@ fn interval_source_is_mounted_for_live_relative_timestamps() {
     assert!(h.has_source("interval"));
 }
 
+/// §19.2 (PLAN-NOTES-APP M4): the declared shortcut set drives the app
+/// through the same validated table the shell uses.
+#[test]
+fn shortcuts_create_navigate_and_delete() {
+    let mut h = harness();
+    assert!(h.press_shortcut("cmd+n"), "cmd+n creates a note");
+    settle_save(&mut h);
+    // Advance the clock so the second note is unambiguously newer
+    // (rows sort by updated_ms; time only enters via the tick action).
+    h.dispatch(Action::Tick(libra_core::Instant::at(60_000.0)));
+    assert!(h.press_shortcut("cmd+n"));
+    settle_save(&mut h);
+    assert_eq!(h.state().note_rows.len(), 2);
+
+    // Newest note is selected (top of the list); alt+down walks down.
+    let top = h.state().note_rows[0].id;
+    let bottom = h.state().note_rows[1].id;
+    assert_eq!(h.state().selected_note, top);
+    h.press_shortcut("cmd+alt+down");
+    assert_eq!(h.state().selected_note, bottom);
+    h.press_shortcut("cmd+alt+down");
+    assert_eq!(h.state().selected_note, bottom, "clamps at the end");
+    h.press_shortcut("cmd+alt+up");
+    assert_eq!(h.state().selected_note, top);
+
+    assert!(h.press_shortcut("cmd+backspace"), "cmd+backspace trashes the selection");
+    settle_save(&mut h);
+    assert_eq!(h.state().note_rows.len(), 1);
+    assert!(h.state().has_trash);
+}
+
+/// §19.2 precedence: a focused text control suppresses non-`cmd`
+/// chords — escape blurs instead of dispatching; unfocused, it fires.
+#[test]
+fn escape_clears_search_only_when_unfocused() {
+    let mut h = harness();
+    add_note(&mut h, "findable");
+    h.type_text(by::test_id("search"), "find");
+    assert_eq!(h.state().query, "find");
+
+    assert!(!h.press_shortcut("escape"), "focused: reserved, does not dispatch");
+    assert_eq!(h.state().query, "find", "query untouched while typing");
+
+    h.blur();
+    assert!(h.press_shortcut("escape"), "unfocused: the declared shortcut fires");
+    assert_eq!(h.state().query, "");
+}
+
+/// §19.2 static payloads: `cmd+2` jumps to the second folder.
+#[test]
+fn folder_jump_shortcuts_carry_their_static_arg() {
+    let mut h = harness();
+    h.type_text(by::test_id("new-folder"), "Work");
+    h.click(by::test_id("add-folder"));
+    settle_save(&mut h);
+    h.blur();
+
+    assert!(h.press_shortcut("cmd+1"));
+    h.query(by::test_id("folder-name")).assert_text("Notes");
+    assert!(h.press_shortcut("cmd+2"));
+    h.query(by::test_id("folder-name")).assert_text("Work");
+}
+
 /// M2 tail (PLAN-NOTES-APP / PLAN-SCROLL): both list panes are scroll
 /// viewports; a long note list scrolls — offset is a deterministic
 /// harness input, and rows keep working after the offset applies.

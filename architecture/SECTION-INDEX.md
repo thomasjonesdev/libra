@@ -87,6 +87,7 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 18.6 | `sections/18.6-editor-tooling.md` |
 | 19 | `sections/19-platform-integration.md` |
 | 19.1 | `sections/19.1-touch.md` |
+| 19.2 | `sections/19.2-keyboard-shortcuts-declarations-not-handlers.md` |
 | 20 | `sections/20-packaging.md` |
 | 21 | `sections/21-crate-layout.md` |
 | 22 | `sections/22-performance-budgets.md` |

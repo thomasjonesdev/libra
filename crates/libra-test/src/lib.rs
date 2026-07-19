@@ -202,6 +202,33 @@ impl<A: App> Harness<A> {
         self.hover = None;
     }
 
+    /// §19.2: press a declared keyboard shortcut by its chord string —
+    /// drives the app's own validated table with the same precedence
+    /// the shell applies (a focused text control suppresses reserved
+    /// chords). Panics on an unparseable chord, an invalid table, or a
+    /// chord the app never declared; returns whether it *fired* (a
+    /// declared chord suppressed by focus returns false).
+    pub fn press_shortcut(&mut self, chord: &str) -> bool {
+        let table = libra_core::build_shortcut_table::<A::Msg>(A::shortcuts())
+            .unwrap_or_else(|e| panic!("press_shortcut: invalid shortcut table: {e}"));
+        let want = libra_core::parse_chord(chord)
+            .unwrap_or_else(|e| panic!("press_shortcut: {e}"));
+        let (_, s) = table
+            .iter()
+            .find(|(c, _)| *c == want)
+            .unwrap_or_else(|| panic!("press_shortcut: '{chord}' is not a declared shortcut"));
+        if self.focus.is_some() && !libra_core::shortcut_fires_while_focused(&want) {
+            return false;
+        }
+        let msg = match &s.arg {
+            Some(arg) => A::Msg::action_with_str(&s.action, arg.clone()),
+            None => A::Msg::action_by_name(&s.action),
+        }
+        .expect("table validated above");
+        self.dispatch(msg);
+        true
+    }
+
     /// Render under a named theme (§11): `.theme("libra-light")`.
     /// Panics on unknown names — a typo'd theme is a broken test.
     pub fn theme(mut self, name: &str) -> Self {

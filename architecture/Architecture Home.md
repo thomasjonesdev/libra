@@ -123,6 +123,7 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
   - [[18.6-editor-tooling|18.6 Editor tooling (staged honestly)]]
 - [[19-platform-integration|19. Platform Integration]]
   - [[19.1-touch|19.1 Touch (first-class, not an afterthought)]]
+  - [[19.2-keyboard-shortcuts-declarations-not-handlers|19.2 Keyboard shortcuts: declarations, not handlers]]
 - [[20-packaging|20. Packaging & Distribution]]
 - [[21-crate-layout|21. Workspace & Crate Layout]]
 - [[22-performance-budgets|22. Performance Budgets]]

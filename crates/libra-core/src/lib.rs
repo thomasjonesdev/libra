@@ -607,6 +607,165 @@ pub trait App: Sized + ReflectState {
     fn subscriptions(&self) -> Vec<Sub<Self::Msg>> {
         vec![]
     }
+
+    /// App-level keyboard shortcuts (§19.2): a static chord → action
+    /// table, validated at startup (`build_shortcut_table`). Static —
+    /// shortcuts are fixed per app; state-dependent enablement is the
+    /// action's job, not the table's.
+    fn shortcuts() -> Vec<Shortcut> {
+        vec![]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard shortcuts (§19.2) — declarations, not handlers.
+// ---------------------------------------------------------------------------
+
+/// One declared shortcut: a chord string (`"cmd+n"`, §19.2 grammar), the
+/// camelCase action it dispatches, and an optional **static** string
+/// payload (`"cmd+1"` → `jumpFolder("1")`). No computed payloads — an
+/// action needing context reads it from State, same rule as markup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shortcut {
+    pub chord: String,
+    pub action: String,
+    pub arg: Option<String>,
+}
+
+impl Shortcut {
+    pub fn action(chord: &str, action: &str) -> Self {
+        Shortcut { chord: chord.into(), action: action.into(), arg: None }
+    }
+    pub fn with_arg(chord: &str, action: &str, arg: &str) -> Self {
+        Shortcut { chord: chord.into(), action: action.into(), arg: Some(arg.into()) }
+    }
+}
+
+/// A parsed chord — pure data, no platform types, so the shell and the
+/// harness share one parser and match against one representation.
+/// `cmd` is the platform-primary modifier (Super on macOS, Ctrl
+/// elsewhere — the shell decides which physical modifier maps to it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chord {
+    pub cmd: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub key: ChordKey,
+}
+
+/// The closed key set of the §19.2 chord grammar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChordKey {
+    /// A single character (letters, digits) — lowercase.
+    Char(char),
+    Escape,
+    Backspace,
+    Delete,
+    Enter,
+    Space,
+    Tab,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+/// Parse a §19.2 chord string: lowercase, `+`-joined, `modifier* + key`.
+pub fn parse_chord(s: &str) -> Result<Chord, String> {
+    let mut chord =
+        Chord { cmd: false, ctrl: false, alt: false, shift: false, key: ChordKey::Space };
+    let mut key: Option<ChordKey> = None;
+    for part in s.split('+') {
+        match part {
+            "cmd" => chord.cmd = true,
+            "ctrl" => chord.ctrl = true,
+            "alt" => chord.alt = true,
+            "shift" => chord.shift = true,
+            _ => {
+                if key.is_some() {
+                    return Err(format!("chord '{s}': more than one key ('{part}')"));
+                }
+                key = Some(match part {
+                    "escape" => ChordKey::Escape,
+                    "backspace" => ChordKey::Backspace,
+                    "delete" => ChordKey::Delete,
+                    "enter" => ChordKey::Enter,
+                    "space" => ChordKey::Space,
+                    "tab" => ChordKey::Tab,
+                    "up" => ChordKey::Up,
+                    "down" => ChordKey::Down,
+                    "left" => ChordKey::Left,
+                    "right" => ChordKey::Right,
+                    p => {
+                        let mut chars = p.chars();
+                        match (chars.next(), chars.next()) {
+                            (Some(c), None) if c.is_ascii_lowercase() || c.is_ascii_digit() => {
+                                ChordKey::Char(c)
+                            }
+                            _ => {
+                                return Err(format!(
+                                    "chord '{s}': unknown key '{p}' — a single lowercase \
+                                     char/digit or one of escape/backspace/delete/enter/space/tab/up/down/left/right"
+                                ))
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+    match key {
+        Some(k) => {
+            chord.key = k;
+            Ok(chord)
+        }
+        None => Err(format!("chord '{s}': no key (only modifiers)")),
+    }
+}
+
+/// §19.2 precedence, shared by the shell and the harness: while a text
+/// control is focused, only `cmd` chords the editing keymap doesn't
+/// claim may fire. Reserved while focused: everything without `cmd`
+/// (plain typing/navigation), and `cmd`+`c/x/v/z/a` (clipboard,
+/// undo/redo, select-all) plus `cmd`+`left/right` (Home/End).
+pub fn shortcut_fires_while_focused(chord: &Chord) -> bool {
+    if !chord.cmd {
+        return false;
+    }
+    !matches!(
+        chord.key,
+        ChordKey::Char('c' | 'x' | 'v' | 'z' | 'a') | ChordKey::Left | ChordKey::Right
+    )
+}
+
+/// Validate an app's shortcut declarations against its reflected
+/// actions (§19.2 load-time validation): every chord must parse, every
+/// action must resolve — unit actions via `action_by_name`, arg'd ones
+/// via `action_with_str`. Errors name the offending entry.
+pub fn build_shortcut_table<M: ReflectAction>(
+    shortcuts: Vec<Shortcut>,
+) -> Result<Vec<(Chord, Shortcut)>, String> {
+    let mut table = Vec::with_capacity(shortcuts.len());
+    for s in shortcuts {
+        let chord = parse_chord(&s.chord)?;
+        let resolves = match &s.arg {
+            Some(arg) => M::action_with_str(&s.action, arg.clone()).is_some(),
+            None => M::action_by_name(&s.action).is_some(),
+        };
+        if !resolves {
+            let kind = if s.arg.is_some() { "String-payload" } else { "unit" };
+            return Err(format!(
+                "shortcut '{}': '{}' is not a {kind} action — check the actions block (§19.2)",
+                s.chord, s.action
+            ));
+        }
+        if table.iter().any(|(c, _)| *c == chord) {
+            return Err(format!("shortcut '{}': chord declared twice", s.chord));
+        }
+        table.push((chord, s));
+    }
+    Ok(table)
 }
 
 #[cfg(test)]
@@ -773,5 +932,54 @@ mod tests {
         let acked: Effect<Msg> =
             Effect::kv_set_acked("k", vec![1], |_| Msg::Got(HttpResult::Failed(String::new())));
         assert_ne!(acked, Effect::kv_set("k", vec![1]));
+    }
+
+    // ---- §19.2 keyboard shortcuts ----
+
+    #[test]
+    fn chords_parse_modifiers_and_the_closed_key_set() {
+        let c = parse_chord("cmd+shift+n").unwrap();
+        assert!(c.cmd && c.shift && !c.alt);
+        assert_eq!(c.key, ChordKey::Char('n'));
+        assert_eq!(parse_chord("escape").unwrap().key, ChordKey::Escape);
+        assert_eq!(parse_chord("cmd+1").unwrap().key, ChordKey::Char('1'));
+        assert_eq!(parse_chord("cmd+alt+down").unwrap().key, ChordKey::Down);
+
+        assert!(parse_chord("cmd+shift").unwrap_err().contains("no key"));
+        assert!(parse_chord("cmd+n+m").unwrap_err().contains("more than one key"));
+        assert!(parse_chord("cmd+F5").unwrap_err().contains("unknown key"));
+    }
+
+    #[test]
+    fn shortcut_table_validates_action_names_at_build_time() {
+        // Msg (this module's test enum): Inc is a unit variant.
+        let ok = build_shortcut_table::<Msg>(vec![Shortcut::action("cmd+i", "inc")]);
+        assert_eq!(ok.unwrap().len(), 1);
+
+        let bad = build_shortcut_table::<Msg>(vec![Shortcut::action("cmd+q", "quench")]);
+        assert!(bad.unwrap_err().contains("'quench' is not a unit action"));
+
+        // A unit action declared with an arg fails the String-payload check.
+        let bad = build_shortcut_table::<Msg>(vec![Shortcut::with_arg("cmd+i", "inc", "3")]);
+        assert!(bad.unwrap_err().contains("String-payload"));
+
+        let dup = build_shortcut_table::<Msg>(vec![
+            Shortcut::action("cmd+i", "inc"),
+            Shortcut::action("cmd+i", "inc"),
+        ]);
+        assert!(dup.unwrap_err().contains("declared twice"));
+    }
+
+    #[test]
+    fn focused_precedence_reserves_the_editing_chords() {
+        let fires = |s: &str| shortcut_fires_while_focused(&parse_chord(s).unwrap());
+        assert!(!fires("n"), "un-modified keys belong to typing");
+        assert!(!fires("escape"), "escape blurs; it never dispatches while focused");
+        assert!(!fires("cmd+c"), "clipboard is the editor's");
+        assert!(!fires("cmd+z"));
+        assert!(!fires("cmd+left"), "cmd+arrows are Home/End");
+        assert!(fires("cmd+n"), "unclaimed cmd chords fire while typing");
+        assert!(fires("cmd+backspace"));
+        assert!(fires("cmd+alt+down"));
     }
 }

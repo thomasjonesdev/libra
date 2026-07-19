@@ -16,6 +16,7 @@ type: architecture
 ## In this vault
 
 - [[19.1-touch]]
+- [[19.2-keyboard-shortcuts-declarations-not-handlers]]
 
 ## In code
 
