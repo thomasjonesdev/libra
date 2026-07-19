@@ -144,3 +144,19 @@ fn snapshot_workbench_dialog_dark() {
     h.click(by::test_id("pg-dialog-close"));
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
+
+/// M5 `<Split>`: the harness resize verb drives the same controlled
+/// path as the shell's divider drag; resizing repaints, and resizing
+/// back restores identical bytes.
+#[test]
+fn snapshot_workbench_split_dark_and_resize_round_trips() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("split".into()));
+    h.assert_snapshot("workbench_split_dark");
+    let at_half = h.frame_png();
+    h.resize_split("pg-split", 0.25);
+    assert!((h.state().ctl_split - 0.25).abs() < 1e-4, "fraction echoed into the model");
+    assert_ne!(h.frame_png(), at_half, "panes repaint at the new fraction");
+    h.resize_split("pg-split", 0.5);
+    assert_eq!(h.frame_png(), at_half, "resizing back restores identical bytes");
+}

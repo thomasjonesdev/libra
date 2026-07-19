@@ -16,6 +16,7 @@ const ACCESSORS: &str = include_str!("../fixtures/accessors.lx");
 const CHROME: &str = include_str!("../fixtures/chrome.lx");
 const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
 const DIALOG: &str = include_str!("../fixtures/dialog.lx");
+const SPLIT: &str = include_str!("../fixtures/split.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -541,4 +542,29 @@ fn dialog_produces_identical_trees() {
         1,
         "unmounted <if> drops its dialog"
     );
+}
+
+/// PLAN-CATALOG `<Split>` (M5) — typed fraction (bound + literal),
+/// String-payload onResize, two-pane arity; both engines agree.
+#[test]
+fn split_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(SPLIT, &state);
+        let compiled = generated::build_split(&state);
+        assert_eq!(interp, compiled, "engine drift on split fixture (variant #{i})");
+    }
+
+    let state = TestState { ratio: 0.42, ..TestState::default() };
+    let interp = interp_tree_src(SPLIT, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Split { fraction, on_resize, test_id, children: panes } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert!((fraction - 0.42).abs() < 1e-6, "bound fraction resolves typed");
+    assert_eq!((on_resize.as_str(), test_id.as_str()), ("nameChanged", "main"));
+    assert_eq!(panes.len(), 2);
+    let ViewNode::Split { fraction, .. } = &children[1] else { panic!("{:?}", children[1]) };
+    assert!((fraction - 0.3).abs() < 1e-6, "literal fraction");
 }

@@ -41,6 +41,11 @@ pub struct Notes {
     pub status: String,
     /// Controlled mirror of the selected note's body (Input value).
     pub editor_body: String,
+    /// M5 pane fractions — model-owned (the `<Split>` controlled shape):
+    /// the divider drag dispatches `onResize`, these echo it back, and
+    /// rehydration restores the layout across restarts.
+    pub split_sidebar: f32,
+    pub split_list: f32,
     /// Which modal is up (M6) — source of truth for the `show_*`
     /// projections; not itself reflected.
     #[libra(skip)]
@@ -75,6 +80,8 @@ impl Notes {
             next_folder_id: 2,
             next_note_id: 1,
             selected_folder: 1,
+            split_sidebar: 0.21,
+            split_list: 0.4,
             theme: "libra-dark".into(),
             status: "loading…".into(),
             ..Default::default()

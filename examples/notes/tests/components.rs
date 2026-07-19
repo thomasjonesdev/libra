@@ -244,3 +244,18 @@ fn note_list_scrolls_when_it_overflows() {
     h.scroll("note-scroll", -200.0);
     assert_eq!(h.frame_png(), resting, "scrolling back restores identical bytes");
 }
+
+/// M5: nested Splits — resizing echoes into the clamped model fields
+/// and repaints; resizing back restores identical bytes.
+#[test]
+fn pane_splits_resize_and_round_trip() {
+    let mut h = harness();
+    let resting = h.frame_png();
+    h.resize_split("sidebar-split", 0.3);
+    assert!((h.state().split_sidebar - 0.3).abs() < 1e-4);
+    assert_ne!(h.frame_png(), resting, "wider sidebar repaints");
+    h.resize_split("sidebar-split", 0.05); // below the app's clamp
+    assert!((h.state().split_sidebar - 0.1).abs() < 1e-4, "action clamps to 0.1 min");
+    h.resize_split("sidebar-split", 0.21);
+    assert_eq!(h.frame_png(), resting, "back to the default fraction: identical bytes");
+}

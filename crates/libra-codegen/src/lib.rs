@@ -280,6 +280,59 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+        // §7.1 (PLAN-CATALOG / M5), matching libra-interp's "Split" arm
+        // exactly: typed fraction (Progress precedent), String-payload
+        // onResize, required testId, exactly two children.
+        "Split" => {
+            let mut fraction = "0.5f32".to_string();
+            let mut on_resize: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("fraction", AttrValue::Num(v)) => fraction = f32_lit(*v),
+                    ("fraction", AttrValue::Ident(p)) => {
+                        fraction = display_ref_expr(p, bound).map_err(|m| err(a.span, m))?;
+                    }
+                    ("onResize", AttrValue::Ident(m)) => on_resize = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_resize.ok_or_else(|| err(*span, "<Split> requires onResize={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Split> requires testId=\"…\" (its drag identity)"))?;
+            // Arity is a load-time rule in interp; codegen can't count
+            // expanded <if>/<for> children statically, so it enforces the
+            // common literal case and defers dynamic shapes to interp
+            // parity via the conformance suite.
+            let literal_kids =
+                children.iter().filter(|c| matches!(c, Node::Element { name, .. } if name != "for" && name != "if")).count();
+            let has_dynamic = children.len() != literal_kids;
+            if !has_dynamic && literal_kids != 2 {
+                return Err(err(
+                    *span,
+                    format!("<Split> takes exactly two children (panes), got {literal_kids}"),
+                ));
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Split {{ {at}\n\
+                 {i}    fraction: {fraction},\n\
+                 {i}    on_resize: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = str_lit(&test_id),
+            ))
+        }
+
         // Mirror of interp's "Scroll" arm (§7.1, PLAN-SCROLL).
         // §7.1 (PLAN-CATALOG / M6), matching libra-interp's "Dialog"
         // arm exactly: title literal-or-binding, optional unit-action

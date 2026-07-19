@@ -1,0 +1,14 @@
+<Column gap={8} padding={12}>
+  <Split fraction={ratio} onResize={nameChanged} testId="main">
+    <Column padding={4}>
+      <Text>left</Text>
+    </Column>
+    <Column padding={4}>
+      <Text muted>{status}</Text>
+    </Column>
+  </Split>
+  <Split fraction={0.3} onResize={nameChanged} testId="fixed">
+    <Text>a</Text>
+    <Text>b</Text>
+  </Split>
+</Column>

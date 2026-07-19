@@ -27,8 +27,13 @@ impl fmt::Display for ComponentRow {
 
 // The curated catalog, grouped for the sidebar. `(id, display name)`. Adding a
 // catalog component means adding a row here + its canvas block in the view.
-pub const LAYOUT: &[(&str, &str)] =
-    &[("column", "Column"), ("row", "Row"), ("spacer", "Spacer"), ("separator", "Separator")];
+pub const LAYOUT: &[(&str, &str)] = &[
+    ("column", "Column"),
+    ("row", "Row"),
+    ("spacer", "Spacer"),
+    ("separator", "Separator"),
+    ("split", "Split"),
+];
 pub const DISPLAY: &[(&str, &str)] =
     &[("text", "Text"), ("heading", "Heading"), ("badge", "Badge"), ("progress", "Progress")];
 pub const CONTROLS: &[(&str, &str)] = &[

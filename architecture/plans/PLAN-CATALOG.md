@@ -56,13 +56,39 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `ListItem` | `ListItem` | **shipped** 2026-07-17 | title/subtitle/meta + `selected` (bound bool) + hover wash (`surface_raised`); leading/trailing slots later |
 | `Modal` | `Dialog` | **shipped** 2026-07-19 (in-tree: `theme.scrim` + centered panel, detached overlay layout, scrim hit barrier, optional `onDismiss`; mount via `<if>`) | OS dialog remains a §12.1 effect — see native plan |
 
+## native-sdk.dev delta (audited 2026-07-19)
+
+The reference SDK's live catalog ([native-sdk.dev/components](https://native-sdk.dev/components))
+is broader than the json-render map above. Components it lists that this
+plan didn't yet track, with dispositions:
+
+| Theirs | Disposition |
+|---|---|
+| `Alert` (inline callout, variant styling) | **add — cheap win**: status tokens (`danger/warning/success` + `_bg`/`_fg`) already exist; a tinted panel + title/body. Wave 2-adjacent |
+| `Accordion` (disclosure sections) | add, chrome wave — pure state (`open` bool per section via `<if>` today; a real component when Toggle exists |
+| `Breadcrumb`, `Pagination`, `Stepper`, `Timeline` | add rows, long-tail wave — all list-shaped, token-only paint |
+| `Skeleton` (loading placeholder) | add — deterministic *static* placeholder now; shimmer needs §9.6 animation like Spinner |
+| `Drawer` / `Sheet` (side/bottom-anchored modals) | **fold into the Dialog overlay machinery** — the detached-overlay layout shipped for `<Dialog>` generalizes; anchoring is a style variant, not new architecture |
+| `Dropdown Menu` (anchored floating menu) | the machinery `ContextMenu` (M7) needs — anchored (not centered) overlay placement is the one new piece on top of the Dialog pass |
+| `Input Group` (field + accessory actions) | defer — composition may cover it once Row-in-field styling exists |
+| `Toggle` (pressed-state toggle buttons) | fold into Button variants / Switch wave |
+| `Bubble` (chat surfaces) | out of scope — same call as AI elements |
+| `Media Surface` (external textures: video/camera) | maps to §9.5 Video — late, unchanged |
+| `Resizable` (engine-managed drag panel) | **not adopted**: they split model-owned `Split` from engine-managed `Resizable`; Libra keeps only the model-owned shape (fractions in State — replayable, snapshot-exact). Same reasoning as shell-owned scroll, opposite side: pane layout *is* app state |
+| `Icon` (vector registry) | already tracked; still blocked on a path/arc `DrawCmd` |
+
+**Design confirmations from their catalog:** their `Dialog` is
+"modal surface with **model-owned dismissal**" — the shape `<Dialog>`
+shipped with (`<if>` mount + `onDismiss` action). Their `Split` is
+draggable with model-owned fractions — M5's planned shape exactly.
+
 ## Libra ops extras (not in json-render RN; keep)
 
 From existing §7.1 mission-control set — still in scope, later waves:
 
 | Component | Wave | Note |
 |---|---|---|
-| `Grid`, `Split`, `Panel` | layout+ | Dense consoles |
+| `Grid`, ~~`Split`~~ (**shipped** 2026-07-19 — model-owned fractions, drag + harness `resize_split`), `Panel` | layout+ | Dense consoles |
 | `Status`, `Icon`, `Markdown`, `Tooltip` | display | |
 | `ButtonGroup`, `Radio`, `Select`, `Combobox`, `Stepper` | controls | |
 | `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |

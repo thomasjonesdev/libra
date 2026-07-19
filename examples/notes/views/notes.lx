@@ -1,8 +1,8 @@
 <Column gap={0}>
   <Interval every={30000} onTick={tick} />
 
-  <Row gap={0} grow>
-    <Column gap={4} padding={12} grow={1}>
+  <Split fraction={split_sidebar} onResize={sidebarSplitChanged} testId="sidebar-split">
+    <Column gap={4} padding={12}>
       <Text bold>Folders</Text>
       <Scroll testId="folder-scroll">
         <Column gap={4}>
@@ -18,9 +18,8 @@
       <Button variant="secondary" onPress={openNewFolderDialog} testId="new-folder">New Folder</Button>
     </Column>
 
-    <Separator vertical />
-
-    <Column gap={4} padding={12} grow={1.5}>
+    <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
+    <Column gap={4} padding={12}>
       <Row gap={8} cross="center">
         <Text bold grow testId="folder-name">{folder_name}</Text>
         <Button variant="primary" onPress={newNote} testId="new-note">New</Button>
@@ -42,9 +41,7 @@
       </Scroll>
     </Column>
 
-    <Separator vertical />
-
-    <Column gap={8} padding={12} grow={2.5}>
+    <Column gap={8} padding={12}>
       <Row gap={8} cross="center">
         <Text size="sm" muted testId="meta">{selected_meta}</Text>
         <Spacer />
@@ -66,7 +63,8 @@
       </if>
       <Textarea value={editor_body} placeholder="write something…" onChange={bodyChanged} testId="editor-body" />
     </Column>
-  </Row>
+    </Split>
+  </Split>
 
   <Separator />
   <Row gap={8} padding={8} cross="center">

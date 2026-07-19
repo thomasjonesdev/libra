@@ -202,6 +202,31 @@ impl<A: App> Harness<A> {
         self.hover = None;
     }
 
+    /// M5 `<Split>`: set a split's fraction through its `onResize`
+    /// handler — the deterministic counterpart of the shell's divider
+    /// drag (same clamp, same `{:.4}` payload formatting, so a dragged
+    /// and a harness-resized split are byte-identical).
+    pub fn resize_split(&mut self, test_id: &str, fraction: f32) {
+        use libra_components::ItemKind;
+        let on_resize = self
+            .laid
+            .items
+            .iter()
+            .find_map(|i| match &i.kind {
+                ItemKind::Split { on_resize }
+                    if i.semantics.test_id.as_deref() == Some(test_id) =>
+                {
+                    Some(on_resize.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("resize_split: no <Split testId=\"{test_id}\">"));
+        let fraction = fraction.clamp(0.05, 0.95);
+        let msg = A::Msg::action_with_str(&on_resize, format!("{fraction:.4}"))
+            .unwrap_or_else(|| panic!("'{on_resize}' is not a String-payload Action variant"));
+        self.dispatch(msg);
+    }
+
     /// §19.2: press a declared keyboard shortcut by its chord string —
     /// drives the app's own validated table with the same precedence
     /// the shell applies (a focused text control suppresses reserved

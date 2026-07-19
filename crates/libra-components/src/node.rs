@@ -139,6 +139,15 @@ pub enum ViewNode {
     /// `Column`, `vertical` for pane seams in a `Row`. Paints
     /// `theme.hairline` (PLAN-TOKENS T1).
     Separator { vertical: bool },
+    /// `<Split fraction={0..1} onResize={action} testId=…>` (§7.1,
+    /// PLAN-CATALOG / PLAN-NOTES-APP M5): a two-pane draggable
+    /// splitter with **model-owned fractions** — `fraction` binds a
+    /// State f32 (typed, like `<Progress value>`), the shell's divider
+    /// drag dispatches `onResize` with the new fraction's Display as
+    /// its String payload, and the app echoes it into the bound field
+    /// (the controlled shape; pane layout *is* app state — replayable,
+    /// snapshot-exact). Exactly two children.
+    Split { fraction: f32, on_resize: String, test_id: String, children: Vec<ViewNode> },
     /// `<Dialog title=… onDismiss?=… testId?=…>` (§7.1, PLAN-CATALOG /
     /// PLAN-NOTES-APP M6): an **in-tree modal** — full-viewport scrim +
     /// centered panel holding ordinary markup children. Deterministic
@@ -240,6 +249,16 @@ pub enum ItemKind {
     /// Pressable list row; `selected`/hover paint a `surface_raised`
     /// wash behind the text lines.
     ListItem { title: String, subtitle: String, meta: String, selected: bool, px_md: f32, px_sm: f32 },
+    /// A `<Split>` container — invisible; carries the split's identity
+    /// (semantics test_id) and its `onResize` handler for the shell's
+    /// divider drag and the harness's `resize_split`. The handler lives
+    /// here, NOT in the item's press slot — the container is never a
+    /// click target.
+    Split { on_resize: String },
+    /// A `<Split>`'s divider gutter — paints a centered hairline;
+    /// `split` names the owning `<Split>`'s test_id so a pointer press
+    /// on the gutter knows which split it resizes.
+    SplitDivider { split: String },
     /// A Dialog's full-viewport backdrop: paints `theme.scrim` and acts
     /// as the modal barrier in `hit()` — with a handler it dispatches
     /// `onDismiss`, without one it swallows the click.

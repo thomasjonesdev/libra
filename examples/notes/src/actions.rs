@@ -246,6 +246,22 @@ impl Notes {
         self.select_folder(id);
     }
 
+    // ---- pane layout (M5 Split, controlled) ----
+
+    /// Outer divider drag — sidebar fraction of the window.
+    pub fn sidebar_split_changed(&mut self, fraction: String) {
+        if let Ok(f) = fraction.parse::<f32>() {
+            self.split_sidebar = f.clamp(0.1, 0.4);
+        }
+    }
+
+    /// Inner divider drag — note list's fraction of the remainder.
+    pub fn list_split_changed(&mut self, fraction: String) {
+        if let Ok(f) = fraction.parse::<f32>() {
+            self.split_list = f.clamp(0.2, 0.7);
+        }
+    }
+
     // ---- ambient ----
 
     /// `<Interval every={30000} onTick={tick}>` — the only clock input

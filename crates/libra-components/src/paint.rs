@@ -109,6 +109,8 @@ impl LaidTree {
                     }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
+                    ItemKind::Split { .. } => {}
+                    ItemKind::SplitDivider { .. } => catalog::split::paint_divider(&mut cx, item.rect),
                     ItemKind::DialogPanel => catalog::dialog::paint_panel(&mut cx, item.rect),
                 }
                 if item.clip.is_some() {

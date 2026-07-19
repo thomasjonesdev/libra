@@ -28,6 +28,7 @@ pub(crate) mod progress;
 pub(crate) mod scroll;
 pub(crate) mod separator;
 pub(crate) mod source;
+pub(crate) mod split;
 pub(crate) mod spacer;
 pub(crate) mod text;
 pub(crate) mod textarea;

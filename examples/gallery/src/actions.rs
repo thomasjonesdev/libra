@@ -45,6 +45,13 @@ impl Gallery {
         self.dialog_open = false;
     }
 
+    /// `<Split onResize>` echo (M5 controlled shape).
+    pub fn split_changed(&mut self, fraction: String) {
+        if let Ok(f) = fraction.parse::<f32>() {
+            self.ctl_split = f.clamp(0.05, 0.95);
+        }
+    }
+
     /// Progress numeric-binding demo: nudge `ctl_progress` in clean 0.1 steps
     /// (rounded so the bound value's Display stays tidy).
     pub fn progress_up(&mut self) {
@@ -81,6 +88,7 @@ impl Gallery {
         self.is_chart = s == "chart";
         self.is_sparkline = s == "sparkline";
         self.is_dialog = s == "dialog";
+        self.is_split = s == "split";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;
     }
 }

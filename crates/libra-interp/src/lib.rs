@@ -454,6 +454,50 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Progress { value, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M5): the two-pane
+        // splitter. `fraction` is typed like `<Progress value>`;
+        // `onResize` is a String-payload action (the new fraction's
+        // Display); `testId` is the drag identity.
+        "Split" => {
+            let mut fraction = 0.5f32;
+            let mut on_resize: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("fraction", AttrValue::Num(v)) => fraction = *v,
+                    ("fraction", AttrValue::Ident(path)) => {
+                        let s = (scope.field)(path)
+                            .ok_or_else(|| err(a.span, format!("no field '{path}' on State")))?;
+                        fraction = s.parse::<f32>().map_err(|_| {
+                            err(a.span, format!("field '{path}' is not a number — <Split fraction> expects 0..1"))
+                        })?;
+                    }
+                    ("onResize", AttrValue::Ident(m)) => on_resize = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_resize.ok_or_else(|| err(*span, "<Split> requires onResize={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Split> requires testId=\"…\" (its drag identity)"))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            if kids.len() != 2 {
+                return Err(err(
+                    *span,
+                    format!("<Split> takes exactly two children (panes), got {}", kids.len()),
+                ));
+            }
+            Ok(ViewNode::Split { fraction, on_resize: msg, test_id, children: kids })
+        }
+
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M6): the in-tree modal.
         // Mount/unmount is the app's `<if>`; `title` is a literal or
         // binding, `onDismiss` an optional unit action for
@@ -787,7 +831,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Dialog, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Split, Dialog, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

@@ -39,6 +39,7 @@ pub struct Gallery {
     pub is_textarea: bool,
     pub is_list_item: bool,
     pub is_dialog: bool,
+    pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
     /// The selected component exposes a text control (label playground).
@@ -53,6 +54,8 @@ pub struct Gallery {
     pub ctl_progress: f32,
     /// Dialog playground: the modal is mounted while this is set (M6).
     pub dialog_open: bool,
+    /// Split playground fraction — echoed by `splitChanged` (M5).
+    pub ctl_split: f32,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -81,6 +84,7 @@ impl Gallery {
             is_textarea: false,
             is_list_item: false,
             is_dialog: false,
+            is_split: false,
             is_chart: false,
             is_sparkline: false,
             has_text_control: false,
@@ -89,6 +93,7 @@ impl Gallery {
             ctl_body: "line one\nline two".into(),
             ctl_progress: 0.5,
             dialog_open: false,
+            ctl_split: 0.5,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

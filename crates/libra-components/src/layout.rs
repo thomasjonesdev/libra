@@ -75,6 +75,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Dialog { title, on_dismiss, test_id, children } => {
             catalog::dialog::build(cx, title, on_dismiss, test_id, children)
         }
+        ViewNode::Split { fraction, on_resize, test_id, children } => {
+            catalog::split::build(cx, *fraction, on_resize, test_id, children)
+        }
         ViewNode::Spacer { size } => catalog::spacer::build(cx, *size),
         ViewNode::Separator { vertical } => catalog::separator::build(cx, *vertical),
         ViewNode::SourceFrames { on_tick } => catalog::source::build_frames(cx, on_tick),
