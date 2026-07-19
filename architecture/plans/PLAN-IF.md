@@ -12,11 +12,13 @@ type: plan
 # `<if>` / `<else>` Plan
 
 **Status: complete.** Landed 2026-07-16. `cargo test --workspace` green;
-`if_else` conformance fixture; dashboard uses `<if test={running}><Frames/></if>`
-(no `subscriptions:`); source elements excluded from flex layout so snapshots
-stay byte-identical.
+`if_else` conformance fixture is the live example (both branches). Source
+elements are excluded from flex layout so snapshots stay byte-identical.
+(Historical: dashboard originally shipped `<if test={running}><Frames/></if>`;
+that was removed 2026-07-17 once a live data plane drove the display loop on its
+own — [[12.5-declarative-subscriptions|§12.5]]. `<if>` itself is unchanged.)
 
-**Read before writing code:** [[06.2-the-closed-grammar-what-markup-can-do|§6.2]], [[06.4-one-grammar-two-engines|§6.4]], [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]], [[PLAN-ERGONOMICS]] E3 acceptance (dashboard `<if>` + `<Frames>`).
+**Read before writing code:** [[06.2-closed-grammar|§6.2]], [[06.4-one-grammar-two-engines|§6.4]], [[12.5-declarative-subscriptions|§12.5]], [[PLAN-ERGONOMICS]] E3 acceptance (dashboard `<if>` + `<Frames>`).
 
 ## v1 scope (this plan)
 
@@ -56,4 +58,4 @@ Truthiness: field Display equals `"true"` (case-sensitive). Codegen emits `if st
 
 ---
 
-← [[Architecture Home]] · [[Plans Index]] · governing [[06.2-the-closed-grammar-what-markup-can-do|§6.2]]
+← [[Architecture Home]] · [[Plans Index]] · governing [[06.2-closed-grammar|§6.2]]

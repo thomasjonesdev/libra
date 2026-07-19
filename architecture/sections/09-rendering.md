@@ -15,12 +15,17 @@ type: architecture
 
 ## In this vault
 
-- [[09.1-the-display-list]]
-- [[09.2-the-canonical-executor-tiny-skia-cpu]]
-- [[09.3-making-cpu-fast-enough-damage-layers]]
-- [[09.4-the-future-gpu-executor-insurance-not-dependency]]
-- [[09.5-video-planned-not-early-phase]]
+- [[09.1-display-list]]
+- [[09.2-canonical-executor]]
+- [[09.3-damage-layers]]
+- [[09.4-gpu-executor]]
+- [[09.5-video]]
 - [[09.6-animation]]
+
+## In code
+
+- `crates/libra-draw/` — the display list + theme tokens
+- `crates/libra-raster/` — the deterministic CPU rasterizer
 
 ---
 

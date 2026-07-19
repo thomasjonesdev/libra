@@ -1,8 +1,9 @@
-//! libra-kv — the persistence store (ARCHITECTURE.md §13.1):
-//! localStorage, but honest. redb (pure-Rust, ACID, single-file B-tree)
-//! in the platform app-data directory. String-ish keys, byte values,
-//! prefix scans. All access goes through `Effect::Kv*` on effects workers —
-//! apps never touch this crate directly.
+//! libra-kv — the persistence store: redb (pure-Rust, ACID, single-file
+//! B-tree) in the platform app-data dir; string-ish keys, byte values, prefix
+//! scans. Reached only through `Effect::Kv*` on effects workers — apps never
+//! touch it directly.
+//!
+//! Architecture: ARCHITECTURE.md §13.1 (the KV store).
 
 use redb::{Database, TableDefinition};
 use std::path::{Path, PathBuf};

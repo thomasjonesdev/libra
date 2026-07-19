@@ -32,6 +32,11 @@ Budgets are CI-enforced (criterion benches + frame-timing assertions in snapshot
 
 Two standing benchmark apps: `dashboard` (data-plane stress: 16 series × 10 kHz tape) and `log-explorer` (1M-line corpus, live filter).
 
+## In code
+
+- `examples/dashboard` — `cargo run -p dashboard --release -- bench` (the §22 budget check)
+- Root `Cargo.toml` `[profile.dev.package.*]` — paint-path crates (tiny-skia / fontdue / taffy + `libra-raster` / `libra-draw` / `libra-data` / `libra-components` / `libra-platform`) stay at `opt-level = 2` in plain debug so live windows remain within the damage-tracked budget without a special profile. App logic stays opt-level 0.
+
 ---
 
 ---

@@ -1,28 +1,16 @@
-//! libra-platform — the winit/softbuffer windowed shell (ARCHITECTURE.md §21).
+//! libra-platform — the winit/softbuffer windowed shell. Presentation glue
+//! only: it drives the same pipeline the harness drives, then blits the frame;
+//! it is not on the determinism paint path. Also handles effects dispatch (via
+//! a winit user event), `.lx` hot reload, state rehydration, and a11y.
 //!
-//! Presentation glue only: the runtime loop drives the same pipeline the
-//! test harness drives (interp → widgets/taffy → DrawCmds → libra-raster),
-//! then blits the frame into a winit window via softbuffer. Nothing here
-//! is on the determinism contract's paint path — the canonical frame
-//! remains the logical-resolution render snapshot tests assert against.
+//! Display loop (§12.5): while any `<Frames>` / `Sub::Frames` is mounted the
+//! shell runs `ControlFlow::Poll` and fires handlers on the monitor refresh
+//! schedule — the browser `requestAnimationFrame` equivalent. Apps declare
+//! `<Frames onTick={…}/>`; they never manage the event loop. (Plain
+//! `WaitUntil` does not wake idle macOS AppKit without input.)
 //!
-//! Phase 1 additions:
-//! - **Effects**: cmds returned by `init`/`update` go to the
-//!   libra-effects worker pool; result msgs come back through a winit
-//!   `EventLoopProxy` user event and dispatch on the main thread (§12.3).
-//! - **Hot reload** (`Options::watch`): the `.lx` file's mtime is polled;
-//!   on change the view re-parses and swaps in — model state untouched.
-//!   A parse/interp error keeps the last good view and overlays the
-//!   diagnostic instead (§18.2's dev loop, mtime-poll edition).
-//!
-//! HiDPI: layout and hit testing run in logical pixels; at present time
-//! the DrawCmd stream is scaled by the window's scale factor and
-//! rasterized at physical resolution, so glyphs render crisp rather than
-//! being upsampled.
-//!
-//! Phase 1 scope: pointer clicks only (the catalog is Buttons); keyboard,
-//! focus, and IME arrive with the reconciler and text entry in later
-//! phases.
+//! Architecture: ARCHITECTURE.md §19 (platform integration), §13.2 (state
+//! snapshots), §17 (accessibility), §12.5 (sources).
 
 pub mod a11y;
 
@@ -281,6 +269,7 @@ where
         laid: None,
         overlay: None,
         cursor: (0.0, 0.0),
+        scroll_state: libra_components::ScrollState::new(),
         gfx: None,
         watch_mtime,
         next_watch_check: Instant::now() + WATCH_INTERVAL,
@@ -335,6 +324,10 @@ struct Shell<A: App> {
     overlay: Option<String>,
     /// Last cursor position, physical pixels.
     cursor: (f64, f64),
+    /// PLAN-SCROLL: scroll positions by `<Scroll>` test_id, driven by the
+    /// wheel. Applied to the laid tree in `relayout` (like the harness's
+    /// `scroll()`); empty = every viewport at the top.
+    scroll_state: libra_components::ScrollState,
     gfx: Option<Gfx>,
     watch_mtime: Option<std::time::SystemTime>,
     next_watch_check: Instant,
@@ -342,12 +335,12 @@ struct Shell<A: App> {
     save_hook: Option<SaveHook<A>>,
     /// Damage tracking (§9.3): previous frame's cmds + pixels.
     frame_cache: Option<libra_raster::FrameCache>,
-    /// Sub::Frames (§12.2): diffed from subscriptions after each dispatch.
+    /// Sub::Frames (§12.2): diffed from subscriptions after each relayout.
     frames_active: bool,
     /// §12.5: `onTick` handler names from every mounted `<Frames>` in
     /// the current laid tree, refreshed by `relayout`. Unioned with
     /// `App::subscriptions()`'s `Sub::Frames` — either form (or both)
-    /// keeps frame ticks flowing.
+    /// keeps the display loop running.
     markup_frame_handlers: Vec<String>,
     /// §12.5: `(every_ms, onTick)` for every mounted `<Interval>` in
     /// the current laid tree, refreshed by `relayout`. Diffed against
@@ -376,6 +369,8 @@ struct Shell<A: App> {
     a11y_snapshot: Arc<std::sync::Mutex<a11y::A11ySnapshot>>,
     frame_index: u64,
     started: Instant,
+    /// Absolute schedule for `<Frames>` ticks (Stage 1): advance by
+    /// `frame_period`, resync only if more than a period behind.
     next_frame_at: Instant,
     /// Tick cadence for `Sub::Frames` (§12.2): the window's actual
     /// monitor refresh period once known, `DEFAULT_FRAME_PERIOD` until
@@ -459,10 +454,17 @@ where
                             _ => None,
                         })
                         .collect();
+                    // PLAN-SCROLL: offset scrolled viewports by the wheel-driven
+                    // positions before storing (rects are natural until now).
+                    let mut laid = laid;
+                    laid.apply_scroll(&self.scroll_state);
                     self.laid = Some(laid);
                     self.overlay = None;
                     self.push_a11y();
                     self.sync_intervals();
+                    // After markup sources are known — never before.
+                    // (A prior sync on empty handlers left frames idle forever.)
+                    self.sync_subscriptions();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
             },
@@ -501,20 +503,23 @@ where
             rest.push(effect);
         }
         self.effects.execute_all(rest);
-        self.sync_subscriptions();
-        self.relayout();
+        self.relayout(); // collects mounted sources, then sync_subscriptions
         if let Some(gfx) = &self.gfx {
             gfx.window.request_redraw();
         }
     }
 
-    /// Diff subscriptions after update (§12.2). Phase 2: Frames only.
-    /// §12.2/§12.5: wants frame ticks if either form is present —
-    /// `App::subscriptions()`'s `Sub::Frames` or a mounted `<Frames>`
-    /// in the current markup. Either alone is sufficient.
+    /// Diff frame subscriptions after relayout (§12.2 / §12.5). Wants the
+    /// display loop if any of: `App::subscriptions()`'s `Sub::Frames`, a
+    /// mounted `<Frames>`, **or a live data-plane source** — a streaming ring
+    /// repaints the view on its own (§14.2), so a `<Chart>` bound to it
+    /// animates with no author-wired `<Frames>` pump. Pause (`IngestClose`)
+    /// drops the live-ingest term and the loop idles. Activating arms an
+    /// immediate first tick; the `request_redraw` chain keeps it alive.
     fn sync_subscriptions(&mut self) {
         let want = self.app.subscriptions().iter().any(|s| matches!(s, Sub::Frames { .. }))
-            || !self.markup_frame_handlers.is_empty();
+            || !self.markup_frame_handlers.is_empty()
+            || self.effects.store().has_live_ingest();
         if want && !self.frames_active {
             self.next_frame_at = Instant::now();
         }
@@ -578,8 +583,8 @@ where
     }
 
     /// Stage 1: match tick cadence to the window's actual monitor so
-    /// `about_to_wait`'s ticks land in step with the compositor instead
-    /// of beating against it. Falls back to `DEFAULT_FRAME_PERIOD` when
+    /// display-loop ticks land in step with the compositor instead of
+    /// beating against it. Falls back to `DEFAULT_FRAME_PERIOD` when
     /// the platform can't report a rate (`current_monitor`/
     /// `refresh_rate_millihertz` both return `Option`).
     fn refresh_frame_period(&mut self) {
@@ -625,6 +630,35 @@ where
                 ),
             }
         }
+    }
+
+    /// PLAN-SCROLL: route a wheel event to the innermost `<Scroll>` under the
+    /// cursor and re-lay-out with the updated position. Scroll is a view input
+    /// (like focus/hover) — no action, no entry in the log.
+    fn wheel(&mut self, delta: winit::event::MouseScrollDelta) {
+        use winit::event::MouseScrollDelta;
+        let scale = self.scale();
+        // Wheel-down (content moves up, revealing lower items) → offset grows.
+        let dy = match delta {
+            MouseScrollDelta::LineDelta(_, y) => -y * 48.0, // ~2 rows per notch
+            MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / scale,
+        };
+        if dy == 0.0 {
+            return;
+        }
+        let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+        let target = self.laid.as_ref().and_then(|laid| {
+            laid.items
+                .iter()
+                .rev()
+                .find(|i| matches!(i.kind, ItemKind::Scroll) && i.rect.contains(lx, ly))
+                .and_then(|i| i.semantics.test_id.clone())
+        });
+        let Some(id) = target else { return };
+        let pos = self.scroll_state.entry(id).or_insert(0.0);
+        *pos = (*pos + dy).max(0.0);
+        self.relayout();
+        self.request_redraw();
     }
 
     fn click(&mut self) {
@@ -1004,12 +1038,15 @@ where
         window.request_redraw();
         self.gfx = Some(Gfx { window, _context: context, surface, a11y });
         self.refresh_frame_period();
-        self.sync_subscriptions();
+        // relayout collects mounted `<Frames>` then sync_subscriptions
+        // arms the display loop — do not sync on empty handlers first.
         self.relayout();
     }
 
-    /// Effect results arrive here (via the EventLoopProxy sink) and
-    /// dispatch on the main thread — same causal path as §4.2's loop.
+    /// Effect results, a11y actions, and `<Interval>` ticks arrive here
+    /// (via the EventLoopProxy) and dispatch on the main thread — same
+    /// causal path as §4.2's loop. Frame ticks run from `about_to_wait`
+    /// while the display loop is active.
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, msg: A::Msg) {
         self.dispatch(msg);
     }
@@ -1047,6 +1084,7 @@ where
             }
             WindowEvent::ModifiersChanged(m) => self.modifiers = m.state(),
             WindowEvent::KeyboardInput { event, .. } => self.key(&event),
+            WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Left,
@@ -1064,38 +1102,43 @@ where
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let mut wake_at: Option<Instant> = None;
-
         if self.opts.watch.is_some() || self.opts.theme_file.is_some() {
             if Instant::now() >= self.next_watch_check {
                 self.check_watch();
                 self.check_theme_file();
                 self.next_watch_check = Instant::now() + WATCH_INTERVAL;
             }
-            wake_at = Some(self.next_watch_check);
         }
 
+        // Display loop (§12.5): while `<Frames>` / `Sub::Frames` is
+        // mounted, Poll the event loop and fire handlers on the refresh
+        // schedule — the browser rAF equivalent. Developers only mount
+        // `<Frames/>`; they never touch control flow. (WaitUntil alone
+        // does not wake idle macOS AppKit; Poll does.)
         if self.frames_active {
             let now = Instant::now();
             if now >= self.next_frame_at {
-                // Advance by exactly one period rather than rebasing on
-                // `now` — a late `WaitUntil` wakeup (routine on macOS)
-                // must not permanently shift the schedule (Stage 1). Only
-                // resync to `now` if we've fallen more than a full period
-                // behind (e.g. the app was backgrounded).
                 self.next_frame_at += self.frame_period;
                 if self.next_frame_at < now {
                     self.next_frame_at = now + self.frame_period;
                 }
                 self.tick_frame();
+                // Repaint every tick, not only as a side effect of a handler
+                // dispatch: a display loop armed purely by a live data plane
+                // (no `<Frames>` handler) still needs the frame presented so
+                // the chart shows the newest ring samples (§14.2). Coalesced
+                // with any dispatch-driven redraw by winit.
+                self.request_redraw();
             }
-            wake_at = Some(wake_at.map_or(self.next_frame_at, |w| w.min(self.next_frame_at)));
+            event_loop.set_control_flow(ControlFlow::Poll);
+            return;
         }
 
-        if let Some(at) = wake_at {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(at));
+        if self.opts.watch.is_some() || self.opts.theme_file.is_some() {
+            event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_watch_check));
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
         }
-        // Otherwise: pure event-driven.
     }
 }
 
@@ -1223,6 +1266,10 @@ fn scale_cmds_in_place(cmds: &mut [DrawCmd], s: f32) {
                     }
                 }
             }
+            // Scale the clip rect with everything else so HiDPI clips align
+            // with the scaled geometry (PLAN-SCROLL).
+            DrawCmd::PushClip { rect } => *rect = scale_rect(rect, s),
+            DrawCmd::PopClip => {}
         }
     }
 }

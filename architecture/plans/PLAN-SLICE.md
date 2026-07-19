@@ -12,8 +12,8 @@ type: plan
 
 **Status: planned.**
 
-Generate nested `Action::Charts(charts::Action)` from `#[slice]` fields; lift slice effects; keep one State. Mirror [[05.7-scaling-state-slices-not-fragmentation|§5.7]] listing. Acceptance: a two-slice example app + unit tests.
+Generate nested `Action::Charts(charts::Action)` from `#[slice]` fields; lift slice effects; keep one State. Mirror [[05.7-state-slices|§5.7]] listing. Acceptance: a two-slice example app + unit tests.
 
 ---
 
-← [[Plans Index]] · [[05.7-scaling-state-slices-not-fragmentation|§5.7]]
+← [[Plans Index]] · [[05.7-state-slices|§5.7]]

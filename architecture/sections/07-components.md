@@ -15,11 +15,15 @@ type: architecture
 
 ## In this vault
 
-- [[07.1-the-built-in-catalog-closed-curated]]
-- [[07.2-composed-components-markup]]
+- [[07.1-builtin-catalog]]
+- [[07.2-composed-components]]
 - [[07.3-rust-components]]
-- [[07.4-canvas-advanced-custom-ui]]
+- [[07.4-canvas]]
 - Plans: [[PLAN-UI-SURFACE]] · [[PLAN-CATALOG]] · [[PLAN-TOKENS]]
+
+## In code
+
+- `crates/libra-components/src/lib.rs` — ViewTree → taffy layout → LaidTree (geometry + semantics + handlers)
 
 ---
 

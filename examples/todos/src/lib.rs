@@ -1,18 +1,11 @@
-//! Todos — the §6.2 item-fields showcase: a list you interact with
-//! per row. Each todo renders inside a `<for>` as a `<Button>` whose
-//! `onPress={complete(t.id)}` / `onPress={remove(t.id)}` carries *that
-//! row's* id as the action payload — loop-scoped field access
-//! (PLAN-ITEM-FIELDS), not a Display-encoded line.
+//! Todos — the §6.2 item-fields showcase: each todo renders inside a `<for>` as
+//! a `<Button>` whose `onPress={complete(t.id)}` carries that row's id as the
+//! action payload (loop-scoped field access). `items` is the source of truth;
+//! `active`/`done`/`summary` are §6.3 projections rebuilt by the `#[project]`
+//! hook after every action.
 //!
-//! The state layer is the point of the demo: `#[libra::state]` +
-//! `#[libra::actions]` turn plain `&mut self` methods into the whole
-//! `Action` enum + `reduce`. `items` is the source of truth;
-//! `active`/`done`/`summary` are §6.3 display projections — and the
-//! `#[project]`-marked method rebuilds them **automatically after every
-//! action** (the generated `reduce` calls it; `app!`'s default init
-//! projects the default state). Actions just mutate `items`; nothing
-//! here remembers to refresh anything. Until `<if>` exists (§26), the
-//! view keeps two filtered collections rather than one conditional list.
+//! Architecture: ARCHITECTURE.md §6.2 (the closed grammar), §6.3 (display
+//! projections); plan PLAN-ITEM-FIELDS.
 
 use libra::{actions, app, state};
 use libra_core::LibraReflect;

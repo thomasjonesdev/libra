@@ -16,7 +16,7 @@ type: plan
 grammar + mount/query (event delivery later). Conformance `interval_stream`
 fixture; `cargo test --workspace` green.
 
-**Read:** [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]], [[12.1-the-effect-vocabulary-closed-versioned|§12.1]], [[12.2-subscriptions|§12.2]], [[PLAN-IF]].
+**Read:** [[12.5-declarative-subscriptions|§12.5]], [[12.1-effect-vocabulary|§12.1]], [[12.2-subscriptions|§12.2]], [[PLAN-IF]].
 
 ## Interval (full v1)
 
@@ -48,4 +48,4 @@ fixture; `cargo test --workspace` green.
 
 ---
 
-← [[Architecture Home]] · [[Plans Index]] · governing [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]]
+← [[Architecture Home]] · [[Plans Index]] · governing [[12.5-declarative-subscriptions|§12.5]]

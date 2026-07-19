@@ -29,4 +29,4 @@ ReflectState recursion; `len` / `isEmpty` on strings & collections
 
 ---
 
-← [[Plans Index]] · [[06.2-the-closed-grammar-what-markup-can-do|§6.2]]
+← [[Plans Index]] · [[06.2-closed-grammar|§6.2]]

@@ -1,19 +1,14 @@
-//! libra-raster — the canonical executor (ARCHITECTURE.md §9.2).
+//! libra-raster — the canonical executor: pure-Rust CPU rasterization
+//! (tiny-skia geometry, fontdue glyphs, deterministic PNG). Same DrawCmd list
+//! in → same bytes out on every machine. `render_damage` is a cost
+//! optimization that stays byte-equivalent to a full render (property-tested).
 //!
-//! Pure-Rust CPU rasterization: tiny-skia for geometry, fontdue for glyph
-//! coverage, manual src-over blending, deterministic PNG encoding.
-//! Same DrawCmd list in → same bytes out, on every machine.
+//! Paint-path crates (this one included) compile at `opt-level = 2` under
+//! the workspace `[profile.dev.package.*]` so plain debug runs stay within
+//! the §22 damage-tracked budget — pixel loops are not usable at opt-level 0.
 //!
-//! Damage tracking (§9.3, Phase 2): `render_damage` diffs the new
-//! DrawCmd list against the previous frame's, replays only cmds that
-//! touch the changed region, and copies just the dirty rows into the
-//! cached pixmap. The contract is *byte-equivalence with the full
-//! render* — property-tested below — so damage is purely a cost
-//! optimization, invisible to snapshot identity.
-//!
-//! Phase 0 text stack is fontdue (simple horizontal advance, no shaping);
-//! the parley/swash upgrade is Phase 3 per §10. Fonts are bundled (§10):
-//! Liberation Sans Regular/Bold for the spike.
+//! Architecture: ARCHITECTURE.md §9.2 (canonical executor), §9.3 (damage
+//! layers).
 
 use libra_draw::{Color, DrawCmd, FontStyle, Rect};
 use libra_components::TextMeasurer;
@@ -73,34 +68,73 @@ impl Renderer {
 
     pub fn render(&self, cmds: &[DrawCmd], width: u32, height: u32) -> Pixmap {
         let mut pixmap = Pixmap::new(width, height).expect("nonzero pixmap");
-        for cmd in cmds {
-            self.draw(&mut pixmap, cmd);
-        }
+        self.replay(&mut pixmap, cmds, width, height, None);
         pixmap
     }
 
-    fn draw(&self, pixmap: &mut Pixmap, cmd: &DrawCmd) {
-        match cmd {
-            DrawCmd::Clear(c) => {
-                pixmap.fill(tiny_skia::Color::from_rgba8(c.r, c.g, c.b, c.a));
-            }
-            DrawCmd::Rect { rect, color } => self.fill_rect(pixmap, *rect, *color),
-            DrawCmd::RRect { rect, radius, color } => {
-                self.fill_rrect(pixmap, *rect, *radius, *color)
-            }
-            DrawCmd::Text { x, y, content, px, style, color } => {
-                self.draw_text(pixmap, *x, *y, content, *px, *style, *color)
-            }
-            DrawCmd::Polyline { points, width, color } => {
-                self.stroke_polyline(pixmap, points, *width, *color)
-            }
-            DrawCmd::Strips { x, col_w, strips, color } => {
-                fill_strips(pixmap, *x, *col_w, strips, *color)
+    /// Execute `cmds` into `pixmap`, tracking the clip stack (PLAN-SCROLL).
+    /// `damage`, when set, restricts drawing to cmds touching that rect and
+    /// clears only it (the §9.3 partial-repaint path). Clip cmds are **always**
+    /// processed, so clip state stays correct even when draws are skipped —
+    /// which is what keeps the damage replay byte-identical to a full render.
+    fn replay(&self, pixmap: &mut Pixmap, cmds: &[DrawCmd], width: u32, height: u32, damage: Option<Rect>) {
+        let mut clip_stack: Vec<Rect> = Vec::new();
+        let mut clip: Option<Clip> = None;
+        for cmd in cmds {
+            match cmd {
+                DrawCmd::PushClip { rect } => {
+                    clip_stack.push(*rect);
+                    clip = clip_from_stack(&clip_stack).map(|r| Clip::new(r, width, height));
+                }
+                DrawCmd::PopClip => {
+                    clip_stack.pop();
+                    clip = clip_from_stack(&clip_stack).map(|r| Clip::new(r, width, height));
+                }
+                DrawCmd::Clear(c) => match damage {
+                    Some(d) => fill_rect_exact(
+                        pixmap,
+                        d.x as i32,
+                        d.y as i32,
+                        (d.x + d.w) as i32,
+                        (d.y + d.h) as i32,
+                        *c,
+                    ),
+                    None => pixmap.fill(tiny_skia::Color::from_rgba8(c.r, c.g, c.b, c.a)),
+                },
+                _ => {
+                    let draw_it = match damage {
+                        Some(d) => cmd.bounds().is_some_and(|b| b.intersects(&d)),
+                        None => true,
+                    };
+                    if draw_it {
+                        self.draw(pixmap, cmd, clip.as_ref());
+                    }
+                }
             }
         }
     }
 
-    fn stroke_polyline(&self, pixmap: &mut Pixmap, points: &[(f32, f32)], width: f32, color: Color) {
+    fn draw(&self, pixmap: &mut Pixmap, cmd: &DrawCmd, clip: Option<&Clip>) {
+        match cmd {
+            // Handled by `replay`; never routed here.
+            DrawCmd::Clear(_) | DrawCmd::PushClip { .. } | DrawCmd::PopClip => {}
+            DrawCmd::Rect { rect, color } => self.fill_rect(pixmap, *rect, *color, clip),
+            DrawCmd::RRect { rect, radius, color } => {
+                self.fill_rrect(pixmap, *rect, *radius, *color, clip)
+            }
+            DrawCmd::Text { x, y, content, px, style, color } => {
+                self.draw_text(pixmap, *x, *y, content, *px, *style, *color, clip)
+            }
+            DrawCmd::Polyline { points, width, color } => {
+                self.stroke_polyline(pixmap, points, *width, *color, clip)
+            }
+            DrawCmd::Strips { x, col_w, strips, color } => {
+                fill_strips(pixmap, *x, *col_w, strips, *color, clip)
+            }
+        }
+    }
+
+    fn stroke_polyline(&self, pixmap: &mut Pixmap, points: &[(f32, f32)], width: f32, color: Color, clip: Option<&Clip>) {
         if points.len() < 2 {
             return;
         }
@@ -115,7 +149,7 @@ impl Renderer {
                 &Self::paint(color),
                 &Stroke { width, ..Stroke::default() },
                 Transform::identity(),
-                None,
+                clip.map(|c| &c.mask),
             );
         }
     }
@@ -134,13 +168,13 @@ impl Renderer {
         p
     }
 
-    fn fill_rect(&self, pixmap: &mut Pixmap, r: Rect, color: Color) {
+    fn fill_rect(&self, pixmap: &mut Pixmap, r: Rect, color: Color, clip: Option<&Clip>) {
         if let Some(rect) = tiny_skia::Rect::from_xywh(r.x, r.y, r.w, r.h) {
-            pixmap.fill_rect(rect, &Self::paint(color), Transform::identity(), None);
+            pixmap.fill_rect(rect, &Self::paint(color), Transform::identity(), clip.map(|c| &c.mask));
         }
     }
 
-    fn fill_rrect(&self, pixmap: &mut Pixmap, r: Rect, radius: f32, color: Color) {
+    fn fill_rrect(&self, pixmap: &mut Pixmap, r: Rect, radius: f32, color: Color, clip: Option<&Clip>) {
         let radius = radius.min(r.w / 2.0).min(r.h / 2.0);
         // Rounded corners via cubic approximation (kappa).
         const K: f32 = 0.552_284_75;
@@ -159,7 +193,7 @@ impl Renderer {
         pb.cubic_to(x, y + radius - c, x + radius - c, y, x + radius, y);
         pb.close();
         if let Some(path) = pb.finish() {
-            pixmap.fill_path(&path, &Self::paint(color), FillRule::Winding, Transform::identity(), None);
+            pixmap.fill_path(&path, &Self::paint(color), FillRule::Winding, Transform::identity(), clip.map(|c| &c.mask));
         }
     }
 
@@ -173,6 +207,7 @@ impl Renderer {
         px: f32,
         style: FontStyle,
         color: Color,
+        clip: Option<&Clip>,
     ) {
         let font = self.font(style);
         let baseline = y + self.ascent(px, style);
@@ -182,7 +217,7 @@ impl Renderer {
             // Glyph bitmap top-left in pixmap space:
             let gx = (pen + metrics.xmin as f32).round() as i32;
             let gy = (baseline - metrics.ymin as f32 - metrics.height as f32).round() as i32;
-            blend_glyph(pixmap, gx, gy, metrics.width, metrics.height, &coverage, color);
+            blend_glyph(pixmap, gx, gy, metrics.width, metrics.height, &coverage, color, clip);
             pen += metrics.advance_width;
         }
     }
@@ -261,24 +296,14 @@ impl Renderer {
         let clip_rect = Rect::new(x0 as f32, y0 as f32, dw as f32, dh as f32);
 
         // Replay every cmd touching the region into the scratch at
-        // original coordinates — identical FP math to the full render.
-        // `Clear` is the one exception (§9.3 Stage 3): its output is
-        // coordinate-independent (every pixel gets the same premultiplied
-        // color), so — unlike stroked/AA geometry — filling just the
-        // dirty rect is byte-identical to filling the whole scratch. That
-        // identity holds only because just the dirty rows are ever copied
-        // out below; a full `self.draw` there would otherwise repaint
-        // ~13 MB of scratch a partial repaint never uses.
-        for cmd in &cmds {
-            match cmd {
-                DrawCmd::Clear(c) => fill_rect_exact(&mut prev.scratch, x0, y0, x1, y1, *c),
-                _ => {
-                    if cmd.bounds().is_some_and(|b| b.intersects(&clip_rect)) {
-                        self.draw(&mut prev.scratch, cmd);
-                    }
-                }
-            }
-        }
+        // original coordinates — identical FP math to the full render, now
+        // sharing the clip-stack loop (PLAN-SCROLL) so clips replay
+        // identically. `Clear` is the one exception (§9.3 Stage 3): its
+        // output is coordinate-independent, so filling just the dirty rect is
+        // byte-identical to filling the whole scratch — and only the dirty
+        // rows are copied out below. Clip cmds are always processed even when
+        // draws are skipped, which is what keeps this byte-identical.
+        self.replay(&mut prev.scratch, &cmds, width, height, Some(clip_rect));
 
         // Copy only the dirty rows into the cached frame.
         let stride = width as usize;
@@ -350,6 +375,57 @@ impl TextMeasurer for Renderer {
 /// the exact same `premultiply().to_color_u8()` conversion tiny-skia's
 /// own `fill` uses internally, so a clipped `Clear` replay is
 /// byte-identical to a full one restricted to the same pixels.
+/// An active rectangular clip (PLAN-SCROLL). `bounds` are integer pixel edges
+/// for the manual coverage blits (text, strips); `mask` is the tiny-skia clip
+/// for the path fills — both derived from the *same* integer rect, so every
+/// draw path clips to identical pixels (byte-equivalence, Appendix A).
+struct Clip {
+    bounds: (i32, i32, i32, i32), // x0, y0, x1, y1
+    mask: tiny_skia::Mask,
+}
+
+impl Clip {
+    fn new(rect: Rect, width: u32, height: u32) -> Clip {
+        let x0 = (rect.x.floor() as i32).clamp(0, width as i32);
+        let y0 = (rect.y.floor() as i32).clamp(0, height as i32);
+        let x1 = ((rect.x + rect.w).ceil() as i32).clamp(0, width as i32);
+        let y1 = ((rect.y + rect.h).ceil() as i32).clamp(0, height as i32);
+        let mut mask = tiny_skia::Mask::new(width, height).expect("nonzero mask");
+        if x1 > x0 && y1 > y0 {
+            let mut pb = PathBuilder::new();
+            pb.move_to(x0 as f32, y0 as f32);
+            pb.line_to(x1 as f32, y0 as f32);
+            pb.line_to(x1 as f32, y1 as f32);
+            pb.line_to(x0 as f32, y1 as f32);
+            pb.close();
+            if let Some(path) = pb.finish() {
+                // Non-AA rect fill: coverage is exactly 255 inside the integer
+                // rect, 0 outside — matching the `bounds` check the blits use.
+                mask.fill_path(&path, FillRule::Winding, false, Transform::identity());
+            }
+        }
+        Clip { bounds: (x0, y0, x1, y1), mask }
+    }
+
+    fn contains(&self, x: i32, y: i32) -> bool {
+        let (x0, y0, x1, y1) = self.bounds;
+        x >= x0 && x < x1 && y >= y0 && y < y1
+    }
+}
+
+/// Intersect the clip stack into one rect (`None` = empty stack = no clip).
+fn clip_from_stack(stack: &[Rect]) -> Option<Rect> {
+    let mut acc = *stack.first()?;
+    for r in &stack[1..] {
+        let x0 = acc.x.max(r.x);
+        let y0 = acc.y.max(r.y);
+        let x1 = (acc.x + acc.w).min(r.x + r.w);
+        let y1 = (acc.y + acc.h).min(r.y + r.h);
+        acc = Rect::new(x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0));
+    }
+    Some(acc)
+}
+
 fn fill_rect_exact(pixmap: &mut Pixmap, x0: i32, y0: i32, x1: i32, y1: i32, color: Color) {
     let c = tiny_skia::Color::from_rgba8(color.r, color.g, color.b, color.a)
         .premultiply()
@@ -358,9 +434,7 @@ fn fill_rect_exact(pixmap: &mut Pixmap, x0: i32, y0: i32, x1: i32, y1: i32, colo
     let pixels = pixmap.pixels_mut();
     for y in y0..y1 {
         let row = y as usize * stride;
-        for x in x0..x1 {
-            pixels[row + x as usize] = c;
-        }
+        pixels[row + x0 as usize..row + x1 as usize].fill(c);
     }
 }
 
@@ -399,9 +473,11 @@ fn blend_px(pixels: &mut [tiny_skia::PremultipliedColorU8], idx: usize, color: C
 /// switching dense charts to AA polylines — that's the §22 hot-path
 /// lesson (18.6ms → 0.64ms, CLAUDE.md) this deliberately avoids
 /// re-triggering.
-fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f32)>], color: Color) {
+fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f32)>], color: Color, clip: Option<&Clip>) {
     let pw = pixmap.width() as i32;
     let ph = pixmap.height() as i32;
+    // Clip bounds default to the whole pixmap (no clip → byte-identical to before).
+    let (clip_x0, clip_y0, clip_x1, clip_y1) = clip.map_or((0, 0, pw, ph), |c| c.bounds);
     let opaque = tiny_skia::PremultipliedColorU8::from_rgba(
         (color.r as u16 * color.a as u16 / 255) as u8,
         (color.g as u16 * color.a as u16 / 255) as u8,
@@ -414,19 +490,22 @@ fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f
         let Some((y0, y1)) = s else { continue };
         let cx0 = (x + i as f32 * col_w).round() as i32;
         let cx1 = ((x + (i + 1) as f32 * col_w).round() as i32).max(cx0 + 1);
-        let (cx0, cx1) = (cx0.max(0), cx1.min(pw));
+        let (cx0, cx1) = (cx0.max(0).max(clip_x0), cx1.min(pw).min(clip_x1));
+        if cx0 >= cx1 {
+            continue;
+        }
 
         // The opaque core: rounded to the pixel grid exactly as before
         // (byte-for-byte), with the existing min-1px visibility
-        // guarantee for near-flat spans.
+        // guarantee for near-flat spans. Row `fill` keeps the same
+        // writes as the prior per-pixel loop — cheaper in debug and
+        // release (§22 hot path).
         let (fy0, fy1) = (y0.min(*y1), y0.max(*y1));
         let ry0 = fy0.round() as i32;
         let ry1 = (fy1.round() as i32).max(ry0 + 1);
-        for cy in ry0.max(0)..ry1.min(ph) {
-            let row = cy * pw;
-            for cx in cx0..cx1 {
-                pixels[(row + cx) as usize] = opaque;
-            }
+        for cy in ry0.max(0).max(clip_y0)..ry1.min(ph).min(clip_y1) {
+            let row = (cy * pw) as usize;
+            pixels[row + cx0 as usize..row + cx1 as usize].fill(opaque);
         }
 
         // Soft edges: the fraction of the true (pre-rounding) span the
@@ -435,7 +514,7 @@ fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f
         // the opaque core already painted, so the core stays byte-exact.
         let cov_above = (ry0 as f32 - fy0).clamp(0.0, 1.0);
         let ay = ry0 - 1;
-        if cov_above > 0.0 && ay >= 0 && ay < ph {
+        if cov_above > 0.0 && ay >= 0 && ay < ph && ay >= clip_y0 && ay < clip_y1 {
             let cov = (cov_above * 255.0).round() as u8;
             let row = ay * pw;
             for cx in cx0..cx1 {
@@ -444,7 +523,7 @@ fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f
         }
         let cov_below = (fy1 - ry1 as f32).clamp(0.0, 1.0);
         let by = ry1;
-        if cov_below > 0.0 && by >= 0 && by < ph {
+        if cov_below > 0.0 && by >= 0 && by < ph && by >= clip_y0 && by < clip_y1 {
             let cov = (cov_below * 255.0).round() as u8;
             let row = by * pw;
             for cx in cx0..cx1 {
@@ -455,6 +534,7 @@ fn fill_strips(pixmap: &mut Pixmap, x: f32, col_w: f32, strips: &[Option<(f32, f
 }
 
 /// src-over blend of a coverage bitmap tinted `color` onto a premultiplied pixmap.
+#[allow(clippy::too_many_arguments)]
 fn blend_glyph(
     pixmap: &mut Pixmap,
     gx: i32,
@@ -463,6 +543,7 @@ fn blend_glyph(
     gh: usize,
     coverage: &[u8],
     color: Color,
+    clip: Option<&Clip>,
 ) {
     let pw = pixmap.width() as i32;
     let ph = pixmap.height() as i32;
@@ -475,6 +556,9 @@ fn blend_glyph(
         for col in 0..gw as i32 {
             let pxx = gx + col;
             if pxx < 0 || pxx >= pw {
+                continue;
+            }
+            if clip.is_some_and(|c| !c.contains(pxx, py)) {
                 continue;
             }
             let cov = coverage[(row as usize) * gw + col as usize];
@@ -606,7 +690,7 @@ mod tests {
                             s.1 = (s.1 + 13.0) % 190.0;
                         }
                     }
-                    DrawCmd::Clear(_) => {}
+                    DrawCmd::Clear(_) | DrawCmd::PushClip { .. } | DrawCmd::PopClip => {}
                 }
                 let outcome = r.render_damage(&mut cache, cmds.clone(), w, h);
                 let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
@@ -655,6 +739,57 @@ mod tests {
         let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
         let full = r.render(&moved, w, h).encode_png().unwrap();
         assert_eq!(incremental, full, "interior Clear-clip diverged from full render");
+    }
+
+    /// PLAN-SCROLL: `PushClip`/`PopClip` actually clip — a rect and text
+    /// drawn under a clip touch only pixels inside the clip rect.
+    #[test]
+    fn clip_confines_drawing_to_its_rect() {
+        let r = Renderer::new();
+        let (w, h) = (200, 120);
+        let clip = Rect::new(40.0, 30.0, 80.0, 40.0); // interior window
+        let cmds = vec![
+            DrawCmd::Clear(tokens::BG),
+            DrawCmd::PushClip { rect: clip },
+            // A big rect + text that would cover the whole frame if unclipped.
+            DrawCmd::Rect { rect: Rect::new(0.0, 0.0, w as f32, h as f32), color: tokens::ACCENT },
+            DrawCmd::Text { x: 0.0, y: 0.0, content: "clipped".into(), px: 40.0, style: FontStyle::Regular, color: tokens::TEXT },
+            DrawCmd::PopClip,
+        ];
+        let pm = r.render(&cmds, w, h);
+        let px = |x: i32, y: i32| pm.pixels()[(y * w as i32 + x) as usize];
+        let bg = tiny_skia::Color::from_rgba8(tokens::BG.r, tokens::BG.g, tokens::BG.b, tokens::BG.a)
+            .premultiply()
+            .to_color_u8();
+        // Outside the clip: untouched background. Inside: painted (≠ bg).
+        assert_eq!(px(5, 5), bg, "top-left is outside the clip → background");
+        assert_eq!(px(150, 100), bg, "bottom-right is outside the clip → background");
+        assert_ne!(px(60, 45), bg, "center is inside the clip → painted");
+    }
+
+    /// PLAN-SCROLL determinism: the damage-tracked replay stays byte-identical
+    /// to a full render when the frame contains clips (Appendix A) — the clip
+    /// stack is reconstructed identically in both paths.
+    #[test]
+    fn damage_tracked_render_is_byte_equivalent_with_clips() {
+        let r = Renderer::new();
+        let (w, h) = (240, 160);
+        let frame = |ty: f32| {
+            vec![
+                DrawCmd::Clear(tokens::BG),
+                DrawCmd::PushClip { rect: Rect::new(20.0, 20.0, 160.0, 90.0) },
+                DrawCmd::Rect { rect: Rect::new(10.0, 10.0, 200.0, 30.0), color: tokens::SURFACE },
+                DrawCmd::Text { x: 30.0, y: ty, content: "scrolling text".into(), px: 16.0, style: FontStyle::Regular, color: tokens::TEXT },
+                DrawCmd::PopClip,
+            ]
+        };
+        let mut cache = None;
+        r.render_damage(&mut cache, frame(50.0), w, h);
+        // Move the clipped text (a "scroll") — partial repaint under the clip.
+        let outcome = r.render_damage(&mut cache, frame(64.0), w, h);
+        let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
+        let full = r.render(&frame(64.0), w, h).encode_png().unwrap();
+        assert_eq!(incremental, full, "clipped partial repaint diverged from full ({outcome:?})");
     }
 
     #[test]

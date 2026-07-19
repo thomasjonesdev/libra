@@ -1,18 +1,10 @@
-//! libra-data — the high-rate data plane (ARCHITECTURE.md §14).
+//! libra-data — the high-rate data plane: samples flow source → ingest →
+//! per-series ring → read at paint time through a `SeriesHandle` → M4
+//! downsample. State holds handles only; `update` never sees a sample. Tests
+//! feed recorded tapes synchronously.
 //!
-//! Samples flow: source (tape / generator / [later] sockets) → ingest
-//! thread → per-series ring buffer → read at paint time through a
-//! `SeriesHandle` → M4 downsample → polyline geometry. State holds
-//! handles; `update` never sees a sample.
-//!
-//! Determinism at the boundary (§14.4): in tests, sources are recorded
-//! tapes fed *synchronously* through the same ring buffers — a chart
-//! snapshot test feeds a tape and asserts bytes.
-//!
-//! Phase 2 locking shortcut: rings are `Mutex`-guarded rather than the
-//! specced lock-free SPSC seqlock. At 10 kHz writes + 60 Hz reads the
-//! uncontended mutex is nanoseconds, and the API (push / snapshot)
-//! is shaped so the seqlock swap is invisible when it lands.
+//! Architecture: ARCHITECTURE.md §14 (data plane), §14.3 (M4 downsampling),
+//! §14.4 (determinism at the boundary).
 
 use libra_core::{SeriesId, SourceSpec};
 use std::collections::HashMap;
@@ -433,6 +425,17 @@ impl SeriesStore {
         }
     }
 
+    /// True while any ingest source thread is open (§14.2). The windowed
+    /// shell drives its display loop off this — a **live data plane repaints
+    /// the view** on its own, so a chart bound to a streaming series animates
+    /// without the app wiring a `<Frames>` pump (§12.5). Closing every source
+    /// (e.g. pause → `IngestClose`) turns it back off; the synchronous test
+    /// feed (`feed_tape_sync`) never registers a source, so this is `false`
+    /// under the harness and snapshots stay deterministic.
+    pub fn has_live_ingest(&self) -> bool {
+        !self.stops.lock().expect("stops lock").is_empty()
+    }
+
     /// Feed a tape synchronously — the deterministic test path (§14.4a).
     /// No threads, no clocks: every sample lands before this returns.
     pub fn feed_tape_sync(&self, id: SeriesId, path: &Path) -> Result<usize, String> {
@@ -789,5 +792,35 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         let g2 = ring.generation();
         assert_eq!(g1, g2, "ingest kept writing after close+grace ({g1} → {g2})");
+    }
+
+    #[test]
+    fn has_live_ingest_tracks_open_sources() {
+        let store = Arc::new(SeriesStore::new());
+        assert!(!store.has_live_ingest(), "fresh store has no live source");
+
+        store.ingest_open(
+            SeriesId(1),
+            SourceSpec::Sine { rate_hz: 1_000.0, freq_hz: 1.0, amp: 1.0, seed: 1 },
+        );
+        assert!(store.has_live_ingest(), "open source → live");
+        store.ingest_open(
+            SeriesId(2),
+            SourceSpec::Sine { rate_hz: 1_000.0, freq_hz: 1.0, amp: 1.0, seed: 2 },
+        );
+        store.ingest_close(SeriesId(1));
+        assert!(store.has_live_ingest(), "one of two still open → live");
+        store.ingest_close(SeriesId(2));
+        assert!(!store.has_live_ingest(), "all closed → idle (shell stops the display loop)");
+    }
+
+    #[test]
+    fn synchronous_feed_is_not_live_ingest() {
+        // The determinism guarantee: the harness's threadless feed never
+        // registers a source, so the shell never auto-ticks under test and
+        // snapshots stay byte-exact.
+        let store = Arc::new(SeriesStore::new());
+        store.ring(SeriesId(3)).push(Sample { t_ms: 0.0, v: 1.0 });
+        assert!(!store.has_live_ingest(), "a synchronous push is not a live source");
     }
 }

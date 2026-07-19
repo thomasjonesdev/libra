@@ -10,7 +10,7 @@ type: plan
 
 # Ergonomics Implementation Plan
 
-Implements the DX layer specced in (2026-07 revision). **Read before writing code:** [[03.1-the-vocabulary-five-words-all-of-them-already-yours|§3.1]]–[[03.3-naming-conventions-reacts-verbatim|§3.3]] (vocabulary + naming conventions), [[05-state-and-actions|§5]] (state/actions/app assembly), [[06.2-the-closed-grammar-what-markup-can-do|§6.2]] (grammar additions), [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]] (source elements), and `MIGRATION-NAMING.md` (this plan interleaves with it).
+Implements the DX layer specced in (2026-07 revision). **Read before writing code:** [[03.1-vocabulary|§3.1]]–[[03.3-naming-conventions|§3.3]] (vocabulary + naming conventions), [[05-state-and-actions|§5]] (state/actions/app assembly), [[06.2-closed-grammar|§6.2]] (grammar additions), [[12.5-declarative-subscriptions|§12.5]] (source elements), and `MIGRATION-NAMING.md` (this plan interleaves with it).
 
 Design is settled — the architecture doc is authoritative. This plan is execution order, acceptance criteria, and the traps.
 
@@ -19,10 +19,10 @@ Design is settled — the architecture doc is authoritative. This plan is execut
 | # | Work | Defined in |
 |---|---|---|
 | 1 | Mechanical renames | MIGRATION-NAMING.md Stages 0–3 |
-| 2 | `#[libra::state]` / `#[libra::actions]` macros | MIGRATION-NAMING.md Stage 4 + [[05.1-the-core-declarations|§5.1]]–[[05.2-what-the-macro-generates-one-expansion-no-magic|§5.2]] |
-| 3 | **E1** `libra::app!` assembly macro | [[05.8-app-assembly-one-declaration|§5.8]], below |
-| 4 | **E2** Collection bindings (`Vec<T>` + `<for>`) | [[06.2-the-closed-grammar-what-markup-can-do|§6.2]], below |
-| 5 | **E3** Source elements (`Frames`/`Interval`/`Stream`) | [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]], below |
+| 2 | `#[libra::state]` / `#[libra::actions]` macros | MIGRATION-NAMING.md Stage 4 + [[05.1-core-declarations|§5.1]]–[[05.2-macro-expansion|§5.2]] |
+| 3 | **E1** `libra::app!` assembly macro | [[05.8-app-assembly|§5.8]], below |
+| 4 | **E2** Collection bindings (`Vec<T>` + `<for>`) | [[06.2-closed-grammar|§6.2]], below |
+| 5 | **E3** Source elements (`Frames`/`Interval`/`Stream`) | [[12.5-declarative-subscriptions|§12.5]], below |
 | 6 | Test reorg + example ports (now including E2/E3 usage) | MIGRATION-NAMING.md Stages 5–6, amended below |
 | 7 | Docs sweep, then alias removal | MIGRATION-NAMING.md Stages 7–8 |
 
@@ -30,21 +30,21 @@ Universal ground rules (same as MIGRATION-NAMING.md): one PR per step, `cargo te
 
 ---
 
-## E1 — `libra::app!` ([[05.8-app-assembly-one-declaration|§5.8]])
+## E1 — `libra::app!` ([[05.8-app-assembly|§5.8]])
 
-**Where:** macro in `libra-reflect` (macro_rules or proc-macro, implementer's choice). Decision point: [[21-workspace-and-crate-layout|§21]] plans a `libra` facade crate that doesn't exist yet — either create it now (re-exporting core + reflect + platform entry) so the call is literally `libra::app!`, or export from `libra_core` with a doc alias and create the facade in Stage 7. Prefer creating the facade; it's small and [[21-workspace-and-crate-layout|§21]] already commits to it.
+**Where:** macro in `libra-reflect` (macro_rules or proc-macro, implementer's choice). Decision point: [[21-crate-layout|§21]] plans a `libra` facade crate that doesn't exist yet — either create it now (re-exporting core + reflect + platform entry) so the call is literally `libra::app!`, or export from `libra_core` with a doc alias and create the facade in Stage 7. Prefer creating the facade; it's small and [[21-crate-layout|§21]] already commits to it.
 
 **Generates:** the `App` impl (init from `State::init()`, else `Default`), the view bundle (watched dev path + `include_str!` release embedding from the one `view:` field), `main()` when the crate is a bin. No logic — every field literal or path; reject anything else at macro-expansion time with a clear error.
 
 **Acceptance:**
-- [ ] `examples/counter` compiles as exactly the [[05.8-app-assembly-one-declaration|§5.8]] listing (state + actions + `app!`), `main.rs` reduced to a one-line delegation or deleted (bin target pointing at lib).
+- [ ] `examples/counter` compiles as exactly the [[05.8-app-assembly|§5.8]] listing (state + actions + `app!`), `main.rs` reduced to a one-line delegation or deleted (bin target pointing at lib).
 - [ ] Harness path unchanged: existing component/integration/snapshot tests pass without edits beyond the naming migration's.
 - [ ] `libra-cli check` still validates the view (bundle is discoverable without executing the app).
 - [ ] Counter snapshots byte-identical.
 
 **Traps:** hot-reload needs the *filesystem path*, release needs the *embedded string* — the bundle must carry both from one declaration; don't let dev and release resolve the path differently (that's a [[06.4-one-grammar-two-engines|§6.4]]-class drift bug in spirit).
 
-## E2 — Collection bindings ([[06.2-the-closed-grammar-what-markup-can-do|§6.2]])
+## E2 — Collection bindings ([[06.2-closed-grammar|§6.2]])
 
 **Where:** `libra-reflect` (bindable iterable paths for `Vec<T>` fields), `libra-interp` AND `libra-codegen` (`<for each={field}>` over reflected collections), `conformance/` fixture.
 
@@ -52,17 +52,17 @@ Universal ground rules (same as MIGRATION-NAMING.md): one PR per step, `cargo te
 
 **Acceptance:**
 - [ ] Conformance fixture: a `Vec` field iterated with `<for each={items} as="x" key={x.id}>` produces identical trees in both engines; an indexing attempt produces the same diagnostic in both.
-- [ ] `examples/dashboard`: `s0`–`s15` collapse to `pub series: Vec<SeriesHandle>`; `dashboard.lx`'s 16 `<Chart>` lines become one `<for>` (per row: chunk in state or a nested Vec — model it in state per [[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]], not in markup).
+- [ ] `examples/dashboard`: `s0`–`s15` collapse to `pub series: Vec<SeriesHandle>`; `dashboard.lx`'s 16 `<Chart>` lines become one `<for>` (per row: chunk in state or a nested Vec — model it in state per [[06.3-grammar-restrictions|§6.3]], not in markup).
 - [ ] Dashboard snapshot **byte-identical** (same handles, same layout, same tree — the `<for>` must reconcile to the same structural IDs; if IDs shift, fix ID assignment, don't re-bless).
 - [ ] `cargo run -p dashboard --release -- bench` still meets the [[22-performance-budgets|§22]] budget (0.64 ms p50 baseline; no regression beyond noise).
 
 **Traps:** `key` is required when the collection can reorder — the dashboard's can't, but the fixture must cover both keyed and unkeyed. `SeriesHandle` is `#[libra(skip)]`-adjacent territory: handles are bindable as chart props but not Display-bound as text; make the reflect classification explicit.
 
-## E3 — Source elements ([[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]])
+## E3 — Source elements ([[12.5-declarative-subscriptions|§12.5]])
 
 **Where:** `libra-markup` (three new elements: `Frames`, `Interval`, `Stream` — closed set), both engines (fold to inert data nodes), runtime in `libra-core`/shell + harness (collect mounted declarations post-commit, union with `subscriptions(state)`, diff vs running set), `libra-test` (`by::source(...)`, `assert_mounted`), `crates/libra-platform/src/a11y.rs` (exclude the test-only role from the AccessKit TreeUpdate), `conformance/` fixtures.
 
-**Semantics (normative, [[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]]):** identity = (element kind, resolved props); start new / cancel removed after each commit; props are literals or bindings only; results arrive as ordinary recorded actions; zero DrawCmds, zero layout.
+**Semantics (normative, [[12.5-declarative-subscriptions|§12.5]]):** identity = (element kind, resolved props); start new / cancel removed after each commit; props are literals or bindings only; results arrive as ordinary recorded actions; zero DrawCmds, zero layout.
 
 **Acceptance:**
 - [ ] Conformance: fixture with source elements inside `<if>`/`<for>` produces identical trees in both engines.
@@ -72,13 +72,13 @@ Universal ground rules (same as MIGRATION-NAMING.md): one PR per step, `cargo te
 - [ ] Hot-reload behavior: editing the markup toggles sources live, state preserved (manual check + an interp-level test).
 - [ ] A11y audit unaffected: `libra check --a11y` output unchanged; source role never reaches AccessKit.
 
-**Traps:** the runtime already diffs `subscriptions(state)` — reuse that differ, do not build a second lifecycle. Cancellation must drop late ticks ([[12.3-execution-model|§12.3]] zombie rule) identically for markup-declared sources. Naming per [[03.3-naming-conventions-reacts-verbatim|§3.3]]: `onTick`, `onEvent`, `every` — camelCase props.
+**Traps:** the runtime already diffs `subscriptions(state)` — reuse that differ, do not build a second lifecycle. Cancellation must drop late ticks ([[12.3-execution-model|§12.3]] zombie rule) identically for markup-declared sources. Naming per [[03.3-naming-conventions|§3.3]]: `onTick`, `onEvent`, `every` — camelCase props.
 
 ## Amendments to MIGRATION-NAMING.md Stage 6 (example ports)
 
 - [ ] Dashboard port includes E2 (series Vec) and E3 (`<Frames>` replacing `subscriptions`) — land E2/E3 framework support first, then the port PR uses all of it.
 - [ ] All examples adopt `libra::app!` in their port PR.
-- [ ] Fetcher keeps `Remote` + display-projection ([[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]]) — the ergonomics layer doesn't change that pattern.
+- [ ] Fetcher keeps `Remote` + display-projection ([[06.3-grammar-restrictions|§6.3]]) — the ergonomics layer doesn't change that pattern.
 
 ## Final verification (after step 7)
 
@@ -89,7 +89,7 @@ shasum -a 256 examples/*/tests/snapshots/*.png | diff - /tmp/snapshot-baseline.t
 cargo run -p dashboard --release -- bench
 ```
 
-Plus: `examples/counter/src/lib.rs` reads like [[05.8-app-assembly-one-declaration|§5.8]]'s listing, `examples/dashboard/src/lib.rs` has no numbered series fields and no `subscriptions`, and CLAUDE.md describes all of it.
+Plus: `examples/counter/src/lib.rs` reads like [[05.8-app-assembly|§5.8]]'s listing, `examples/dashboard/src/lib.rs` has no numbered series fields and no `subscriptions`, and CLAUDE.md describes all of it.
 
 ---
 

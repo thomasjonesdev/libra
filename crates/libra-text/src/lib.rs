@@ -1,16 +1,9 @@
-//! libra-text — the text-entry editing core (ARCHITECTURE.md §10.1).
+//! libra-text — the text-entry editing core: a pure state machine
+//! (`EditState × EditOp → EditState`) with per-field undo/redo grouped at word
+//! boundaries. No clocks, platform, or fonts — components, the harness, and
+//! (later) IME all drive this same machine.
 //!
-//! The heart of the spec's promise: *the editing core is a pure state
-//! machine (`EditState × EditOp → EditState`) exercised without
-//! rendering*. No clocks, no platform, no fonts — every component,
-//! harness verb, and (later) IME path drives this same machine, and
-//! Unit tests cover it exhaustively.
-//!
-//! Phase 3 scope: single-line plain text, char-boundary navigation
-//! (grapheme clusters arrive with the parley/swash stack), per-field
-//! undo/redo grouped at word boundaries. Multi-line (sticky column,
-//! line ops), IME composition, and the rope backing for megabyte
-//! pastes are specced (§10.1) and land with Textarea.
+//! Architecture: ARCHITECTURE.md §10.1 (text entry).
 
 /// Caret + selection over a single-line string. `caret` and `anchor`
 /// are byte indices on char boundaries; `caret == anchor` means no

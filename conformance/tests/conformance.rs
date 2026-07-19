@@ -15,6 +15,9 @@ const INTERVAL_STREAM: &str = include_str!("../fixtures/interval_stream.lx");
 const ACCESSORS: &str = include_str!("../fixtures/accessors.lx");
 const CHROME: &str = include_str!("../fixtures/chrome.lx");
 const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
+const BADGE: &str = include_str!("../fixtures/badge.lx");
+const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
+const SCROLL: &str = include_str!("../fixtures/scroll.lx");
 
 fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
     let ast = libra_markup::parse(src).expect("fixture parses");
@@ -40,13 +43,14 @@ fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
 fn state_variants() -> Vec<TestState> {
     vec![
         TestState::default(),
-        TestState { count: 42, name: "Ada Lovelace".into(), status: "live".into(), ..TestState::default() },
-        TestState { count: -7, name: "🎉 unicode näme".into(), status: "degraded · 3 warnings".into(), ..TestState::default() },
+        TestState { count: 42, name: "Ada Lovelace".into(), status: "live".into(), ratio: 0.0, ..TestState::default() },
+        TestState { count: -7, name: "🎉 unicode näme".into(), status: "degraded · 3 warnings".into(), ratio: 1.0, ..TestState::default() },
         TestState {
             count: i64::MAX,
             name: "with \"quotes\" and \\ backslashes".into(),
             status: String::new(),
             s0: SeriesHandle::new(SeriesId(9), 500.0),
+            ratio: 0.333,
             ..TestState::default()
         },
     ]
@@ -364,6 +368,101 @@ fn chrome_produces_identical_trees() {
     assert_eq!(s15.grow, 1.5);
     let ViewNode::Column { style: s25, .. } = &panes[3] else { panic!("{:?}", panes[3]) };
     assert_eq!(s25.grow, 2.5);
+}
+
+/// PLAN-CATALOG wave 2 — `<Badge tone="…">` status pills. Non-interactive
+/// child-text element with an enum `tone` attr; both engines must resolve
+/// the same `ViewNode::Badge { label, tone, test_id }` node for node.
+#[test]
+fn badge_produces_identical_trees() {
+    use libra_components::{Tone, ViewNode};
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(BADGE, &state);
+        let compiled = generated::build_badge(&state);
+        assert_eq!(interp, compiled, "engine drift on badge fixture (variant #{i})");
+    }
+
+    let interp = interp_tree_src(BADGE, &TestState::default());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    // Default tone, then an explicit success badge carrying a testId.
+    assert!(
+        matches!(&children[0], ViewNode::Badge { tone: Tone::Neutral, label, .. } if label == "neutral"),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(&children[1], ViewNode::Badge { tone: Tone::Success, test_id: Some(id), label }
+            if id == "ok" && label == "Online"),
+        "{:?}",
+        children[1]
+    );
+}
+
+/// PLAN-CATALOG wave 2 — `<Heading level={n}>` (n → type ramp, clamped 1..4)
+/// and `<Progress value={f}>`. Both engines must resolve the same nodes.
+#[test]
+fn heading_progress_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(HEADING_PROGRESS, &state);
+        let compiled = generated::build_heading_progress(&state);
+        assert_eq!(interp, compiled, "engine drift on heading_progress fixture (variant #{i})");
+    }
+
+    let state = TestState { ratio: 0.42, ..TestState::default() };
+    let interp = interp_tree_src(HEADING_PROGRESS, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(&children[1], ViewNode::Heading { level: 2, test_id: Some(id), content }
+            if id == "h2" && content == "Section"),
+        "{:?}",
+        children[1]
+    );
+    // Bare <Heading> defaults to level 1.
+    assert!(matches!(&children[3], ViewNode::Heading { level: 1, .. }), "{:?}", children[3]);
+    assert!(
+        matches!(&children[5], ViewNode::Progress { value, test_id: Some(id) }
+            if (*value - 0.6).abs() < 1e-6 && id == "p60"),
+        "{:?}",
+        children[5]
+    );
+    // The **bound** Progress reflects `state.ratio` — numeric binding (§26 #8):
+    // interp parses the field's Display, codegen accesses it typed, same f32.
+    assert!(
+        matches!(&children[7], ViewNode::Progress { value, test_id: Some(id) }
+            if *value == state.ratio && id == "bound"),
+        "{:?}",
+        children[7]
+    );
+}
+
+/// PLAN-SCROLL — `<Scroll testId height?>` viewport (fixed and grown); both
+/// engines must resolve the same `ViewNode::Scroll` node for node.
+#[test]
+fn scroll_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(SCROLL, &state);
+        let compiled = generated::build_scroll(&state);
+        assert_eq!(interp, compiled, "engine drift on scroll fixture (variant #{i})");
+    }
+
+    let interp = interp_tree_src(SCROLL, &TestState::default());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(&children[0], ViewNode::Scroll { height: Some(h), test_id, children }
+            if *h == 120.0 && test_id == "list" && children.len() == 2),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(&children[1], ViewNode::Scroll { height: None, test_id, .. } if test_id == "grow"),
+        "{:?}",
+        children[1]
+    );
 }
 
 /// PLAN-CATALOG `<ListItem>` + PLAN-TEXTAREA `<Textarea>` — loop-bound

@@ -20,6 +20,10 @@ type: architecture
 - Text measurement enters layout through a measure callback into the text stack ([[10-text|§10]]), with a content-hash cache in front of it (measuring is the expensive path).
 - Determinism note: all layout math is f32 with a fixed rounding policy (round-to-nearest-half-up at physical-pixel boundaries) applied *once*, at paint time — so layout results are identical across platforms and never accumulate drift.
 
+## In code
+
+- `crates/libra-components/src/lib.rs` — the taffy layout pass
+
 ---
 
 ---

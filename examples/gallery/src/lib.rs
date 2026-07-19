@@ -1,71 +1,28 @@
-//! libra gallery (§18 / Appendix C, via Storybook): one app rendering
-//! every catalog component × state × theme, snapshot-covered under both
-//! built-in themes. Doubles as the PR visual-review surface: a component
-//! rendering change shows up as a gallery snapshot diff.
+//! libra workbench — a Storybook-style component browser (PLAN-GALLERY): a
+//! grouped sidebar of every catalog component; select one to see it in
+//! isolation with its variants and (where it has a text prop) a live control.
+//! Built entirely on the closed grammar — each component's story is static
+//! markup gated by a `#[project]`-derived `is_*` bool; no dynamic dispatch.
+//!
+//! Module layout follows §5.9: `model.rs` (the component registry), `state.rs`
+//! (the `#[libra::state]` struct), `actions.rs` (the `#[libra::actions]` block
+//! + `#[project]`), and this file (wiring: re-exports + `app!`).
+//!
+//! Architecture: ARCHITECTURE.md §18 (developer experience), §7.1 (catalog),
+//! Appendix C (Storybook); plans PLAN-GALLERY, PLAN-COMPONENTS.
 
-use libra::{actions, app, state};
-use libra_core::{Effect, SeriesHandle, SeriesId, SourceSpec};
+mod actions;
+mod model;
+mod state;
 
-pub const WAVE: SeriesId = SeriesId(0);
+pub use actions::{reduce, Action};
+pub use model::ComponentRow;
+pub use state::{Gallery, WAVE};
 
-#[state]
-pub struct Gallery {
-    pub count: i64,
-    pub draft: String,
-    pub filled: String,
-    /// Multi-line cell for `<Textarea>`.
-    pub body: String,
-    pub theme: String,
-    pub wave: SeriesHandle,
-}
-
-impl Gallery {
-    pub fn init() -> (Gallery, Vec<Effect<Action>>) {
-        (
-            Gallery {
-                count: 42,
-                draft: String::new(),
-                filled: "filled input".into(),
-                body: "line one\nline two".into(),
-                theme: "libra-dark".into(),
-                wave: SeriesHandle::new(WAVE, 2000.0),
-            },
-            // Live runs get a generator; tests feed the ring directly.
-            vec![Effect::IngestOpen {
-                source: SourceSpec::Sine { rate_hz: 2000.0, freq_hz: 1.5, amp: 1.0, seed: 7 },
-                series: WAVE,
-            }],
-        )
-    }
-}
-
-#[actions]
-impl Gallery {
-    pub fn noop(&mut self) {}
-
-    pub fn toggle_theme(&mut self) -> Effect<Action> {
-        self.theme =
-            if self.theme == "libra-dark" { "libra-light".into() } else { "libra-dark".into() };
-        Effect::SetTheme { name: self.theme.clone() }
-    }
-
-    pub fn draft_changed(&mut self, s: String) {
-        self.draft = s;
-    }
-
-    pub fn filled_changed(&mut self, s: String) {
-        self.filled = s;
-    }
-
-    pub fn body_changed(&mut self, s: String) {
-        self.body = s;
-    }
-}
-
-app! {
+libra::app! {
     state: Gallery,
     view: "../views/gallery.lx",
     init: Gallery::init,
-    window: (640.0, 360.0),
-    title: "Libra Gallery",
+    window: (1200.0, 760.0),
+    title: "Libra Workbench",
 }

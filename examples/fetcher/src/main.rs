@@ -1,19 +1,18 @@
-//! The windowed fetcher — effects run for real here: KV persists to the
-//! platform app-data dir, HTTP hits api.github.com/zen. When run from
-//! the repo, the view file is watched: edit fetcher.lx and save to hot
-//! reload (state preserved); break it to see the error overlay. State
-//! rehydrates across restarts (§18.2) — fetch a quote, close the
-//! window, relaunch: the quote is still there.
+//! The windowed fetcher — effects run for real here (KV → platform app-data
+//! dir, HTTP → api.github.com/zen), the view file hot-reloads on save, and
+//! state rehydrates across restarts.
+//!
+//! Window size, title, and dev-watch come from `libra::app!` via
+//! `fetcher::options()` (the single source); this file only adds the KV
+//! `app_id` and the rehydrating run.
+//!
+//! Architecture: ARCHITECTURE.md §18.2 (the iteration loop), §13.2 (state
+//! snapshots).
 
 use fetcher::{Fetcher, VIEW};
-use libra_platform::Options;
 
 fn main() {
-    let mut opts = Options::new("Libra Fetcher", (460.0, 260.0)).app_id("libra-fetcher");
-    let dev_view = std::path::Path::new("examples/fetcher/views/fetcher.lx");
-    if dev_view.exists() {
-        opts = opts.watch(dev_view);
-    }
+    let opts = fetcher::options().app_id("libra-fetcher");
     if let Err(e) = libra_platform::run_rehydrating::<Fetcher>(VIEW, opts) {
         eprintln!("error: {e}");
         std::process::exit(1);

@@ -15,9 +15,13 @@ type: architecture
 
 ## In this vault
 
-- [[13.1-the-kv-store-localstorage-but-honest]]
+- [[13.1-kv-store]]
 - [[13.2-state-snapshots]]
 - [[13.3-beyond-kv]]
+
+## In code
+
+- `crates/libra-kv/` — redb behind `Effect::Kv*`
 
 ---
 

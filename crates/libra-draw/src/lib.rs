@@ -1,9 +1,7 @@
-//! libra-draw — the display list: the universal currency between the
-//! component layer and executors (ARCHITECTURE.md §9.1).
+//! libra-draw — the display list: `DrawCmd`, the universal currency between
+//! the component layer and executors, plus the theme tokens.
 //!
-//! Phase 0 subset: Clear, Rect, RRect, Text. Interned resources
-//! (PathId/GlyphRunId/ImageId), layers, clips, and cache actions arrive
-//! with damage tracking in Phase 2.
+//! Architecture: ARCHITECTURE.md §9.1 (the display list), §11 (theming).
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -60,6 +58,13 @@ pub enum DrawCmd {
     /// `x + i·col_w` from y0 to y1. Rasterized as opaque pixel runs —
     /// no AA path machinery — which is what makes 16 live charts cheap.
     Strips { x: f32, col_w: f32, strips: Vec<Option<(f32, f32)>>, color: Color },
+    /// Push a rectangular clip (§9.1; PLAN-SCROLL). Subsequent draws are
+    /// masked to the intersection of the clip stack until the matching
+    /// [`DrawCmd::PopClip`]. A pure rect clip — deterministic, so the
+    /// damage-tracked replay stays byte-identical (Appendix A).
+    PushClip { rect: Rect },
+    /// Pop the innermost clip pushed by [`DrawCmd::PushClip`].
+    PopClip,
 }
 
 impl DrawCmd {
@@ -73,6 +78,10 @@ impl DrawCmd {
         let pad = |r: &Rect| Rect::new(r.x - AA_PAD, r.y - AA_PAD, r.w + 2.0 * AA_PAD, r.h + 2.0 * AA_PAD);
         match self {
             DrawCmd::Clear(_) => None,
+            // Clip cmds carry no ink; they're handled explicitly by the
+            // executor (always replayed to keep clip state), and a *changed*
+            // clip forces a full repaint (None) — the safe, rare case.
+            DrawCmd::PushClip { .. } | DrawCmd::PopClip => None,
             DrawCmd::Rect { rect, .. } => Some(pad(rect)),
             DrawCmd::RRect { rect, .. } => Some(pad(rect)),
             DrawCmd::Text { x, y, content, px, .. } => {
@@ -151,6 +160,47 @@ pub mod tokens {
 
     pub const BTN_PAD_X: f32 = 12.0;
     pub const BTN_PAD_Y: f32 = 6.0;
+
+    // --- PLAN-TOKENS T2 scales (metrics are theme-independent; shared by
+    //     libra-dark and libra-light). Read only by post-T1 components, so
+    //     existing snapshots are undisturbed. ---
+
+    pub const RADIUS_SM: f32 = 4.0;
+    pub const RADIUS_LG: f32 = 10.0;
+    /// Pill radius — clamped by the rasterizer to half the rect's short side.
+    pub const RADIUS_FULL: f32 = 9999.0;
+
+    pub const TYPE_XS: f32 = 11.0;
+    pub const TYPE_LG: f32 = 18.0;
+
+    /// Spacing scale, steps 1..=8 (4px-ish base). Resolve via `Theme::space`
+    /// so global density applies.
+    pub const SPACE: [f32; 8] = [2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
+
+    pub const CONTROL_H_SM: f32 = 24.0;
+    pub const CONTROL_H_MD: f32 = 32.0;
+    pub const CONTROL_H_LG: f32 = 40.0;
+}
+
+/// Global spacing density (§11, PLAN-TOKENS T4). Multiplies the spacing scale
+/// and control metrics through `Theme::space` / `Theme::dense`; `Normal` is
+/// ×1.0 so the built-in themes render exactly as before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Density {
+    Compact,
+    #[default]
+    Normal,
+    Comfortable,
+}
+
+impl Density {
+    pub fn factor(self) -> f32 {
+        match self {
+            Density::Compact => 0.875,
+            Density::Normal => 1.0,
+            Density::Comfortable => 1.125,
+        }
+    }
 }
 
 /// A resolved theme: the named-token table every component styles through
@@ -189,6 +239,40 @@ pub struct Theme {
     pub type_xl: f32,
     pub btn_pad_x: f32,
     pub btn_pad_y: f32,
+
+    // --- PLAN-TOKENS T2/T4: the expanded named table. Every field below is
+    //     read only by post-T1 components, so libra-dark / libra-light stay
+    //     byte-identical for existing snapshots (tests/theme assert this). ---
+    /// Text on an accent or status fill (e.g. a Badge label).
+    pub text_inverse: Color,
+    /// Structural outline, one step stronger than `hairline` — input/card edges.
+    pub border: Color,
+    /// Soft status pairs: a tinted `bg` fill + a legible `fg` text, for
+    /// Badge / Status / Toast (resolved by meaning, never by hex).
+    pub danger_bg: Color,
+    pub danger_fg: Color,
+    pub warning_bg: Color,
+    pub warning_fg: Color,
+    pub success_bg: Color,
+    pub success_fg: Color,
+    pub info_bg: Color,
+    pub info_fg: Color,
+    /// Radius ramp (`radius_md` above is the mid step).
+    pub radius_sm: f32,
+    pub radius_lg: f32,
+    /// Pill radius (clamped to half the short side at raster time).
+    pub radius_full: f32,
+    /// Type ramp (`type_sm`/`type_md`/`type_xl` above).
+    pub type_xs: f32,
+    pub type_lg: f32,
+    /// Spacing scale, steps 1..=8. Resolve via [`Theme::space`] so density applies.
+    pub space: [f32; 8],
+    /// Control heights (sm/md/lg). Resolve via [`Theme::dense`] for density.
+    pub control_h_sm: f32,
+    pub control_h_md: f32,
+    pub control_h_lg: f32,
+    /// Global spacing density (§11 / T4).
+    pub density: Density,
 }
 
 impl Theme {
@@ -220,6 +304,26 @@ impl Theme {
             type_xl: tokens::TYPE_XL,
             btn_pad_x: tokens::BTN_PAD_X,
             btn_pad_y: tokens::BTN_PAD_Y,
+            text_inverse: Color::rgb(0xFF, 0xFF, 0xFF),
+            border: Color::rgb(0x2A, 0x33, 0x41),
+            danger_bg: Color::rgb(0x3A, 0x1D, 0x1B),
+            danger_fg: Color::rgb(0xF0, 0xA8, 0xA3),
+            warning_bg: Color::rgb(0x3A, 0x2E, 0x14),
+            warning_fg: Color::rgb(0xE9, 0xC7, 0x7E),
+            success_bg: Color::rgb(0x16, 0x31, 0x1F),
+            success_fg: Color::rgb(0x8F, 0xD6, 0xA3),
+            info_bg: Color::rgb(0x16, 0x26, 0x3A),
+            info_fg: Color::rgb(0x9D, 0xC0, 0xF0),
+            radius_sm: tokens::RADIUS_SM,
+            radius_lg: tokens::RADIUS_LG,
+            radius_full: tokens::RADIUS_FULL,
+            type_xs: tokens::TYPE_XS,
+            type_lg: tokens::TYPE_LG,
+            space: tokens::SPACE,
+            control_h_sm: tokens::CONTROL_H_SM,
+            control_h_md: tokens::CONTROL_H_MD,
+            control_h_lg: tokens::CONTROL_H_LG,
+            density: Density::Normal,
         }
     }
 
@@ -246,7 +350,38 @@ impl Theme {
             type_xl: tokens::TYPE_XL,
             btn_pad_x: tokens::BTN_PAD_X,
             btn_pad_y: tokens::BTN_PAD_Y,
+            text_inverse: Color::rgb(0xFF, 0xFF, 0xFF),
+            border: Color::rgb(0xD0, 0xD5, 0xDC),
+            danger_bg: Color::rgb(0xFB, 0xE9, 0xE7),
+            danger_fg: Color::rgb(0xA2, 0x28, 0x20),
+            warning_bg: Color::rgb(0xFB, 0xF0, 0xDA),
+            warning_fg: Color::rgb(0x8A, 0x5B, 0x06),
+            success_bg: Color::rgb(0xE3, 0xF4, 0xE8),
+            success_fg: Color::rgb(0x1B, 0x6E, 0x33),
+            info_bg: Color::rgb(0xE4, 0xED, 0xFB),
+            info_fg: Color::rgb(0x1E, 0x4F, 0xA8),
+            radius_sm: tokens::RADIUS_SM,
+            radius_lg: tokens::RADIUS_LG,
+            radius_full: tokens::RADIUS_FULL,
+            type_xs: tokens::TYPE_XS,
+            type_lg: tokens::TYPE_LG,
+            space: tokens::SPACE,
+            control_h_sm: tokens::CONTROL_H_SM,
+            control_h_md: tokens::CONTROL_H_MD,
+            control_h_lg: tokens::CONTROL_H_LG,
+            density: Density::Normal,
         }
+    }
+
+    /// Spacing scale step `level` (1..=8), scaled by the theme's [`Density`].
+    /// Components resolve spacing through this, never a raw pixel literal.
+    pub fn space(&self, level: usize) -> f32 {
+        self.space[level.clamp(1, 8) - 1] * self.density.factor()
+    }
+
+    /// Apply the density multiplier to a base metric (control heights/pads).
+    pub fn dense(&self, px: f32) -> f32 {
+        px * self.density.factor()
     }
 
     /// Resolve a theme by name (`Effect::SetTheme`, harness `.theme(…)`).
@@ -306,6 +441,45 @@ impl Theme {
                 "type_xl" => t.type_xl = num(value)?,
                 "btn_pad_x" => t.btn_pad_x = num(value)?,
                 "btn_pad_y" => t.btn_pad_y = num(value)?,
+                "text_inverse" => t.text_inverse = color(value)?,
+                "border" => t.border = color(value)?,
+                "danger_bg" => t.danger_bg = color(value)?,
+                "danger_fg" => t.danger_fg = color(value)?,
+                "warning_bg" => t.warning_bg = color(value)?,
+                "warning_fg" => t.warning_fg = color(value)?,
+                "success_bg" => t.success_bg = color(value)?,
+                "success_fg" => t.success_fg = color(value)?,
+                "info_bg" => t.info_bg = color(value)?,
+                "info_fg" => t.info_fg = color(value)?,
+                "radius_sm" => t.radius_sm = num(value)?,
+                "radius_lg" => t.radius_lg = num(value)?,
+                "radius_full" => t.radius_full = num(value)?,
+                "type_xs" => t.type_xs = num(value)?,
+                "type_lg" => t.type_lg = num(value)?,
+                "control_h_sm" => t.control_h_sm = num(value)?,
+                "control_h_md" => t.control_h_md = num(value)?,
+                "control_h_lg" => t.control_h_lg = num(value)?,
+                "density" => {
+                    t.density = match unquote(value) {
+                        "compact" => Density::Compact,
+                        "normal" => Density::Normal,
+                        "comfortable" => Density::Comfortable,
+                        other => {
+                            return Err(format!(
+                                "line {ln}: `density` expects compact|normal|comfortable, got {other}"
+                            ))
+                        }
+                    }
+                }
+                // space_1 … space_8
+                k if k
+                    .strip_prefix("space_")
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .is_some_and(|n| (1..=8).contains(&n)) =>
+                {
+                    let idx = k["space_".len()..].parse::<usize>().unwrap() - 1;
+                    t.space[idx] = num(value)?;
+                }
                 other => return Err(format!("line {ln}: unknown token `{other}`")),
             }
         }
@@ -359,6 +533,54 @@ mod theme_tests {
     fn alpha_colors_parse() {
         let t = Theme::from_toml_str("selection = \"#26648080\"").unwrap();
         assert_eq!(t.selection, Color { r: 0x26, g: 0x64, b: 0x80, a: 0x80 });
+    }
+
+    #[test]
+    fn expanded_tokens_and_scales_present() {
+        for th in [Theme::dark(), Theme::light()] {
+            // Ramps are ordered and sane.
+            assert!(th.radius_sm < th.radius_md && th.radius_md < th.radius_lg);
+            assert!(th.type_xs < th.type_sm && th.type_lg < th.type_xl);
+            assert_eq!(th.space.len(), 8);
+            assert!(th.space.windows(2).all(|w| w[0] < w[1]), "spacing scale ascends");
+            assert!(th.control_h_sm < th.control_h_md && th.control_h_md < th.control_h_lg);
+            assert_eq!(th.density, Density::Normal);
+        }
+    }
+
+    #[test]
+    fn density_scales_spacing_and_metrics() {
+        let mut t = Theme::dark();
+        let base = t.space(4);
+        assert_eq!(t.density.factor(), 1.0);
+        assert_eq!(t.space(4), t.space[3]); // normal = ×1
+        t.density = Density::Comfortable;
+        assert!(t.space(4) > base);
+        assert_eq!(t.dense(t.control_h_md), t.control_h_md * 1.125);
+        // Out-of-range levels clamp.
+        assert_eq!(Theme::dark().space(0), Theme::dark().space(1));
+        assert_eq!(Theme::dark().space(99), Theme::dark().space(8));
+    }
+
+    #[test]
+    fn shipped_sample_theme_parses() {
+        // The designer-facing sample must always load (§11 / PLAN-TOKENS).
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes/solarized.toml"));
+        let t = Theme::from_toml_str(src).expect("themes/solarized.toml parses");
+        assert_eq!(t.name, "solarized-dark");
+    }
+
+    #[test]
+    fn toml_parses_new_keys_and_density() {
+        let t = Theme::from_toml_str(
+            "danger_bg = \"#101010\"\nspace_3 = 10\ndensity = \"compact\"\n",
+        )
+        .unwrap();
+        assert_eq!(t.danger_bg, Color::rgb(0x10, 0x10, 0x10));
+        assert_eq!(t.space[2], 10.0);
+        assert_eq!(t.density, Density::Compact);
+        let e = Theme::from_toml_str("density = \"cozy\"").unwrap_err();
+        assert!(e.contains("compact|normal|comfortable"), "{e}");
     }
 }
 

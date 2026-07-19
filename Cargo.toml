@@ -49,3 +49,26 @@ accesskit_winit = "0.33"
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+
+# Paint path stays fast in plain `cargo run` / `libra dev` (§22): pixel
+# loops and the pinned raster stack need LLVM opts even when the rest of
+# the workspace stays opt-level 0 for fast rebuilds + debugging. `*` covers
+# non-workspace deps (tiny-skia, fontdue, taffy, …); named entries cover
+# workspace crates that own the hot path (`*` does not apply to members).
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.libra-raster]
+opt-level = 2
+
+[profile.dev.package.libra-draw]
+opt-level = 2
+
+[profile.dev.package.libra-data]
+opt-level = 2
+
+[profile.dev.package.libra-components]
+opt-level = 2
+
+[profile.dev.package.libra-platform]
+opt-level = 2

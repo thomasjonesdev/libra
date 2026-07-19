@@ -1,46 +1,212 @@
-<Column gap={10} padding={14}>
-  <Row gap={8} cross="center">
-    <Text bold grow>Libra gallery — every widget, every state</Text>
+<Column gap={0}>
+  <Row gap={8} padding={10} cross="center">
+    <Text bold grow>Libra Workbench</Text>
+    <Text size="sm" muted testId="selected">{selected_name}</Text>
     <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
   </Row>
-  <Row gap={8} cross="center">
-    <Text size="sm">sm text</Text>
-    <Text size="md">md text</Text>
-    <Text size="xl">xl text</Text>
-    <Text bold>bold</Text>
-    <Text muted>muted</Text>
-  </Row>
-  <Row gap={8} cross="center">
-    <Button variant="primary" onPress={noop}>Primary</Button>
-    <Button variant="secondary" onPress={noop}>Secondary</Button>
-    <Button variant="ghost" onPress={noop}>Ghost</Button>
-    <Text size="sm" muted grow>count: {count}</Text>
-  </Row>
-  <Row gap={8} cross="center">
-    <Input value={draft} placeholder="empty input (placeholder)" onChange={draftChanged} testId="empty" />
-    <Input value={filled} placeholder="unused" onChange={filledChanged} testId="filled" />
-  </Row>
   <Separator />
-  <Row gap={8} cross="center">
-    <Text size="sm" muted>left of spring</Text>
-    <Spacer />
-    <Text size="sm" muted>spacer size=32 →</Text>
-    <Spacer size={32} />
+
+  <Row gap={0} grow>
+    <Column gap={2} padding={10} width={200}>
+      <Scroll testId="sidebar">
+        <Column gap={2}>
+          <Text size="sm" muted bold>Layout</Text>
+          <for each={layout_rows} as="c" key={c.id}>
+            <ListItem title={c.name} selected={c.selected} onPress={select(c.id)} />
+          </for>
+          <Spacer size={8} />
+          <Text size="sm" muted bold>Display</Text>
+          <for each={display_rows} as="c" key={c.id}>
+            <ListItem title={c.name} selected={c.selected} onPress={select(c.id)} />
+          </for>
+          <Spacer size={8} />
+          <Text size="sm" muted bold>Controls</Text>
+          <for each={control_rows} as="c" key={c.id}>
+            <ListItem title={c.name} selected={c.selected} onPress={select(c.id)} />
+          </for>
+          <Spacer size={8} />
+          <Text size="sm" muted bold>Data</Text>
+          <for each={data_rows} as="c" key={c.id}>
+            <ListItem title={c.name} selected={c.selected} onPress={select(c.id)} />
+          </for>
+        </Column>
+      </Scroll>
+    </Column>
+
     <Separator vertical />
-    <Text size="sm" muted>right of rule</Text>
-  </Row>
-  <Row gap={8}>
-    <Column gap={2} grow={1}>
-      <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="row-selected" />
-      <ListItem title="Plain row" subtitle="hover me in a hover snapshot" onPress={noop} testId="row-plain" />
-      <ListItem title="Title only" onPress={noop} testId="row-bare" />
+
+    <Column gap={12} padding={16} grow={2}>
+      <Text size="xl" bold testId="canvas-title">{selected_name}</Text>
+      <Separator />
+
+      <if test={is_button}>
+        <Text bold muted>Variants</Text>
+        <Row gap={8} cross="center">
+          <Button variant="primary" onPress={noop}>Primary</Button>
+          <Button variant="secondary" onPress={noop}>Secondary</Button>
+          <Button variant="ghost" onPress={noop}>Ghost</Button>
+        </Row>
+        <Text bold muted>Playground</Text>
+        <Row gap={8}>
+          <Button variant="secondary" onPress={noop} testId="pg-button">{ctl_label}</Button>
+        </Row>
+      </if>
+
+      <if test={is_badge}>
+        <Text bold muted>Variants</Text>
+        <Row gap={8} cross="center">
+          <Badge>neutral</Badge>
+          <Badge tone="success">success</Badge>
+          <Badge tone="danger">danger</Badge>
+          <Badge tone="warning">warning</Badge>
+          <Badge tone="info">info</Badge>
+        </Row>
+        <Text bold muted>Playground</Text>
+        <Row gap={8}>
+          <Badge tone="info">{ctl_label}</Badge>
+        </Row>
+      </if>
+
+      <if test={is_heading}>
+        <Text bold muted>Levels</Text>
+        <Heading level={1}>Heading 1</Heading>
+        <Heading level={2}>Heading 2</Heading>
+        <Heading level={3}>Heading 3</Heading>
+        <Heading level={4}>Heading 4</Heading>
+        <Text bold muted>Playground</Text>
+        <Heading level={2}>{ctl_label}</Heading>
+      </if>
+
+      <if test={is_progress}>
+        <Text bold muted>Variants</Text>
+        <Row><Progress value={0.0} /></Row>
+        <Row><Progress value={0.25} /></Row>
+        <Row><Progress value={0.6} testId="pg-progress" /></Row>
+        <Row><Progress value={1.0} /></Row>
+        <Text bold muted>Playground (bound to state)</Text>
+        <Row><Progress value={ctl_progress} testId="pg-progress-bound" /></Row>
+      </if>
+
+      <if test={is_text}>
+        <Text bold muted>Sizes</Text>
+        <Row gap={12} cross="center">
+          <Text size="sm">sm text</Text>
+          <Text size="md">md text</Text>
+          <Text size="xl">xl text</Text>
+        </Row>
+        <Text bold muted>Emphasis</Text>
+        <Row gap={12} cross="center">
+          <Text bold>bold</Text>
+          <Text muted>muted</Text>
+        </Row>
+        <Text bold muted>Playground</Text>
+        <Text size="xl">{ctl_label}</Text>
+      </if>
+
+      <if test={is_input}>
+        <Text bold muted>Playground (type to edit)</Text>
+        <Row>
+          <Input value={ctl_input} placeholder="empty input (placeholder)" onChange={inputChanged} testId="pg-input" />
+        </Row>
+        <Spacer />
+      </if>
+
+      <if test={is_textarea}>
+        <Text bold muted>Playground (multi-line)</Text>
+        <Textarea value={ctl_body} placeholder="write something…" onChange={bodyChanged} testId="pg-textarea" />
+      </if>
+
+      <if test={is_list_item}>
+        <Text bold muted>Variants</Text>
+        <Column gap={2}>
+          <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="pg-row-selected" />
+          <ListItem title="Plain row" subtitle="subtitle line" onPress={noop} />
+          <ListItem title="Title only" onPress={noop} />
+        </Column>
+      </if>
+
+      <if test={is_chart}>
+        <Text bold muted>Live (data plane)</Text>
+        <Chart series={wave} height={220} testId="pg-chart" />
+      </if>
+
+      <if test={is_sparkline}>
+        <Text bold muted>Live (data plane)</Text>
+        <Row gap={8} cross="center">
+          <Sparkline series={wave} width={180} height={44} testId="pg-spark" />
+          <Text size="sm" muted>inline mini-chart</Text>
+        </Row>
+      </if>
+
+      <if test={is_separator}>
+        <Text bold muted>Horizontal</Text>
+        <Separator />
+        <Text bold muted>Vertical (pane seam)</Text>
+        <Row gap={8} cross="center">
+          <Text muted>left</Text>
+          <Separator vertical />
+          <Text muted>right</Text>
+        </Row>
+      </if>
+
+      <if test={is_spacer}>
+        <Text bold muted>Spring (bare — pushes siblings apart)</Text>
+        <Row gap={8} cross="center">
+          <Text muted>left</Text>
+          <Spacer />
+          <Text muted>right</Text>
+        </Row>
+        <Text bold muted>Fixed (size=48)</Text>
+        <Row gap={8} cross="center">
+          <Text muted>a</Text>
+          <Spacer size={48} />
+          <Text muted>b</Text>
+        </Row>
+      </if>
+
+      <if test={is_column}>
+        <Text bold muted>Column — vertical flex</Text>
+        <Column gap={6}>
+          <Text>one</Text>
+          <Text>two</Text>
+          <Text>three</Text>
+        </Column>
+      </if>
+
+      <if test={is_row}>
+        <Text bold muted>Row — horizontal flex</Text>
+        <Row gap={6} cross="center">
+          <Text>one</Text>
+          <Text>two</Text>
+          <Text>three</Text>
+        </Row>
+      </if>
     </Column>
-    <Column gap={2} grow={1}>
-      <Textarea value={body} placeholder="unused" onChange={bodyChanged} testId="textarea" />
+
+    <Separator vertical />
+
+    <Column gap={8} padding={16} width={240}>
+      <Text bold>Controls</Text>
+      <if test={has_text_control}>
+        <Text size="sm" muted>label</Text>
+        <Row>
+          <Input value={ctl_label} placeholder="text…" onChange={labelChanged} testId="ctl-label" />
+        </Row>
+        <Spacer />
+        <else>
+          <if test={is_progress}>
+            <Text size="sm" muted>value: {ctl_progress}</Text>
+            <Row gap={6}>
+              <Button variant="secondary" onPress={progressDown} testId="ctl-progress-down">−</Button>
+              <Button variant="secondary" onPress={progressUp} testId="ctl-progress-up">+</Button>
+            </Row>
+            <Spacer />
+            <else>
+              <Text size="sm" muted testId="no-controls">This component's variants are shown at left; it has no text control.</Text>
+            </else>
+          </if>
+        </else>
+      </if>
     </Column>
-  </Row>
-  <Row gap={8} cross="center" grow>
-    <Chart series={wave} height={90} testId="chart" />
-    <Sparkline series={wave} width={90} height={26} testId="spark" />
   </Row>
 </Column>

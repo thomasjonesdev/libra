@@ -21,6 +21,10 @@ Accessibility is load-bearing, not charitable: the semantics tree is simultaneou
 - `libra check --a11y` audits statically (labels on interactive components, contrast against theme tokens, focus reachability), and the audit runs in CI.
 
 
+## In code
+
+- `crates/libra-platform/src/a11y.rs` — the AccessKit adapter (created before first window show)
+
 ---
 
 ---

@@ -1,9 +1,9 @@
-//! The actions (§5.9 module layout): the crate's one
-//! `#[libra::actions]` block — every state transition, the effect
-//! continuations, and the `#[project]` hook. The macro generates the
-//! `Action` enum and `reduce` *in this module*; `lib.rs` re-exports
-//! them so `app!`, the harness, and the tests keep flat
-//! `notes::{Action, reduce}` paths.
+//! The actions (§5.9 module layout): the crate's one `#[libra::actions]` block
+//! — every state transition, the effect continuations, and the `#[project]`
+//! hook. The macro generates the `Action` enum and `reduce` in this module;
+//! `lib.rs` re-exports them for a flat `notes::{Action, reduce}` surface.
+//!
+//! Architecture: ARCHITECTURE.md §5.9 (module layout), §5.2 (macro expansion).
 
 use libra_core::{Effect, Instant, KvResult};
 

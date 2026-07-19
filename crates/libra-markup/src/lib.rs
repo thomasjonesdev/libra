@@ -1,19 +1,8 @@
-//! libra-markup — parser for `.lx` view files.
+//! libra-markup — the parser for `.lx` view files: one shared grammar → an
+//! AST with spans on every node; errors carry line:col + a suggestion where
+//! possible. Consumed by both view engines (libra-interp, libra-codegen).
 //!
-//! One grammar, consumed by both the dev interpreter (libra-interp) and,
-//! in later phases, the release codegen backend. Spans on every node;
-//! errors carry line:col + a message + (where possible) a suggestion.
-//!
-//! Phase 0 grammar subset:
-//!   element   := '<' Ident attr* ( '/>' | '>' children '</' Ident '>' )
-//!   attr      := Ident ( '=' value )?          (bare attr = boolean flag)
-//!   value     := '"' chars '"' | '{' braced '}'
-//!   braced    := number | ident-path            (attr name decides meaning)
-//!   children  := ( element | text )*
-//!   text      := chars with '{' path '}' inline bindings
-//!
-//! Deliberately closed: no expressions, no closures, no mutation. See
-//! ARCHITECTURE.md §6.3 for why every restriction pays.
+//! Architecture: ARCHITECTURE.md §6.6 (parser), §6.2 (the closed grammar).
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {

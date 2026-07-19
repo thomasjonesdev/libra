@@ -1,17 +1,9 @@
-//! libra-effects — the effects runtime (ARCHITECTURE.md §12.3).
+//! libra-effects — the effects runtime, the only I/O actor: a worker pool
+//! runs http/kv/random and dedicated threads run timers; results return as
+//! actions through the runtime's `Sink`. Cross-effect ordering is
+//! deliberately unguaranteed — state must tolerate reordering.
 //!
-//! Actions return `Effect`s (data); this runtime is the only I/O actor.
-//! A small worker pool executes http/kv/random; timers get dedicated
-//! sleeper threads. Results come back as actions through the sink the
-//! runtime was built with (the windowed shell passes a winit
-//! EventLoopProxy wrapper; tests pass an mpsc sender).
-//!
-//! Ordering: actions from one effect arrive in causal order; cross-effect
-//! ordering is NOT guaranteed — state must tolerate reordering (§12.3),
-//! and integration tests exploit that deliberately.
-//!
-//! Cancellation: cancelled timer ids are dropped by the runtime after
-//! waking — actions never see zombies.
+//! Architecture: ARCHITECTURE.md §12.3 (execution model).
 
 use libra_core::{Effect, HttpRequest, HttpResult, KvResult, TimerId};
 use libra_data::SeriesStore;

@@ -1,10 +1,11 @@
 //! Windowed: `cargo run -p dashboard --release`
 //! Benchmark: `cargo run -p dashboard --release -- bench`
 //!
-//! The bench is the §22 budget check, headless and synchronous: rings
-//! are fed deterministically (no ingest threads, no clocks in the
-//! pipeline), then 600 frames run through the real
-//! view→layout→paint→damage-render path at 1280×800.
+//! The bench is the §22 budget check: headless and synchronous, rings fed
+//! deterministically, 600 frames through the real view→layout→paint→damage
+//! path at 1280×800.
+//!
+//! Architecture: ARCHITECTURE.md §22 (performance budgets).
 
 use dashboard::{Action, Dashboard, RATE_HZ, SERIES, VIEW, WINDOW_MS};
 use libra_core::{FrameInfo, ReflectAction, SeriesId};

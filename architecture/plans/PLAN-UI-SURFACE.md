@@ -37,6 +37,7 @@ React Native; we mirror *capability and catalog shape*, not RN APIs.
 |---|---|
 | [[PLAN-TOKENS]] | Design-token tables, semantic aliases, density, markup token refs |
 | [[PLAN-CATALOG]] | Full component inventory + beauty-first build order |
+| [[PLAN-COMPONENTS]] | Component crate module layout + the authoring/designer experience |
 | [[PLAN-NATIVE-INTEGRATIONS]] | Platform effects & shell glue (Alert/Share/OpenUrl/…) |
 | [[PLAN-TEXTAREA]] | Multi-line text / IME / touch (already separate; §10.1) |
 
@@ -46,4 +47,4 @@ ever needed.
 
 ---
 
-← [[Plans Index]] · [[07.1-the-built-in-catalog-closed-curated|§7.1]] · [[11-theming-and-design-tokens|§11]] · [[19-platform-integration|§19]]
+← [[Plans Index]] · [[07.1-builtin-catalog|§7.1]] · [[11-theming|§11]] · [[19-platform-integration|§19]]

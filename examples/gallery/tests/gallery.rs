@@ -1,5 +1,6 @@
-//! The gallery's snapshot matrix: every component × both themes, plus a
-//! focused-input state. A component rendering change fails here first.
+//! The workbench (PLAN-GALLERY): sidebar select → isolated component canvas +
+//! controls. Snapshots are now **per-component** (isolation), so a rendering
+//! change fails only the affected component's frame.
 
 use gallery::{Action, Gallery, VIEW, WAVE};
 use libra_data::Sample;
@@ -15,51 +16,107 @@ fn feed_wave(h: &Harness<Gallery>) {
 }
 
 fn harness(theme: &str) -> Harness<Gallery> {
-    let mut h = Harness::<Gallery>::with_viewport(VIEW, 640, 360).theme(theme);
+    let mut h = Harness::<Gallery>::with_viewport(VIEW, 1200, 760).theme(theme);
     let _ = h.expect_effect(fx::any()); // the IngestOpen — tests feed directly
-    feed_wave(&h);
-    h.dispatch(Action::Noop); // rebuild so paint sees the wave
     h
 }
 
+/// Default landing: Button selected, its variants + playground + label control.
 #[test]
-fn snapshot_gallery_dark() {
+fn snapshot_workbench_button_dark() {
     let h = harness("libra-dark");
-    h.assert_snapshot("gallery_dark");
+    h.query(by::test_id("canvas-title")).assert_text("Button");
+    h.assert_snapshot("workbench_button_dark");
 }
 
 #[test]
-fn snapshot_gallery_light() {
+fn snapshot_workbench_button_light() {
     let h = harness("libra-light");
-    h.assert_snapshot("gallery_light");
+    h.assert_snapshot("workbench_button_light");
+}
+
+/// Selecting a sidebar entry swaps the canvas — through real hit testing on a
+/// `<for>`-generated `ListItem` (queried by its title text).
+#[test]
+fn selecting_a_component_swaps_the_canvas() {
+    let mut h = harness("libra-dark");
+    h.query(by::test_id("canvas-title")).assert_text("Button");
+    h.click(by::text("Badge"));
+    h.query(by::test_id("canvas-title")).assert_text("Badge");
+    assert_eq!(h.state().selected, "badge");
 }
 
 #[test]
-fn snapshot_gallery_focused_input_dark() {
+fn snapshot_workbench_badge_dark() {
     let mut h = harness("libra-dark");
-    h.type_text(by::test_id("empty"), "typed");
-    h.assert_snapshot("gallery_focus_dark");
+    h.dispatch(Action::Select("badge".into()));
+    h.assert_snapshot("workbench_badge_dark");
 }
 
-/// Hover is an explicit paint input (§7.1 ListItem wash) — pinned to
-/// an item's center, the frame is byte-exact like any other.
 #[test]
-fn snapshot_gallery_hovered_row_dark() {
+fn snapshot_workbench_heading_dark() {
     let mut h = harness("libra-dark");
-    h.hover(by::test_id("row-plain"));
-    h.assert_snapshot("gallery_hover_dark");
+    h.dispatch(Action::Select("heading".into()));
+    h.query(by::test_id("canvas-title")).assert_text("Heading");
+    h.assert_snapshot("workbench_heading_dark");
 }
 
-/// The hover wash renders and clears — hovered ≠ resting bytes, and
-/// clearing restores the exact resting frame.
 #[test]
-fn hover_wash_appears_and_clears() {
+fn snapshot_workbench_progress_dark() {
     let mut h = harness("libra-dark");
-    let resting = h.frame_png();
-    h.hover(by::test_id("row-plain"));
-    assert_ne!(h.frame_png(), resting, "hover wash changes the frame");
-    h.blur_hover();
-    assert_eq!(h.frame_png(), resting, "clearing hover restores identical bytes");
+    h.dispatch(Action::Select("progress".into()));
+    h.assert_snapshot("workbench_progress_dark");
+}
+
+/// Numeric binding end-to-end: the +/− control moves the `ctl_progress` f32,
+/// and the `<Progress value={ctl_progress}>` bar repaints to match (§26 #8).
+#[test]
+fn progress_control_moves_the_bound_bar() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("progress".into()));
+    let at_half = h.frame_png();
+    h.click(by::test_id("ctl-progress-up"));
+    assert!((h.state().ctl_progress - 0.6).abs() < 1e-6, "up nudges +0.1");
+    assert_ne!(h.frame_png(), at_half, "the bound Progress bar repaints wider");
+}
+
+/// The label control feeds the playground instance (a bindable text prop).
+#[test]
+fn label_control_drives_the_playground() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::LabelChanged("Hello".into()));
+    h.query(by::test_id("pg-button")).assert_text("Hello");
+}
+
+/// The Chart canvas renders the live wave (data plane drives the loop; no
+/// `<Frames>`). Feed then select so the rebuilt canvas paints the ring.
+#[test]
+fn snapshot_workbench_chart_dark() {
+    let mut h = harness("libra-dark");
+    feed_wave(&h);
+    h.dispatch(Action::Select("chart".into()));
+    h.assert_snapshot("workbench_chart_dark");
+}
+
+/// PLAN-SCROLL: at a short viewport the sidebar overflows; scrolling clips +
+/// offsets it (the frame changes) and is deterministic + reversible.
+#[test]
+fn sidebar_scrolls_and_round_trips() {
+    let mut h = Harness::<Gallery>::with_viewport(VIEW, 900, 300).theme("libra-dark");
+    let _ = h.expect_effect(fx::any()); // IngestOpen
+    let top = h.frame_png();
+    h.scroll("sidebar", 120.0);
+    assert_ne!(h.frame_png(), top, "scrolling the sidebar repaints it");
+    h.scroll("sidebar", -999.0); // clamps back to 0
+    assert_eq!(h.frame_png(), top, "scrolling back to the top restores identical bytes");
+}
+
+#[test]
+fn snapshot_sidebar_scrolled() {
+    let mut h = Harness::<Gallery>::with_viewport(VIEW, 900, 300).theme("libra-dark");
+    let _ = h.expect_effect(fx::any());
+    h.scroll("sidebar", 150.0);
+    h.assert_snapshot("workbench_sidebar_scrolled");
 }
 
 #[test]

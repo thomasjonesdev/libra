@@ -1,8 +1,8 @@
-//! The State (§5.9 module layout): the one `#[libra::state]` struct
-//! plus its inherent helpers (boot, hydration, save scheduling). The
-//! action methods that *mutate* it live in `actions.rs` — this file
-//! only defines what the state *is* and the private machinery those
-//! actions share.
+//! The State (§5.9 module layout): the one `#[libra::state]` struct plus its
+//! inherent helpers (boot, hydration, save scheduling). The action methods that
+//! mutate it live in `actions.rs`; this file defines what the state *is*.
+//!
+//! Architecture: ARCHITECTURE.md §5.9 (module layout).
 
 use libra_core::Effect;
 

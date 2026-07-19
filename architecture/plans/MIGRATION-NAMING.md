@@ -10,11 +10,11 @@ type: plan
 
 # Naming Migration Checklist
 
-**Status: complete.** All 8 stages landed, snapshot-neutral throughout — see [[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]]/[[21-workspace-and-crate-layout|§21]] for the closing summary. This checklist is kept as the historical execution record.
+**Status: complete.** All 8 stages landed, snapshot-neutral throughout — see [[03.2-terminology-migration|§3.2]]/[[21-crate-layout|§21]] for the closing summary. This checklist is kept as the historical execution record.
 
 > **Post-migration addendum (2026-07-17):** the snapshot-acceptance verb was renamed **bless → validate** (`LIBRA_BLESS=1` → `LIBRA_VALIDATE=1`; setting the old var is a hard error naming the new one). Live docs/§15.5/§18.1 use the new word; historical plan notes keep the old one as record, per this plan's own rule.
 
-Executes the vocabulary rename adopted in [[03.1-the-vocabulary-five-words-all-of-them-already-yours|§3.1]]–[[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]] (2026-07 revision):
+Executes the vocabulary rename adopted in [[03.1-vocabulary|§3.1]]–[[03.2-terminology-migration|§3.2]] (2026-07 revision):
 **Model → State · Msg → Action · update → reduce · Cmd → Effect · widget → component · tiers → named test kinds.**
 Scheduled as a Phase-4 backlog item ([[23-roadmap|§23]]); the doc leads, this checklist makes the code follow.
 
@@ -40,7 +40,7 @@ Scheduled as a Phase-4 backlog item ([[23-roadmap|§23]]); the doc leads, this c
 - [x] `git mv crates/libra-widgets crates/libra-components`; update `[package] name`.
 - [x] Update `[workspace.dependencies]` in the root `Cargo.toml` and every dependent crate's `Cargo.toml`.
 - [x] Sweep `use libra_widgets::` → `use libra_components::` across crates/, examples/, cli/, conformance/.
-- [x] Grep gate: `grep -rn "libra.widgets\|libra_widgets" --include='*.rs' --include='*.toml' .` returns nothing outside this checklist and [[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]].
+- [x] Grep gate: `grep -rn "libra.widgets\|libra_widgets" --include='*.rs' --include='*.toml' .` returns nothing outside this checklist and [[03.2-terminology-migration|§3.2]].
 
 ## Stage 2 — Core type renames (with deprecated aliases)
 
@@ -58,22 +58,22 @@ Definition sites found in: `crates/libra-core/src/lib.rs`, `crates/libra-reflect
 
 - [x] `expect_cmd` → `expect_effect`, `expect_no_cmds` → `expect_no_effects`, `cmd::` matcher module → `fx::` — all with deprecated aliases.
 - [x] `assert_cmd!` → `assert_effect!` (macros can't be deprecated-aliased cleanly; keep the old macro delegating to the new one with a doc note).
-- [x] Optional, decide here: add `Harness::render(...)` as the documented constructor ([[15.3-component-tests-headless-tree-queries|§15.3]]), keeping `Harness::new` working.
+- [x] Optional, decide here: add `Harness::render(...)` as the documented constructor ([[15.3-component-tests|§15.3]]), keeping `Harness::new` working.
 - [x] Update in-repo callers (examples, conformance) to the new names so the deprecated paths have zero internal users.
 
 ## Stage 4 — The actions layer (`#[libra::state]` / `#[libra::actions]`) — **the only behavior-adding stage**
 
-Implements [[05.1-the-core-declarations|§5.1]]–[[05.2-what-the-macro-generates-one-expansion-no-magic|§5.2]] in `libra-reflect`. This is a feature PR (or small series), not a sweep.
+Implements [[05.1-core-declarations|§5.1]]–[[05.2-macro-expansion|§5.2]] in `libra-reflect`. This is a feature PR (or small series), not a sweep.
 
 - [x] `#[libra::actions]` on an impl block generates: the `Action` enum (one variant per method, params = payload), `reduce(state, action) -> Vec<Effect>`, and reflection metadata (handler names for markup + automation schema).
-- [x] Dispatchability rule per [[05.2-what-the-macro-generates-one-expansion-no-magic|§5.2]]: markup-expressible params ⇒ handler; effect-result params ⇒ continuation (never constructible by name). Reuse the existing unit-variant/payload-variant reflect split.
+- [x] Dispatchability rule per [[05.2-macro-expansion|§5.2]]: markup-expressible params ⇒ handler; effect-result params ⇒ continuation (never constructible by name). Reuse the existing unit-variant/payload-variant reflect split.
 - [x] Action return types accept `()`, `Effect`, `Option<Effect>`, `Vec<Effect>`.
 - [x] `#[libra::state]` subsumes `#[derive(LibraReflect)]` (which stays, deprecated, as a thin wrapper).
 - [x] Hand-written enum + reducer path stays fully supported and tested (it is the expansion target).
-- [x] **Markup handler naming ([[03.3-naming-conventions-reacts-verbatim|§3.3]])**: `.lx` handlers and bindings use the **camelCase public name**, mapped mechanically from the snake_case Rust name (`fn filter_changed` ⇒ `onChange={filterChanged}`; serde `rename_all = "camelCase"` discipline). Legacy PascalCase variant names (`onPress={Reset}`, today's style) keep resolving with a deprecation warning in `libra check`. This touches the grammar's name-resolution rule, so per [[06.4-one-grammar-two-engines|§6.4]] it lands in **both** engines (libra-interp AND libra-codegen) **with conformance fixtures** (one for the camelCase mapping, one for the legacy fallback), and `interp_and_codegen_produce_identical_trees` stays green.
+- [x] **Markup handler naming ([[03.3-naming-conventions|§3.3]])**: `.lx` handlers and bindings use the **camelCase public name**, mapped mechanically from the snake_case Rust name (`fn filter_changed` ⇒ `onChange={filterChanged}`; serde `rename_all = "camelCase"` discipline). Legacy PascalCase variant names (`onPress={Reset}`, today's style) keep resolving with a deprecation warning in `libra check`. This touches the grammar's name-resolution rule, so per [[06.4-one-grammar-two-engines|§6.4]] it lands in **both** engines (libra-interp AND libra-codegen) **with conformance fixtures** (one for the camelCase mapping, one for the legacy fallback), and `interp_and_codegen_produce_identical_trees` stays green.
 - [x] Typo suggestions cross the mapping: `onPress={filter_changed}` → "did you mean `filterChanged`?"; whitelisted accessors/predicates expose camelCase in markup (`isEmpty`, `isLive`).
 - [x] Tier-1-style unit tests for the macro itself in libra-reflect (expansion output, dispatchability classification, error cases).
-- [x] Slices (`#[slice]`, [[05.7-scaling-state-slices-not-fragmentation|§5.7]]) may be deferred to a follow-up PR — note it here if so.
+- [x] Slices (`#[slice]`, [[05.7-state-slices|§5.7]]) may be deferred to a follow-up PR — note it here if so.
 - [x] Snapshot check: identical bytes (same views, same rendering).
 
 ## Stage 5 — Test suite reorganization (tiers → kinds)
@@ -91,7 +91,7 @@ For each of `examples/counter`, `examples/fetcher`, `examples/dashboard`, `examp
 Reference apps should model the documented style. One example per PR; counter first as the template.
 
 - [x] `examples/counter`: `Model` → `#[libra::state] struct CounterState` + `#[libra::actions]` impl; `.lx` handlers to camelCase public names (`onPress={increment}`, multi-word ones like `filterChanged` where they occur); tests updated.
-- [x] `examples/fetcher` (includes continuations for Http/Kv results and `Remote<T,E>` display-projection per [[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]] — keep that pattern).
+- [x] `examples/fetcher` (includes continuations for Http/Kv results and `Remote<T,E>` display-projection per [[06.3-grammar-restrictions|§6.3]] — keep that pattern).
 - [x] `examples/dashboard` (frame action, data-plane handles).
 - [x] `examples/notes` (Input/EditOp routing unchanged — the editing core stays pure).
 - [x] Conformance fixtures that reference example-style handler names updated in the same PRs (both engines, fixture-covered).
@@ -101,17 +101,17 @@ Reference apps should model the documented style. One example per PR; counter fi
 
 - [x] CLAUDE.md: new crate name, new test layout/commands (`cargo test -p fetcher tier3_` → the new file-based invocation), state/actions/effects vocabulary.
 - [x] README.md: prose only — **the committed snapshot SHA-256 hashes must not change**; if a hash changed, a prior stage broke the ground rules.
-- [x] Doc comments: re-point architecture § citations shifted by the 2026-07 revision (old [[05.2-what-the-macro-generates-one-expansion-no-magic|§5.2]] purity → new [[05.3-purity-rules-for-actions-enforced-by-convention-checked-by-lint|§5.3]]; old [[05.6-time-travel-and-replay-as-a-consequence|§5.6]] lenses → new [[05.7-scaling-state-slices-not-fragmentation|§5.7]] slices; [[15-testing-architecture|§15]].x tier headings → kind headings).
+- [x] Doc comments: re-point architecture § citations shifted by the 2026-07 revision (old [[05.2-macro-expansion|§5.2]] purity → new [[05.3-purity-rules|§5.3]]; old [[05.6-time-travel-replay|§5.6]] lenses → new [[05.7-state-slices|§5.7]] slices; [[15-testing|§15]].x tier headings → kind headings).
 - [x] `libra-cli` / `libra check` user-facing text: "widget" → "component", "msg" → "action".
 - [x] `themes/`, `conformance/` READMEs or comments mentioning old names.
-- [x] Final wording pass: `grep -rniE '\bwidget|\bmsg\b|\bcmd\b|tier[0-9]' --include='*.rs' --include='*.md' --include='*.lx' .` — remaining hits should only be deprecated aliases (Stage 8 removes them) and the historical tables in [[02-prior-art-and-influences|§2]]/[[03.2-terminology-migration-complete-this-document-and-the-code-now-agree|§3.2]]/[[appendix-b-glossary|Appendix B]].
+- [x] Final wording pass: `grep -rniE '\bwidget|\bmsg\b|\bcmd\b|tier[0-9]' --include='*.rs' --include='*.md' --include='*.lx' .` — remaining hits should only be deprecated aliases (Stage 8 removes them) and the historical tables in [[02-prior-art|§2]]/[[03.2-terminology-migration|§3.2]]/[[appendix-b-glossary|Appendix B]].
 
 ## Stage 8 — Alias removal (gate: before first public publish)
 
 - [x] Remove every `#[deprecated]` alias from Stages 2–4 in one PR.
 - [x] Remove legacy PascalCase variant-name acceptance (`onPress={Reset}`) from both engines + its conformance fixture (replace with a fixture asserting the *error*, whose suggestion names the camelCase form).
 - [x] Add a CI grep deny-list so old names can't reenter: fail on `libra_widgets|ReflectModel|ReflectMsg|expect_cmd|assert_cmd|tier[0-9]_` outside and this file.
-- [x] Final full verification (below), then mark the [[21-workspace-and-crate-layout|§21]] migration note in as completed.
+- [x] Final full verification (below), then mark the [[21-crate-layout|§21]] migration note in as completed.
 
 ---
 

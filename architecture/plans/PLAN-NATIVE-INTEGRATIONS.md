@@ -13,7 +13,7 @@ type: plan
 
 **Status: planned.** Maps Vercel json-render RN **standard actions** and
 Libra [[19-platform-integration|§19]] OS concerns onto Libra's
-**effects-as-data** model ([[12.1-the-effect-vocabulary-closed-versioned|§12.1]]).
+**effects-as-data** model ([[12.1-effect-vocabulary|§12.1]]).
 Umbrella: [[PLAN-UI-SURFACE]].
 
 Libra is desktop-native (`winit` + softbuffer). “Native” here means
@@ -58,7 +58,7 @@ Not always Effects — sometimes layout/input plumbing:
 | Safe area / notches | `SafeArea` | Shell publishes insets → `SafeArea` layout ([[PLAN-CATALOG]] wave 6) |
 | Keyboard type / secure entry | `TextInput.keyboardType`, `secureTextEntry` | Input/Textarea attrs → IME hints ([[PLAN-TEXTAREA]]) |
 | Modal presentation | `Modal` | In-tree overlay (deterministic) **vs** OS dialog (effect) — both allowed; document when to use which |
-| Long-press | `Pressable.longPress` | Pointer + [[19.1-touch-first-class-not-an-afterthought|§19.1]] |
+| Long-press | `Pressable.longPress` | Pointer + [[19.1-touch|§19.1]] |
 | Menus / tray / hotkeys | — | §19 table (`muda`, `tray-icon`, `global-hotkey`) — separate small plans when needed |
 | File pickers | — | Fold into `Dialog` / dedicated `Effect::PickFile` when an app needs it |
 
@@ -92,4 +92,4 @@ Not always Effects — sometimes layout/input plumbing:
 
 ---
 
-← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[12.1-the-effect-vocabulary-closed-versioned|§12.1]] · [[19-platform-integration|§19]]
+← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[12.1-effect-vocabulary|§12.1]] · [[19-platform-integration|§19]]

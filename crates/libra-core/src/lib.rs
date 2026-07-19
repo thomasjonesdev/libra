@@ -1,17 +1,9 @@
-//! libra-core — the application contract: State/Action/reduce/Effect.
+//! libra-core — the application contract: `State` / `Action` / `reduce` /
+//! `Effect`, the `App` trait (`init` + `update`), the `ReflectState` /
+//! `ReflectAction` reflection supertraits, and `Remote<T, E>`.
 //!
-//! Phase 1: the `App` trait is now just `init` + `update` (§5.1's
-//! shape). Reflection — binding paths and handler names — lives in the
-//! `ReflectState`/`ReflectAction` traits, normally implemented by
-//! `#[derive(LibraReflect)]` (re-exported here from libra-reflect) and
-//! hand-implementable when an app needs a custom projection. Plus the
-//! Phase-1 subset of the §12.1 Effect vocabulary (Http, Kv*, Timer,
-//! Random) and `Remote<T, E>` (Appendix C).
-//!
-//! Naming migration: this crate's founding-vocabulary rename is
-//! complete (ARCHITECTURE.md §3.2 has the full old→new table;
-//! MIGRATION-NAMING.md is the stage-by-stage record) — Stage 8 removed
-//! the deprecated pre-rename aliases this crate briefly carried.
+//! Architecture: ARCHITECTURE.md §5 (State & Actions), §5.3 (purity rules
+//! for `update`), §12.1 (the Effect vocabulary).
 
 pub use libra_reflect::LibraReflect;
 

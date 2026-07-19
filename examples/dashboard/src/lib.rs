@@ -1,20 +1,20 @@
-//! The Phase 2 benchmark app (§22): 16 series × 10 kHz through the data
-//! plane, a 4×4 chart wall, one `frame` action per tick. State holds
-//! handles and a status string — samples never touch it (§14.2).
+//! The Phase 2 benchmark app: 16 series × 10 kHz through the data plane, a 4×4
+//! chart wall. State holds handles only — samples never touch it. The sixteen
+//! series collapse to four `Vec<SeriesHandle>` rows bound through `<for>`.
 //!
-//! §6.2's collection-binding proof: the sixteen `s0`..`s15` fields
-//! collapse to four `Vec<SeriesHandle>` rows, each bound through
-//! `<for each={rowN} as="s" key={s}>` — one row field per grid row,
-//! since `<for>` iterates a flat field and the 4×4 layout (not a
-//! flat 1×16 row) is part of this app's snapshot-tested output. The
-//! ingest/toggle logic doesn't touch these fields at all — it only
-//! ever needs "all sixteen series ids", which is just `0..SERIES`.
+//! The charts **auto-run**: while ingest is open the data plane drives the
+//! shell's display loop (§12.5, `SeriesStore::has_live_ingest`), so there is no
+//! `<Frames>` pump. Pause is just `IngestClose` — the loop idles and the charts
+//! freeze on their last frame; resume reopens ingest.
 //!
-//! Pause/resume mounts `<Frames>` conditionally via `<if test={running}>`
-//! (§6.2 / PLAN-IF / §12.5) — no `subscriptions:` escape hatch needed.
+//! Architecture: ARCHITECTURE.md §22 (performance budgets), §14.2 (data-plane
+//! architecture), §6.2 (the closed grammar), §12.5 (a live data plane drives
+//! the display loop).
 
 use libra::{actions, app, state};
-use libra_core::{Effect, FrameInfo, SeriesHandle, SeriesId, SourceSpec};
+use libra_core::{Effect, SeriesHandle, SeriesId, SourceSpec};
+
+const LIVE_STATUS: &str = "live · 16 series @ 10 kHz";
 
 pub const SERIES: u32 = 16;
 pub const ROW_LEN: u32 = 4;
@@ -24,7 +24,6 @@ pub const WINDOW_MS: f64 = 3_000.0;
 #[state]
 pub struct Dashboard {
     pub status: String,
-    /// Bindable so `<if test={running}>` can mount `<Frames>` (§12.5).
     pub running: bool,
     pub row0: Vec<SeriesHandle>,
     pub row1: Vec<SeriesHandle>,
@@ -32,8 +31,6 @@ pub struct Dashboard {
     pub row3: Vec<SeriesHandle>,
 }
 
-/// The generator spec for series `i` — shared with the bench and tests
-/// so every consumer sees identical data.
 pub fn source(i: u32) -> SourceSpec {
     SourceSpec::Sine {
         rate_hz: RATE_HZ,
@@ -50,7 +47,7 @@ fn row(start: u32) -> Vec<SeriesHandle> {
 impl Dashboard {
     pub fn init() -> (Dashboard, Vec<Effect<Action>>) {
         let state = Dashboard {
-            status: "starting…".into(),
+            status: LIVE_STATUS.into(),
             running: true,
             row0: row(0),
             row1: row(ROW_LEN),
@@ -69,18 +66,16 @@ impl Dashboard {
     pub fn toggle(&mut self) -> Vec<Effect<Action>> {
         self.running = !self.running;
         if self.running {
-            self.status = "resuming…".into();
-            // Ingest threads were closed on pause; reopen.
+            self.status = LIVE_STATUS.into();
+            // Ingest threads were closed on pause; reopen — the reopened
+            // sources re-arm the display loop (§12.5), so the charts resume.
             (0..SERIES).map(|i| Effect::IngestOpen { source: source(i), series: SeriesId(i) }).collect()
         } else {
             self.status = "paused".into();
+            // Closing every source idles the display loop; the last frame
+            // stays on screen.
             (0..SERIES).map(|i| Effect::IngestClose { series: SeriesId(i) }).collect()
         }
-    }
-
-    /// All the time the app knows arrives in the action (§14.2).
-    pub fn frame(&mut self, info: FrameInfo) {
-        self.status = format!("live · t={:.1}s · frame {}", info.t_ms / 1000.0, info.index);
     }
 }
 

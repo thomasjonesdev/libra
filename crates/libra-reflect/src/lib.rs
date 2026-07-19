@@ -1,24 +1,10 @@
-//! libra-reflect — `#[derive(LibraReflect)]` for State and Action
-//! (ARCHITECTURE.md §21): the derive that retires the hand-written
-//! reflection shims and, later, drives the automation-server schema
-//! (§16).
+//! libra-reflect — the proc-macro crate behind `#[derive(LibraReflect)]` and
+//! the `#[libra::state]` / `#[libra::actions]` / `app!` macros: it generates
+//! the `Action` enum, `reduce`, and the reflection impls an app would
+//! otherwise hand-write.
 //!
-//! On a **struct** (the State): implements `libra_core::ReflectState`.
-//! Every named field becomes a bindable path rendered via `ToString`
-//! (so any `Display` type binds). `#[libra(skip)]` excludes a field —
-//! used for non-Display state like `Remote<T, E>`; per §6.3, its
-//! display projection belongs on State as a plain field maintained
-//! in `update`.
-//!
-//! On an **enum** (the Action): implements `libra_core::ReflectAction`.
-//! Unit variants are constructible by handler name; payload variants
-//! are effect-result events, not UI handlers, and resolve to `None`.
-//! `action_names` lists every variant's public name for diagnostics
-//! either way. Variant names resolve via the same PascalCase-ident →
-//! camelCase-public-name mapping `#[libra::actions]` generates (§3.3)
-//! — a hand-written enum and a macro-generated one present an
-//! identical markup surface; there is exactly one canonical public
-//! name per action, never two.
+//! Architecture: ARCHITECTURE.md §5.2 (what the macro generates), §5.8 (app
+//! assembly), §3.3 (the PascalCase → camelCase public-name mapping).
 
 mod app;
 mod attrs;

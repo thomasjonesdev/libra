@@ -1,6 +1,7 @@
-//! The Phase 0 counter — the reference app for the determinism gate.
-//! §5.8's "counter in ~10 lines": state + actions + one `app!`
-//! declaration replaces the old hand-written `App` impl.
+//! The Phase 0 counter — the reference app for the determinism gate: a `State`,
+//! its actions, and one `app!` declaration.
+//!
+//! Architecture: ARCHITECTURE.md §5.8 (app assembly).
 
 use libra::{actions, app, state};
 

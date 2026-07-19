@@ -10,7 +10,7 @@ type: plan
 
 # Textarea / IME / touch (§10.1 remainder)
 
-**Status: in progress — stage 1 landed 2026-07-17.** Completes [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]] beyond single-line Input.
+**Status: in progress — stage 1 landed 2026-07-17.** Completes [[10.1-text-entry|§10.1]] beyond single-line Input.
 
 ## Stages
 
@@ -21,4 +21,4 @@ type: plan
 
 ---
 
-← [[Plans Index]] · [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]]
+← [[Plans Index]] · [[10.1-text-entry|§10.1]]

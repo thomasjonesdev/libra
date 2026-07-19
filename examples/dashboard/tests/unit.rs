@@ -1,7 +1,7 @@
 //! Unit tests (§15.2): pure actions.
 
 use dashboard::{reduce, Action, Dashboard, SERIES};
-use libra_core::{Effect, FrameInfo, SeriesId};
+use libra_core::{Effect, SeriesId};
 
 #[test]
 fn init_opens_sixteen_ingests() {
@@ -27,8 +27,11 @@ fn toggle_closes_ingest_and_clears_running() {
 }
 
 #[test]
-fn frame_time_arrives_inside_the_action() {
+fn toggle_sets_paused_then_live_status() {
     let (mut s, _) = Dashboard::init();
-    reduce(&mut s, Action::Frame(FrameInfo { t_ms: 2500.0, index: 150 }));
-    assert_eq!(s.status, "live · t=2.5s · frame 150");
+    assert_eq!(s.status, "live · 16 series @ 10 kHz");
+    reduce(&mut s, Action::Toggle);
+    assert_eq!(s.status, "paused");
+    reduce(&mut s, Action::Toggle);
+    assert_eq!(s.status, "live · 16 series @ 10 kHz");
 }

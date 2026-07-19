@@ -16,7 +16,7 @@ type: architecture
 ## In this vault
 
 - [[04.1-layer-diagram]]
-- [[04.2-the-frame-lifecycle]]
+- [[04.2-frame-lifecycle]]
 
 ---
 

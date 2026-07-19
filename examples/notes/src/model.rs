@@ -1,10 +1,8 @@
-//! Pure domain layer (§5.9 module layout): data types, derivation
-//! helpers, and the versioned store format. Nothing in this file knows
-//! about actions, effects, or the view — it is plain Rust the unit
-//! tests can exercise without a Harness, mirroring §6.3's rule ("if
-//! you want to compute it, put it on State") at the file level: the
-//! *computations* live here, the State fields they fill live in
-//! `state.rs`, and the `#[project]` hook in `actions.rs` connects them.
+//! Pure domain layer (§5.9 module layout): data types, derivation helpers, and
+//! the versioned store format. Nothing here knows about actions, effects, or
+//! the view — plain Rust the unit tests exercise without a Harness.
+//!
+//! Architecture: ARCHITECTURE.md §5.9 (module layout), §6.3 (projections).
 
 use libra_core::LibraReflect;
 use serde::{Deserialize, Serialize};

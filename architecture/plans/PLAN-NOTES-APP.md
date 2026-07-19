@@ -23,14 +23,14 @@ app** — the real app that pulls [[PLAN-UI-SURFACE]] work in demand order.
 
 **Mirror target is capability + design quality, not their APIs.** They are
 Zig/comptime; we are Libra: every feature must land through the existing
-contracts — pure actions ([[05.3-purity-rules-for-actions-enforced-by-convention-checked-by-lint|§5.3]]),
-closed grammar ([[06.2-the-closed-grammar-what-markup-can-do|§6.2]]),
-effects-as-data ([[12.1-the-effect-vocabulary-closed-versioned|§12.1]]),
-deterministic paint ([[appendix-a-the-determinism-contract-as-a-checklist|Appendix A]]).
+contracts — pure actions ([[05.3-purity-rules|§5.3]]),
+closed grammar ([[06.2-closed-grammar|§6.2]]),
+effects-as-data ([[12.1-effect-vocabulary|§12.1]]),
+deterministic paint ([[appendix-a-determinism-checklist|Appendix A]]).
 
-**Read before writing code:** [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]],
-[[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]] (`#[project]`),
-[[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]],
+**Read before writing code:** [[10.1-text-entry|§10.1]],
+[[06.3-grammar-restrictions|§6.3]] (`#[project]`),
+[[12.5-declarative-subscriptions|§12.5]],
 [[PLAN-CATALOG]], [[PLAN-TEXTAREA]], [[PLAN-TOKENS]], [[PLAN-NATIVE-INTEGRATIONS]].
 
 ## Feature map (their app → Libra mechanism)
@@ -67,7 +67,7 @@ plan owns the app and the acceptance bar.
 | **M1 — done** | Three-pane skeleton with today's components: sidebar `<for>` folders (Button rows), list `<for>` filtered notes, single-line editor (interim `Input`), search `Input`, `<if>` empty states ("no notes" vs "no matches"), Recently Deleted visible only when non-empty (`open_recently_deleted` — plain `onPress={x(literal)}` isn't grammar, so it's its own zero-arg action rather than an item-scoped one), `<Interval every={30000} onTick={tick}>` timestamp tick. 6 integration + 8 component + 5 snapshot tests | none |
 | **M2 — done except Scroll** | Real list presentation (landed 2026-07-16/17): `ListItem` rows with title/snippet/meta + selection and hover washes in both the folder rail and the note list; hairline seams; spring-pinned add-folder row; `list_summary` footer; **responsive weighted panes** (`grow={1}/{1.5}/{2.5}` — proportions hold under window resize). `Scroll` (controlled offset) still open | [[PLAN-CATALOG]] waves 1 + `ListItem` |
 | **M3 — done** | Multi-line editor (landed 2026-07-17): `Textarea` replaced the interim Input (`editor-body`); Enter/Up/Down/newline-preserving paste in the shell; metadata line sits above. Chrome-dissolve styling waits on [[PLAN-TOKENS]] T3 (M8) | [[PLAN-TEXTAREA]] stage 1 |
-| **M4** | Keyboard shortcuts: design note first (new § under [[18-tooling-and-dx|§18]]/[[19-platform-integration|§19]] — `shortcuts:` map in `app!`, names validated against `ReflectAction` at startup, shell dispatch, harness `press_shortcut("cmd+n")`). Then the reference set: new note/folder, rename, delete, copy, list navigation, folder jumps, Escape | new shell + `app!` work |
+| **M4** | Keyboard shortcuts: design note first (new § under [[18-developer-experience|§18]]/[[19-platform-integration|§19]] — `shortcuts:` map in `app!`, names validated against `ReflectAction` at startup, shell dispatch, harness `press_shortcut("cmd+n")`). Then the reference set: new note/folder, rename, delete, copy, list navigation, folder jumps, Escape | new shell + `app!` work |
 | **M5** | Resizable panes: `Split` with drag + focused-divider keyboard resize; fractions live in state so rebuilds reproduce layout exactly (snapshots stay deterministic) | [[PLAN-CATALOG]] `Split` + shell pointer-drag |
 | **M6** | Folder dialogs: in-tree `Dialog` + scrim (create/rename with inline empty/duplicate validation); confirm dialog for permanent delete from Recently Deleted (trashed notes open read-only) | [[PLAN-CATALOG]] `Dialog` |
 | **M7** | Context menus + clipboard: in-tree `ContextMenu` anchored to rows, items dispatch item-scoped actions (no prior selection needed); `Effect::ClipboardSet` for copy-note with acked outcome | [[PLAN-CATALOG]] `ContextMenu` · [[PLAN-NATIVE-INTEGRATIONS]] clipboard op |
@@ -107,4 +107,4 @@ camelCase for fields — not done here to stay in scope.
 
 ---
 
-← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[10.1-text-entry-the-full-spec-in-scope-committed|§10.1]] · [[07.1-the-built-in-catalog-closed-curated|§7.1]]
+← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[10.1-text-entry|§10.1]] · [[07.1-builtin-catalog|§7.1]]

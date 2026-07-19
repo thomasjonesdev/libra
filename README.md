@@ -112,10 +112,11 @@ now run on (completed rename/ergonomics plans live under
   `titleChanged(String)` per keystroke (controlled input; state is
   the source of truth), Save persisting via kv, a live theme toggle
   (Effect::SetTheme); caret/selection render byte-exactly in snapshots
-- `examples/gallery` — every component × state × theme (Appendix C via
-  Storybook): the PR visual-review surface; snapshot matrix covers
-  both built-in themes; `cargo run -p gallery -- themes/solarized.toml`
-  previews a custom theme table live
+- `examples/gallery` — a Storybook-style **component workbench** (Appendix C):
+  a three-pane app (sidebar → isolated component canvas → controls), the PR
+  visual-review surface, snapshot-covered per component under both built-in
+  themes; `cargo run -p gallery -- themes/solarized.toml` previews a custom
+  theme table live
 
 ## Run it
 

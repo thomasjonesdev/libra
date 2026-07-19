@@ -11,7 +11,7 @@ type: plan
 # Component catalog — expanded inventory
 
 **Status: planned.** Supersedes the short “VirtualList → Table → LogView”
-stub. Full target list for [[07.1-the-built-in-catalog-closed-curated|§7.1]],
+stub. Full target list for [[07.1-builtin-catalog|§7.1]],
 aligned with Vercel json-render RN standards **plus** Libra's ops-dense
 components. Umbrella: [[PLAN-UI-SURFACE]].
 
@@ -19,7 +19,9 @@ components. Umbrella: [[PLAN-UI-SURFACE]].
 token-only styling ([[PLAN-TOKENS]]), semantics, keyboard/focus where
 interactive, gallery fixture, and snapshots under `libra-dark` (and
 light when the matrix grows). No GPU. Prefer **beautiful defaults** over
-prop sprawl — variants via tokens + a small closed attr set.
+prop sprawl — variants via tokens + a small closed attr set. *Where a
+component lives* (one file per component) and the authoring template are
+[[PLAN-COMPONENTS]].
 
 ## Mirror map (json-render RN → Libra)
 
@@ -30,17 +32,17 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Container` | `Box` / keep `Column`+`Row` | partial | Padding/bg/radius via tokens; may stay layout primitives |
 | `Row` | `Row` | **shipped** | Extend align/justify/wrap as needed |
 | `Column` | `Column` | **shipped** | |
-| `ScrollContainer` | `Scroll` | planned | Vertical/horizontal; §7.1 |
+| `ScrollContainer` | `Scroll` | **shipped** 2026-07-18 | Vertical viewport (`<Scroll testId height?>`); clips + wheel-scrolls via the [[09.1-display-list|§9.1]] clip primitive + scroll-as-input — [[PLAN-SCROLL]]. Horizontal later |
 | `SafeArea` | `SafeArea` | planned | Shell insets — [[PLAN-NATIVE-INTEGRATIONS]] |
 | `Spacer` | `Spacer` | **shipped** 2026-07-16 | `<Spacer/>` spring or `size={px}`; pure layout, paints nothing |
 | `Pressable` | (Button / pressable slot) | partial | Prefer real controls; generic Pressable only if composition needs it |
 | `Divider` | `Separator` | **shipped** 2026-07-16 | H default / `vertical`; 1px `theme.hairline` (first T1 token consumer) |
-| `Heading` | `Heading` or `Text size=` | planned | Levels h1–h4 → type tokens |
+| `Heading` | `Heading` | **shipped** 2026-07-18 | `level` 1–4 → type ramp (xl/lg/md/sm), bold; builds to a `Text` item (reuses text paint) |
 | `Paragraph` | `Text` / `Paragraph` | partial | Body defaults |
-| `Label` | `Label` | planned | Caption / form label |
+| `Label` | `Label` | **deferred** | `Text size="sm" muted` already covers captions; a *true* Label needs control-association (form model), so not worth a distinct node yet |
 | `Image` | `Image` | planned (§7.1) | Deterministic decode path TBD |
 | `Avatar` | `Avatar` | planned | Image or initials |
-| `Badge` | `Badge` | planned (§7.1) | Semantic variants via tokens |
+| `Badge` | `Badge` | **shipped** 2026-07-17 | `tone` (neutral/danger/warning/success/info) → status `*_bg`/`*_fg` tokens (PLAN-TOKENS T2); pill, `type_xs`, `space`-padded. First component built through the [[PLAN-COMPONENTS]] `catalog/` flow. |
 | `Chip` | `Chip` | planned | Select / remove events |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
 | `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
@@ -48,8 +50,8 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Checkbox` | `Checkbox` | planned | |
 | `Slider` | `Slider` | planned | |
 | `SearchBar` | `Search` | planned | Input chrome + submit |
-| `Spinner` | `Spinner` | planned | Deterministic frame, not wall-clock spin in snapshots |
-| `ProgressBar` | `Progress` | planned | 0…1 value |
+| `Spinner` | `Spinner` | **blocked** | Needs either an arc/circle draw command (none today) **or** an animation phase on the paint path — the latter is §9.6 animated tokens (unbuilt). A deterministic *static* spinner is just decoration; revisit when §9.6 or an arc `DrawCmd` lands |
+| `ProgressBar` | `Progress` | **shipped** 2026-07-18 | `value={0..1}` — **literal or bound** (`value={ratio}`, typed f32; §6.5 preserved — [[26-open-questions|§26]] #8); `surface_raised` track + `accent` fill, pill radius |
 | `Card` | `Card` | planned | Prefer composition; elevate via tokens |
 | `ListItem` | `ListItem` | **shipped** 2026-07-17 | title/subtitle/meta + `selected` (bound bool) + hover wash (`surface_raised`); leading/trailing slots later |
 | `Modal` | `Dialog` / `Modal` | planned | In-tree chrome **and/or** OS dialog — see native plan |
@@ -78,7 +80,7 @@ never invents colors.
 |---|---|---|
 | **0** | Token table expansion | Shared foundation — **done** ([[PLAN-TOKENS]] T1) |
 | **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **Spacer/Separator done** (+ `width={px}` pane sizing on Column/Row, `chrome` conformance fixture); `Scroll` remains |
-| **2** | `Heading`/`Label` polish, `Badge`, `Progress`, `Spinner` | Visible “product” chrome, low interaction risk |
+| **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
 | **3** | `Switch`, `Checkbox`, `Slider`, `Search` | Control set parity with RN catalog |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
 | **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
@@ -95,7 +97,7 @@ Reorder freely when a real app needs something earlier — but still
 
 For each catalog add:
 
-- [ ] Normative mention in [[07.1-the-built-in-catalog-closed-curated|§7.1]] if new
+- [ ] Normative mention in [[07.1-builtin-catalog|§7.1]] if new
 - [ ] `ViewNode` + layout + paint; **only theme tokens** (no raw hex in component)
 - [ ] Semantics (role/label/state) for AccessKit + harness queries
 - [ ] Both engines if markup attrs grow + conformance fixture when grammar changes (§6.4)
@@ -111,4 +113,4 @@ For each catalog add:
 
 ---
 
-← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[07.1-the-built-in-catalog-closed-curated|§7.1]]
+← [[Plans Index]] · [[PLAN-UI-SURFACE]] · [[PLAN-COMPONENTS]] · [[07.1-builtin-catalog|§7.1]]

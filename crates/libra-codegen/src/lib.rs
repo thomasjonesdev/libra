@@ -1,17 +1,11 @@
-//! libra-codegen — the release engine (ARCHITECTURE.md §6.4): compile a
-//! parsed `.lx` AST to a static Rust `fn(state) -> ViewNode`.
+//! libra-codegen — the release view engine: compile a parsed `.lx` AST to a
+//! static Rust `fn(state) -> ViewNode`, so a binding/handler typo becomes a
+//! rustc error (each expr carries a `// file:line:col` trailer). Its semantic
+//! table must mirror libra-interp exactly — the `conformance/` suite is the
+//! drift alarm.
 //!
-//! Bindings compile to direct field accesses and handlers to real
-//! Action references — so a typo'd binding or handler is a **rustc
-//! compile error** (§6.5), not a runtime surprise. Each generated
-//! expression carries a `// file:line:col` trailer so error snippets
-//! point back into the markup.
-//!
-//! The generator is a fold over the *same AST* the interpreter walks;
-//! its semantic table (defaults, attr names, text-joining rules) must
-//! mirror libra-interp exactly. The conformance suite asserts
-//! `interp(state, ast) == codegen(ast)(state)` over golden fixtures —
-//! any drift is a failing test, not a shipped bug.
+//! Architecture: ARCHITECTURE.md §6.4 (two engines), §6.5 (compile-time
+//! validation).
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
 
@@ -70,7 +64,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
     let Node::Element { name, attrs, children, span } = node else {
         return Err(err(
             Span { line: 0, col: 0 },
-            "text content is only allowed inside <Text> and <Button>",
+            "text content is only allowed inside <Text>, <Button>, and <Badge>",
         ));
     };
     let i = indent(d);
@@ -193,6 +187,122 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                  {i}}}",
                 at = at(cfg, *span),
                 tid = opt_str(&test_id),
+            ))
+        }
+
+        // Mirror of interp's "Badge" arm (tone default Neutral).
+        "Badge" => {
+            let mut tone = "Neutral";
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(s)) => {
+                        tone = match s.as_str() {
+                            "neutral" => "Neutral",
+                            "danger" => "Danger",
+                            "warning" => "Warning",
+                            "success" => "Success",
+                            "info" => "Info",
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!("unknown tone \"{other}\" — expected \"neutral\", \"danger\", \"warning\", \"success\" or \"info\""),
+                                ))
+                            }
+                        }
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let content = gen_text_content(children, cfg, *span, d + 1, bound)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Badge {{ {at}\n\
+                 {i}    label: {content},\n\
+                 {i}    tone: ::libra_components::Tone::{tone},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // Mirror of interp's "Heading" arm (level default 1, clamped 1..4).
+        "Heading" => {
+            let mut level = 1u8;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("level", AttrValue::Num(v)) => level = (*v as u8).clamp(1, 4),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let content = gen_text_content(children, cfg, *span, d + 1, bound)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Heading {{ {at}\n\
+                 {i}    content: {content},\n\
+                 {i}    level: {level},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // Mirror of interp's "Progress" arm. A bound `value` compiles to a
+        // direct typed field access (`state.foo`), so a non-`f32` field is a
+        // rustc error at the `.lx` line (§6.5) — the binding stays typed, not
+        // stringly (§26 #8).
+        "Progress" => {
+            let mut value = "0.0f32".to_string();
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Num(v)) => value = f32_lit(*v),
+                    ("value", AttrValue::Ident(p)) => {
+                        value = display_ref_expr(p, bound).map_err(|m| err(a.span, m))?;
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Progress> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Progress {{ {at}\n\
+                 {i}    value: {value},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // Mirror of interp's "Scroll" arm (§7.1, PLAN-SCROLL).
+        "Scroll" => {
+            let mut height: Option<f32> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("height", AttrValue::Num(v)) => height = Some(*v),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Scroll> requires testId=\"…\" (its scroll-position key)"))?;
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Scroll {{ {at}\n\
+                 {i}    height: {height},\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                height = opt_f32(height),
+                tid = str_lit(&test_id),
             ))
         }
 
@@ -590,7 +700,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
             ),
         )),
     }

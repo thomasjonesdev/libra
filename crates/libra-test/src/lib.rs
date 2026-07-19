@@ -1,20 +1,10 @@
-//! libra-test — the in-process test harness (ARCHITECTURE.md §15).
+//! libra-test — the in-process `Harness<A: App>`: build the real view via the
+//! real interpreter, query by semantics, and dispatch through real hit
+//! testing and the app's real `update`. Effects are intercepted as data
+//! (assert + hand-feed results in any order — no mocks); snapshots compare PNG
+//! bytes exactly.
 //!
-//! Component tests: build the real view via the real interpreter, lay
-//! it out at a virtual viewport, query by semantics, dispatch through
-//! real hit testing and the app's real `update`.
-//!
-//! Integration tests: every `Effect` returned by `init`/`update` is
-//! intercepted into a script queue instead of executed. Tests assert
-//! on them (`expect_effect`) and hand-feed results back (`resolve_*`)
-//! in any order — including adversarial orders. No mocks anywhere: the
-//! effect is data, the fixture is data, the dispatch is the app's real
-//! `update`.
-//!
-//! Snapshot tests: render through the canonical executor and compare
-//! PNG bytes exactly. Missing snapshot → recorded (first run);
-//! LIBRA_VALIDATE=1 → re-record (validate) after intentional changes; otherwise any
-//! byte difference fails with expected/actual/diff-heatmap paths.
+//! Architecture: ARCHITECTURE.md §15 (testing architecture).
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
 use libra_core::{App, Effect, FrameInfo, HttpResult, Instant, KvResult, ReflectAction, SeriesId};
@@ -24,7 +14,7 @@ use libra_markup::Node;
 use libra_raster::Renderer;
 use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_components::{InputFocus, LaidTree, Role};
+use libra_components::{InputFocus, LaidTree, Role, ScrollState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -53,6 +43,10 @@ pub struct Harness<A: App> {
     /// frame; `hover(sel)` pins it to an item's center for hover
     /// snapshots.
     hover: Option<(f32, f32)>,
+    /// PLAN-SCROLL: scroll positions by `<Scroll>` test_id. A deterministic
+    /// input like `hover`/`focus` — empty renders each scroll at the top;
+    /// `scroll(id, dy)` moves one.
+    scroll_state: ScrollState,
 }
 
 #[derive(Clone, Debug)]
@@ -182,7 +176,18 @@ impl<A: App> Harness<A> {
             focus: None,
             theme,
             hover: None,
+            scroll_state: ScrollState::new(),
         }
+    }
+
+    /// Scroll a `<Scroll testId=…>` viewport by `dy` logical px (down = +).
+    /// Clamped at the top by 0 and at the bottom by content overflow — a
+    /// deterministic input, so scroll snapshots stay byte-exact (PLAN-SCROLL).
+    pub fn scroll(&mut self, test_id: &str, dy: f32) {
+        let pos = self.scroll_state.entry(test_id.to_string()).or_insert(0.0);
+        *pos = (*pos + dy).max(0.0);
+        self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        self.laid.apply_scroll(&self.scroll_state);
     }
 
     /// Pin the hover point to the selected item's center (§7.1

@@ -1,13 +1,13 @@
-//! libra-interp — the dev engine: walk a parsed `.lx` AST against the
-//! live state's reflection to produce a ViewTree (ARCHITECTURE.md §6.4).
+//! libra-interp — the dev view engine: walk a parsed `.lx` AST against the
+//! live state's reflection to produce a ViewTree. Validation happens here at
+//! load/rebuild time, with spans (unknown elements/attrs, bindings or
+//! handlers that name nothing) — the same diagnostics codegen turns into
+//! compile errors.
 //!
-//! Validation happens here, at load/rebuild time, with spans:
-//! unknown elements, unknown attributes, bindings that name no state
-//! field, and handlers that name no action are all errors — the
-//! same diagnostics the release codegen turns into compile errors.
+//! Architecture: ARCHITECTURE.md §6.4 (one grammar, two engines).
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
-use libra_components::{BoxStyle, TextSize, Variant, ViewNode};
+use libra_components::{BoxStyle, TextSize, Tone, Variant, ViewNode};
 use libra_core::CollectionRow;
 
 #[derive(Debug, Clone)]
@@ -262,7 +262,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
     let Node::Element { name, attrs, children, span } = node else {
         return Err(err(
             Span { line: 0, col: 0 },
-            "text content is only allowed inside <Text> and <Button>",
+            "text content is only allowed inside <Text>, <Button>, and <Badge>",
         ));
     };
 
@@ -383,6 +383,91 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             };
             let label = text_content(children, scope, *span)?;
             Ok(ViewNode::Button { label, variant, on_press: msg, on_press_arg, test_id })
+        }
+
+        "Badge" => {
+            let mut tone = Tone::Neutral;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(s)) => {
+                        tone = match s.as_str() {
+                            "neutral" => Tone::Neutral,
+                            "danger" => Tone::Danger,
+                            "warning" => Tone::Warning,
+                            "success" => Tone::Success,
+                            "info" => Tone::Info,
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!("unknown tone \"{other}\" — expected \"neutral\", \"danger\", \"warning\", \"success\" or \"info\""),
+                                ))
+                            }
+                        }
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = text_content(children, scope, *span)?;
+            Ok(ViewNode::Badge { label, tone, test_id })
+        }
+
+        "Heading" => {
+            let mut level = 1u8;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("level", AttrValue::Num(v)) => level = (*v as u8).clamp(1, 4),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let content = text_content(children, scope, *span)?;
+            Ok(ViewNode::Heading { content, level, test_id })
+        }
+
+        "Progress" => {
+            let mut value = 0.0f32;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    // Literal or a bound numeric State field. The binding is
+                    // typed: interp parses the field's Display (f32 round-trips)
+                    // and release codegen accesses it directly, so rustc rejects
+                    // a non-numeric field at the `.lx` line (§6.5).
+                    ("value", AttrValue::Num(v)) => value = *v,
+                    ("value", AttrValue::Ident(path)) => {
+                        let s = (scope.field)(path)
+                            .ok_or_else(|| err(a.span, format!("no field '{path}' on State")))?;
+                        value = s.parse::<f32>().map_err(|_| {
+                            err(a.span, format!("field '{path}' is not a number — <Progress value> expects 0..1"))
+                        })?;
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Progress> takes no children"));
+            }
+            Ok(ViewNode::Progress { value, test_id })
+        }
+
+        "Scroll" => {
+            let mut height = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("height", AttrValue::Num(v)) => height = Some(*v),
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Scroll> requires testId=\"…\" (its scroll-position key)"))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Scroll { height, test_id, children: kids })
         }
 
         "Chart" | "Sparkline" => {
@@ -666,7 +751,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Text, Button, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

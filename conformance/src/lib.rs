@@ -56,6 +56,9 @@ pub struct TestState {
     pub feed: String,
     /// PLAN-ACCESSORS — nested path + accessors fixture.
     pub user: User,
+    /// Numeric binding — `<Progress value={ratio}>`. Typed f32 field: interp
+    /// parses its Display (round-trips), codegen accesses it directly (§6.5).
+    pub ratio: f32,
 }
 
 impl Default for TestState {
@@ -77,6 +80,7 @@ impl Default for TestState {
             running: true,
             feed: "telemetry".into(),
             user: User { name: "Ada".into(), active: true },
+            ratio: 0.5,
         }
     }
 }
@@ -111,4 +115,7 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/accessors.rs"));
     include!(concat!(env!("OUT_DIR"), "/chrome.rs"));
     include!(concat!(env!("OUT_DIR"), "/list_textarea.rs"));
+    include!(concat!(env!("OUT_DIR"), "/badge.rs"));
+    include!(concat!(env!("OUT_DIR"), "/heading_progress.rs"));
+    include!(concat!(env!("OUT_DIR"), "/scroll.rs"));
 }

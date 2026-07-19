@@ -1,0 +1,10 @@
+<Column>
+  <Heading level={1}>Title</Heading>
+  <Heading level={2} testId="h2">Section</Heading>
+  <Heading level={3}>Subsection</Heading>
+  <Heading>Default level</Heading>
+  <Progress value={0.0} />
+  <Progress value={0.6} testId="p60" />
+  <Progress value={1.0} />
+  <Progress value={ratio} testId="bound" />
+</Column>

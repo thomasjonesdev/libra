@@ -15,15 +15,20 @@ type: architecture
 
 ## In this vault
 
-- [[05.1-the-core-declarations]]
-- [[05.2-what-the-macro-generates-one-expansion-no-magic]]
-- [[05.3-purity-rules-for-actions-enforced-by-convention-checked-by-lint]]
-- [[05.4-actions-are-events-not-setters]]
+- [[05.1-core-declarations]]
+- [[05.2-macro-expansion]]
+- [[05.3-purity-rules]]
+- [[05.4-actions-are-events]]
 - [[05.5-init]]
-- [[05.6-time-travel-and-replay-as-a-consequence]]
-- [[05.7-scaling-state-slices-not-fragmentation]]
-- [[05.8-app-assembly-one-declaration]]
-- [[05.9-app-module-layout-splitting-lib-rs-without-breaking-the-macros]]
+- [[05.6-time-travel-replay]]
+- [[05.7-state-slices]]
+- [[05.8-app-assembly]]
+- [[05.9-module-layout]]
+
+## In code
+
+- `crates/libra-core/src/lib.rs` — the `App` contract: `State` / `Action` / `reduce` / `Effect`
+- `crates/libra-reflect/` — `#[libra::state]` / `#[libra::actions]` / `app!`
 
 ---
 

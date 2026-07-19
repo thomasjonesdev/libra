@@ -33,7 +33,7 @@ libra dashboard bench — 600 frames, 16 series × 10000 Hz, 1280×800
 ```
 
 Everything wrong lives in the **windowed shell** (`libra-platform`, explicitly *not*
-on the determinism contract's paint path — [[21-workspace-and-crate-layout|§21]]) plus two shell-adjacent hot paths.
+on the determinism contract's paint path — [[21-crate-layout|§21]]) plus two shell-adjacent hot paths.
 Diagnosis, in order of user-visible impact:
 
 1. **Frame pacing** — a fixed 16 ms timer (`FRAME_INTERVAL`,
@@ -76,7 +76,7 @@ stage and is optional.**
       conformance suite stay green untouched. No pinned dep bumps (taffy,
       tiny-skia, fontdue).
 - [x] `App::update` stays pure; nothing here may add clocks/I/O to app code or to
-      the canonical paint path. All wall-clock use stays inside the shell ([[21-workspace-and-crate-layout|§21]])
+      the canonical paint path. All wall-clock use stays inside the shell ([[21-crate-layout|§21]])
       and the effects/data runtimes ([[12.3-execution-model|§12.3]], [[14.2-architecture|§14.2]]).
 - [x] New/changed doc comments cite the relevant ARCHITECTURE.md § (house style).
 - [ ] Manual smoke after S1, S2, S6: `cargo run -p dashboard --release`, watch
@@ -181,7 +181,7 @@ byte-equivalent by construction.
       row-slice `copy_from_slice`/`fill`, same style as the dirty-row copy just
       below it.
 - [x] All other cmds keep replaying at original coordinates over the whole scratch
-      — that FP-identity rule ([[09.3-making-cpu-fast-enough-damage-layers|§9.3]], module doc) is untouched. Only `Clear`
+      — that FP-identity rule ([[09.3-damage-layers|§9.3]], module doc) is untouched. Only `Clear`
       changes, and only because its output inside the dirty rect is
       coordinate-independent.
 - [x] Doc comment on the special case: why it's byte-equivalent (only dirty rows
@@ -250,7 +250,7 @@ per ~millisecond instead of per sample, without changing a single sample value
 
 Charts compute M4 columns at logical width, so Retina renders 2-px-wide steps.
 Thread a density hint into paint; **the canonical path stays at 1.0, so this is
-snapshot-neutral**. The shell is off the determinism contract ([[21-workspace-and-crate-layout|§21]]) — this is
+snapshot-neutral**. The shell is off the determinism contract ([[21-crate-layout|§21]]) — this is
 exactly the HiDPI seam the architecture reserved.
 
 - [x] `crates/libra-components/src/lib.rs`: add
@@ -266,7 +266,7 @@ exactly the HiDPI seam the architecture reserved.
 - [x] `Shell::present` calls `laid.paint_at_density(…, scale)` (the window scale
       factor). Harness, bench, codegen, conformance keep calling `paint` — grep
       gate: outside `libra-platform`, no caller passes a density ≠ 1.0.
-- [x] Doc comment on `paint_at_density`: density is a *presentation* hint ([[21-workspace-and-crate-layout|§21]]);
+- [x] Doc comment on `paint_at_density`: density is a *presentation* hint ([[21-crate-layout|§21]]);
       the canonical frame ([[09-rendering|§9]]) is density 1.0 by definition; determinism of
       `chart_columns` is per-(window, width) so both densities are individually
       deterministic ([[14.3-downsampling-m4|§14.3]]'s cache keys on width_px already).

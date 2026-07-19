@@ -1,0 +1,7 @@
+<Column>
+  <Badge>neutral</Badge>
+  <Badge tone="success" testId="ok">Online</Badge>
+  <Badge tone="danger">Offline</Badge>
+  <Badge tone="warning">Degraded</Badge>
+  <Badge tone="info">Info</Badge>
+</Column>

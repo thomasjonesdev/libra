@@ -16,4 +16,4 @@ Do **not** start until lists hurt or focus-in-list is required. Full rebuild rem
 
 ---
 
-← [[Plans Index]] · [[06.2-the-closed-grammar-what-markup-can-do|§6.2]]
+← [[Plans Index]] · [[06.2-closed-grammar|§6.2]]

@@ -1,0 +1,216 @@
+//! The layout pass (ARCHITECTURE.md §8): build a taffy tree from a `ViewNode`,
+//! compute it at the viewport, and flatten it to paint-ordered `Item`s with
+//! absolute rects.
+//!
+//! `build` is a thin dispatcher: each arm delegates to the component's own
+//! `catalog::<component>::build`, which receives a [`BuildCx`] (the taffy tree,
+//! the meta accumulator, the measurer, the theme). One file per component —
+//! see PLAN-COMPONENTS.
+
+use crate::catalog;
+use crate::node::*;
+use libra_draw::{Rect, Theme};
+use taffy::prelude::*;
+
+/// The per-node accumulator: `(taffy id, item kind, semantics, handler)`.
+/// `handler` is `(on_press_name, optional item-scoped String arg)`.
+pub(crate) type Meta = Vec<(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)>;
+
+/// Everything a component's `build` needs. Passed by `&mut` so a component
+/// can add taffy nodes, push semantics/handlers, and lay out its children.
+pub(crate) struct BuildCx<'a> {
+    pub tree: &'a mut TaffyTree<()>,
+    pub meta: &'a mut Meta,
+    pub m: &'a dyn TextMeasurer,
+    pub theme: &'a Theme,
+}
+
+impl BuildCx<'_> {
+    /// Lay out a child node (containers use this to recurse).
+    pub(crate) fn child(&mut self, node: &ViewNode) -> Result<NodeId, taffy::TaffyError> {
+        build(self, node)
+    }
+}
+
+/// Dispatch a `ViewNode` to its component's `build`. Adding a component is a
+/// new arm here + a `catalog/<component>.rs` module (+ the grammar in both
+/// engines, §6.4).
+pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::TaffyError> {
+    match view {
+        ViewNode::Column { style, children } => catalog::container::build_column(cx, style, children),
+        ViewNode::Row { style, children } => catalog::container::build_row(cx, style, children),
+        ViewNode::Text { content, size, bold, muted, grow, test_id } => {
+            catalog::text::build(cx, content, *size, *bold, *muted, *grow, test_id)
+        }
+        ViewNode::Button { label, variant, on_press, on_press_arg, test_id } => {
+            catalog::button::build(cx, label, *variant, on_press, on_press_arg, test_id)
+        }
+        ViewNode::Badge { label, tone, test_id } => catalog::badge::build(cx, label, *tone, test_id),
+        ViewNode::Heading { content, level, test_id } => {
+            catalog::heading::build(cx, content, *level, test_id)
+        }
+        ViewNode::Progress { value, test_id } => catalog::progress::build(cx, *value, test_id),
+        ViewNode::Scroll { height, test_id, children } => {
+            catalog::scroll::build(cx, *height, test_id, children)
+        }
+        ViewNode::Chart { handle, height, test_id } => {
+            catalog::chart::build_chart(cx, *handle, *height, test_id)
+        }
+        ViewNode::Sparkline { handle, width, height, test_id } => {
+            catalog::chart::build_sparkline(cx, *handle, *width, *height, test_id)
+        }
+        ViewNode::Input { value, placeholder, on_change, test_id } => {
+            catalog::input::build(cx, value, placeholder, on_change, test_id)
+        }
+        ViewNode::ListItem { title, subtitle, meta, selected, on_press, on_press_arg, test_id } => {
+            catalog::list_item::build(cx, title, subtitle, meta, *selected, on_press, on_press_arg, test_id)
+        }
+        ViewNode::Textarea { value, placeholder, on_change, test_id } => {
+            catalog::textarea::build(cx, value, placeholder, on_change, test_id)
+        }
+        ViewNode::Spacer { size } => catalog::spacer::build(cx, *size),
+        ViewNode::Separator { vertical } => catalog::separator::build(cx, *vertical),
+        ViewNode::SourceFrames { on_tick } => catalog::source::build_frames(cx, on_tick),
+        ViewNode::SourceInterval { every_ms, on_tick } => {
+            catalog::source::build_interval(cx, *every_ms, on_tick)
+        }
+        ViewNode::SourceStream { id, on_event } => catalog::source::build_stream(cx, id, on_event),
+    }
+}
+
+pub fn layout(
+    view: &ViewNode,
+    viewport: (f32, f32),
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+) -> Result<LaidTree, LayoutError> {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    let mut meta: Meta = Vec::new();
+
+    let root = {
+        let mut cx = BuildCx { tree: &mut tree, meta: &mut meta, m: measurer, theme };
+        build(&mut cx, view).map_err(|e| LayoutError(format!("{e:?}")))?
+    };
+
+    // Root fills the viewport.
+    let mut root_style = tree.style(root).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
+    root_style.size = Size { width: length(viewport.0), height: length(viewport.1) };
+    tree.set_style(root, root_style).map_err(|e| LayoutError(format!("{e:?}")))?;
+
+    tree.compute_layout(
+        root,
+        Size {
+            width: AvailableSpace::Definite(viewport.0),
+            height: AvailableSpace::Definite(viewport.1),
+        },
+    )
+    .map_err(|e| LayoutError(format!("{e:?}")))?;
+
+    // Flatten with accumulated absolute positions, in paint (pre-)order.
+    let mut items = Vec::with_capacity(meta.len());
+    let mut seen = std::collections::HashSet::new();
+    flatten(&tree, root, (0.0, 0.0), &meta, &mut items, &mut seen, None)?;
+
+    // §12.5 source leaves are intentionally not flex children — attach
+    // them with a zero rect so harness/`by::source` still see them.
+    for (id, kind, sem, _) in &meta {
+        if matches!(kind, ItemKind::Source(_)) && !seen.contains(id) {
+            items.push(Item {
+                kind: kind.clone(),
+                rect: Rect::new(0.0, 0.0, 0.0, 0.0),
+                semantics: sem.clone(),
+                on_press: None,
+                on_press_arg: None,
+                clip: None,
+                scroll: None,
+            });
+        }
+    }
+
+    Ok(LaidTree { items, width: viewport.0, height: viewport.1 })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn flatten(
+    tree: &TaffyTree<()>,
+    node: NodeId,
+    origin: (f32, f32),
+    meta: &[(NodeId, ItemKind, Semantics, Option<(String, Option<String>)>)],
+    out: &mut Vec<Item>,
+    seen: &mut std::collections::HashSet<NodeId>,
+    // PLAN-SCROLL: the enclosing `<Scroll>` (test_id, viewport rect), if any —
+    // descendants inherit it as their clip + scroll tag.
+    scroll_ctx: Option<(String, Rect)>,
+) -> Result<(), LayoutError> {
+    let l = tree.layout(node).map_err(|e| LayoutError(format!("{e:?}")))?;
+    let abs = (origin.0 + l.location.x, origin.1 + l.location.y);
+    let rect = Rect::new(abs.0, abs.1, l.size.width, l.size.height);
+
+    let mut child_ctx = scroll_ctx.clone();
+    if let Some((id, kind, sem, press)) = meta.iter().find(|(id, ..)| *id == node) {
+        seen.insert(*id);
+        let (clip, scroll) = match &scroll_ctx {
+            Some((sid, vp)) => (Some(*vp), Some(sid.clone())),
+            None => (None, None),
+        };
+        out.push(Item {
+            kind: kind.clone(),
+            rect,
+            semantics: sem.clone(),
+            on_press: press.as_ref().map(|(name, _)| name.clone()),
+            on_press_arg: press.as_ref().and_then(|(_, arg)| arg.clone()),
+            clip,
+            scroll,
+        });
+        // A `<Scroll>` viewport becomes the scroll context for its descendants
+        // (the viewport itself keeps the outer context — unclipped in v1).
+        if matches!(kind, ItemKind::Scroll) {
+            child_ctx = sem.test_id.clone().map(|tid| (tid, rect));
+        }
+    }
+    for child in tree.children(node).map_err(|e| LayoutError(format!("{e:?}")))? {
+        flatten(tree, child, abs, meta, out, seen, child_ctx.clone())?;
+    }
+    Ok(())
+}
+
+/// Flex `Style` for a `Column`/`Row` from its `BoxStyle`. Shared by the
+/// container component.
+pub(crate) fn box_style(s: &BoxStyle, dir: FlexDirection) -> Style {
+    Style {
+        display: Display::Flex,
+        flex_direction: dir,
+        gap: Size { width: length(s.gap), height: length(s.gap) },
+        padding: taffy::Rect {
+            left: length(s.padding),
+            right: length(s.padding),
+            top: length(s.padding),
+            bottom: length(s.padding),
+        },
+        flex_grow: s.grow,
+        // A fixed pane width must not be flexed away by siblings.
+        flex_shrink: if s.width.is_some() { 0.0 } else { 1.0 },
+        size: Size {
+            width: s.width.map(length).unwrap_or(auto()),
+            height: auto(),
+        },
+        // The flexbox `min-height: 0` reset: without it, a flex container's
+        // default `min-height: auto` sizes it to its content, so a definite
+        // outer height never constrains a nested `<Scroll>` — its content
+        // would inflate the whole chain instead of overflowing (PLAN-SCROLL).
+        min_size: Size { width: auto(), height: length(0.0) },
+        align_items: if s.cross_center { Some(AlignItems::Center) } else { None },
+        justify_content: if s.main_center { Some(JustifyContent::Center) } else { None },
+        ..Default::default()
+    }
+}
+
+/// §12.5: is this child a mounted source element? Used by containers to keep
+/// all three kinds (`Frames`/`Interval`/`Stream`) out of the flex tree —
+/// they're registered in `meta` but never a taffy child.
+pub(crate) fn is_source_node(n: &ViewNode) -> bool {
+    matches!(
+        n,
+        ViewNode::SourceFrames { .. } | ViewNode::SourceInterval { .. } | ViewNode::SourceStream { .. }
+    )
+}

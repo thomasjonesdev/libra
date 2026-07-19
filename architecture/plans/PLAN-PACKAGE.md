@@ -18,4 +18,4 @@ type: plan
 
 ---
 
-← [[Plans Index]] · [[18-tooling-and-dx|§18]] if present; else [[23-roadmap|§23]]
+← [[Plans Index]] · [[18-developer-experience|§18]] if present; else [[23-roadmap|§23]]

@@ -1,20 +1,11 @@
-//! The Phase 1 reference app: the counter that fetches and persists
-//! (ARCHITECTURE.md §23, Phase 1). Everything the effects runtime can
-//! do, exercised through the pure loop:
+//! The Phase 1 reference app: a counter that fetches and persists — everything
+//! the effects runtime does, exercised through the pure loop (KV load/save on
+//! `init:` and on every count change, plus an HTTP quote into a
+//! `Remote<String, String>`). `quote_state` is `#[libra(skip)]`ped (a `Remote`,
+//! not Display); the plain `quote` field is its display projection.
 //!
-//! - startup loads the persisted count (`Effect::kv_get` via `init:`)
-//! - every count change persists (`Effect::kv_set_acked`)
-//! - "Fetch zen" GETs a plain-text quote into a `Remote<String, String>`
-//!
-//! Actions are events (§5.4): `count_loaded`, `saved`, `quote_arrived`
-//! are continuations — what happened, not what to do — while
-//! `increment`/`decrement`/`reset`/`fetch_quote` are the user-intent
-//! handlers markup dispatches by name.
-//!
-//! Reflection note: `quote_state` is a `Remote` (not Display), so it is
-//! `#[libra(skip)]`ped; its display projection is the plain `quote`
-//! field, maintained by the actions. That's §6.3's rule — if you want
-//! to compute it, put it on State — applied to reflection.
+//! Architecture: ARCHITECTURE.md §12 (effects runtime), §5.4 (actions are
+//! events), §6.3 (display projections).
 
 use libra::{actions, app, state};
 use libra_core::{Effect, HttpRequest, HttpResult, KvResult, Remote};

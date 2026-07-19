@@ -18,13 +18,13 @@ ports to `{t.text}` / `key={t.id}` / `onPress={complete(t.id)}` (structured
 longer encode `"id. text"`). Opaque `Vec<SeriesHandle>` / `Vec<String>` keep
 whole-value iteration.
 
-**Read before writing code:** [[06.2-the-closed-grammar-what-markup-can-do|§6.2]]
-(implemented-today vs vision), [[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]]
+**Read before writing code:** [[06.2-closed-grammar|§6.2]]
+(implemented-today vs vision), [[06.3-grammar-restrictions|§6.3]]
 (`#[project]` projections; filtered lists until `<if>`),
 [[06.4-one-grammar-two-engines|§6.4]] (dual-engine + conformance),
-[[06.5-compile-time-validation-the-part-react-cannot-give-you|§6.5]],
-[[05.2-what-the-macro-generates-one-expansion-no-magic|§5.2]],
-[[appendix-a-the-determinism-contract-as-a-checklist|Appendix A]].
+[[06.5-compile-time-validation|§6.5]],
+[[05.2-macro-expansion|§5.2]],
+[[appendix-a-determinism-checklist|Appendix A]].
 
 Design is settled below; this plan is execution order, acceptance criteria,
 and traps. Architecture notes stay normative — Phase 0 updates §6.2's
@@ -64,7 +64,7 @@ slice** — not the rest of the vision.
 - Accessor whitelist (`{items.len()}`, `isEmpty`, format specs)
 - Nested paths beyond one segment (`item.a.b`)
 - `<if>` / `<else>` ([[26-open-questions|§26]])
-- `<Interval>` / `<Stream>` ([[12.5-declarative-subscriptions-effects-as-mount-scoped-data|§12.5]])
+- `<Interval>` / `<Stream>` ([[12.5-declarative-subscriptions|§12.5]])
 - Composition / slots
 - A real reconciler (keys remain identity *data* for later; layout still rebuilds fully)
 
@@ -89,7 +89,7 @@ Until `<if>` exists, todos keeps **two projected collections** (`active` /
 visual band (worse UX, not worth waiting on).
 
 `#[project]` still rebuilds the filtered collections after every action
-([[06.3-what-markup-cannot-do-and-why-each-restriction-pays|§6.3]]); actions
+([[06.3-grammar-restrictions|§6.3]]); actions
 only mutate the source-of-truth `items`.
 
 Target markup after the port:
@@ -111,7 +111,7 @@ Target markup after the port:
 
 | # | Phase | Where |
 |---|---|---|
-| 0 | Lock the contract in the vault | [[06.2-the-closed-grammar-what-markup-can-do|§6.2]] |
+| 0 | Lock the contract in the vault | [[06.2-closed-grammar|§6.2]] |
 | 1 | Structured collection reflection | `libra-core`, `libra-reflect` |
 | 2 | Loop field resolution in both engines | `libra-markup` (if needed), `libra-interp`, `libra-codegen`, `conformance/` |
 | 3 | Dispatch uses resolved field strings | harness + shell (likely already fine) |
@@ -125,7 +125,7 @@ first code PR that changes observable behavior is also fine — never leave
 
 ---
 
-## Phase 0 — Lock the contract ([[06.2-the-closed-grammar-what-markup-can-do|§6.2]])
+## Phase 0 — Lock the contract ([[06.2-closed-grammar|§6.2]])
 
 Update **Implemented today** (not only the vision bullets) to state:
 
@@ -309,4 +309,4 @@ LIBRA_BLESS=1 cargo test -p todos --test snapshots
 
 ---
 
-← [[Architecture Home]] · [[Plans Index]] · [[Map of Content]] · governing [[06.2-the-closed-grammar-what-markup-can-do|§6.2]]
+← [[Architecture Home]] · [[Plans Index]] · [[Map of Content]] · governing [[06.2-closed-grammar|§6.2]]

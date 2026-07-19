@@ -1,9 +1,10 @@
-//! libra-query — the query cache (Appendix C, via TanStack Query):
-//! request dedup, stale-while-revalidate, retry with backoff, and
-//! invalidation — implemented as **pure state machinery**. A `Query<T>`
-//! lives on State; every decision is a pure function of
-//! (query state, injected time), every effect is a returned `Effect`, so
-//! the whole policy is unit/integration testable with zero infrastructure.
+//! libra-query — the query cache (request dedup, stale-while-revalidate, retry
+//! with backoff, invalidation) implemented as pure state machinery: a
+//! `Query<T>` on State, every decision a pure function of (query state,
+//! injected time), every effect a returned `Effect` — so the whole policy is
+//! testable with zero infrastructure.
+//!
+//! Architecture: ARCHITECTURE.md Appendix C (React ecosystem borrowings).
 //!
 //! Shape of use:
 //! ```ignore
