@@ -281,6 +281,55 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
         }
 
         // Mirror of interp's "Scroll" arm (§7.1, PLAN-SCROLL).
+        // §7.1 (PLAN-CATALOG / M6), matching libra-interp's "Dialog"
+        // arm exactly: title literal-or-binding, optional unit-action
+        // onDismiss, ordinary children.
+        "Dialog" => {
+            let mut title: Option<String> = None;
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", AttrValue::Str(s)) => title = Some(format!("{}.to_string()", str_lit(s))),
+                    ("title", AttrValue::Ident(p)) => {
+                        let expr = display_ref_expr(p, bound).map_err(|m| err(a.span, m))?;
+                        title = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_dismiss = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title = title
+                .ok_or_else(|| err(*span, "<Dialog> requires title={binding} or title=\"…\""))?;
+            let (dismiss_expr, dismiss_at) = match &on_dismiss {
+                Some((m, mspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *mspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Dialog {{ {at}\n\
+                 {i}    title: {title},\n\
+                 {i}    on_dismiss: {dismiss_expr}, {dismiss_at}\n\
+                 {i}    test_id: {tid},\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         "Scroll" => {
             let mut height: Option<f32> = None;
             let mut test_id: Option<String> = None;

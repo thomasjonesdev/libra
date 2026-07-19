@@ -115,14 +115,21 @@ fn recently_deleted_row_is_absent_until_something_is_trashed() {
     h.query(by::test_id("trash-folder")).assert_text("Recently Deleted");
 }
 
+/// The M6 dialog flow through the real UI: open, type, confirm.
+fn add_folder_via_dialog(h: &mut Harness<Notes>, name: &str) {
+    h.click(by::test_id("new-folder"));
+    h.type_text(by::test_id("dialog-name"), name);
+    h.blur();
+    h.click(by::test_id("dialog-confirm"));
+    settle_save(h);
+}
+
 #[test]
 fn adding_a_folder_and_switching_shows_its_own_notes() {
     let mut h = harness();
     add_note(&mut h, "In Notes folder");
 
-    h.type_text(by::test_id("new-folder"), "Work");
-    h.click(by::test_id("add-folder"));
-    settle_save(&mut h);
+    add_folder_via_dialog(&mut h, "Work");
 
     // Switched to the new (empty) folder automatically.
     h.query(by::test_id("folder-name")).assert_text("Work");
@@ -131,6 +138,25 @@ fn adding_a_folder_and_switching_shows_its_own_notes() {
     let notes_folder_id = h.state().folder_rows[0].id;
     h.dispatch(Action::SelectFolder(notes_folder_id.to_string()));
     assert_eq!(h.state().note_rows.len(), 1);
+}
+
+/// M6: the scrim is a modal barrier — app controls beneath an open
+/// dialog are unreachable, and click-outside dismisses (onDismiss).
+#[test]
+fn open_dialog_blocks_the_app_beneath_and_click_outside_dismisses() {
+    let mut h = harness();
+    h.click(by::test_id("new-note"));
+    settle_save(&mut h);
+    assert_eq!(h.state().note_rows.len(), 1);
+
+    h.click(by::test_id("new-folder"));
+    assert!(h.state().show_folder_dialog);
+    // The dialog panel sits mid-viewport; "new-note" lives in the list
+    // header far left — clicking its coordinates must hit the scrim
+    // (dismissing via onDismiss), never the button beneath.
+    h.click(by::test_id("new-note"));
+    assert!(!h.state().show_folder_dialog, "scrim click dismissed the dialog");
+    assert_eq!(h.state().note_rows.len(), 1, "the button beneath never fired");
 }
 
 #[test]
@@ -191,9 +217,7 @@ fn escape_clears_search_only_when_unfocused() {
 #[test]
 fn folder_jump_shortcuts_carry_their_static_arg() {
     let mut h = harness();
-    h.type_text(by::test_id("new-folder"), "Work");
-    h.click(by::test_id("add-folder"));
-    settle_save(&mut h);
+    add_folder_via_dialog(&mut h, "Work");
     h.blur();
 
     assert!(h.press_shortcut("cmd+1"));

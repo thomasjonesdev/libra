@@ -108,6 +108,8 @@ impl LaidTree {
                         catalog::badge::paint(&mut cx, item, label, *tone, *px)
                     }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
+                    ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
+                    ItemKind::DialogPanel => catalog::dialog::paint_panel(&mut cx, item.rect),
                 }
                 if item.clip.is_some() {
                     cx.cmds.push(DrawCmd::PopClip);
@@ -120,11 +122,24 @@ impl LaidTree {
     /// Topmost interactive item containing the point — and, if it's inside a
     /// scroll viewport, only when the point is actually within that viewport
     /// (PLAN-SCROLL: a row scrolled out of view isn't hittable).
+    ///
+    /// `<Dialog>` items are the modal barrier: the panel swallows clicks on
+    /// its body, and a scrim without `onDismiss` swallows everything — a
+    /// point over either never falls through to the app beneath (a scrim
+    /// *with* `onDismiss` is ordinary pressable, handled by the normal path).
     pub fn hit(&self, x: f32, y: f32) -> Option<&Item> {
-        self.items.iter().rev().find(|i| {
-            i.on_press.is_some()
-                && i.rect.contains(x, y)
-                && i.clip.map_or(true, |c| c.contains(x, y))
-        })
+        for i in self.items.iter().rev() {
+            let contains = i.rect.contains(x, y) && i.clip.map_or(true, |c| c.contains(x, y));
+            if !contains {
+                continue;
+            }
+            if i.on_press.is_some() {
+                return Some(i);
+            }
+            if matches!(i.kind, ItemKind::Scrim | ItemKind::DialogPanel) {
+                return None; // modal barrier
+            }
+        }
+        None
     }
 }

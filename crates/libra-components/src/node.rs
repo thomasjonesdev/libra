@@ -139,6 +139,21 @@ pub enum ViewNode {
     /// `Column`, `vertical` for pane seams in a `Row`. Paints
     /// `theme.hairline` (PLAN-TOKENS T1).
     Separator { vertical: bool },
+    /// `<Dialog title=… onDismiss?=… testId?=…>` (§7.1, PLAN-CATALOG /
+    /// PLAN-NOTES-APP M6): an **in-tree modal** — full-viewport scrim +
+    /// centered panel holding ordinary markup children. Deterministic
+    /// and snapshot-able (unlike OS dialogs, which are §12.1 effects).
+    /// Mount/unmount is the app's `<if test={…}>`; the component has no
+    /// open/close state of its own. Detached from the parent flex tree
+    /// and laid out as its own viewport-sized overlay root, so it
+    /// paints on top and its scrim hit-tests as a modal barrier
+    /// wherever it appears in the markup.
+    Dialog {
+        title: String,
+        on_dismiss: Option<String>,
+        test_id: Option<String>,
+        children: Vec<ViewNode>,
+    },
     /// `<Frames onTick={name}>` (§12.5): an invisible, zero-layout
     /// source element — declares "subscribe to vsync-coalesced frame
     /// ticks while this is mounted," diffed by the runtime like
@@ -174,6 +189,9 @@ pub enum Role {
     /// A visual divider (`<Separator>`); maps to a non-interactive
     /// generic node in the AccessKit projection.
     Separator,
+    /// A `<Dialog>` panel — maps to AccessKit's dialog role; its title
+    /// is the semantics text.
+    Dialog,
     /// A mounted source element (§12.5) — test-query-only; the a11y
     /// layer excludes this role from the AccessKit projection.
     Source,
@@ -222,6 +240,14 @@ pub enum ItemKind {
     /// Pressable list row; `selected`/hover paint a `surface_raised`
     /// wash behind the text lines.
     ListItem { title: String, subtitle: String, meta: String, selected: bool, px_md: f32, px_sm: f32 },
+    /// A Dialog's full-viewport backdrop: paints `theme.scrim` and acts
+    /// as the modal barrier in `hit()` — with a handler it dispatches
+    /// `onDismiss`, without one it swallows the click.
+    Scrim,
+    /// A Dialog's centered panel: `surface_raised` card + hairline
+    /// frame. The title renders as an ordinary bold Text child; the
+    /// panel's semantics carry it for queries/a11y.
+    DialogPanel,
     /// §12.5 source element — zero-size, paints nothing. Carries which
     /// kind mounted (see `SourceDecl`) so the shell/harness can
     /// dispatch/query by kind without re-deriving it from `ViewNode`.

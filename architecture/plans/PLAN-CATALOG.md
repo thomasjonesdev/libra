@@ -54,7 +54,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `ProgressBar` | `Progress` | **shipped** 2026-07-18 | `value={0..1}` — **literal or bound** (`value={ratio}`, typed f32; §6.5 preserved — [[26-open-questions|§26]] #8); `surface_raised` track + `accent` fill, pill radius |
 | `Card` | `Card` | planned | Prefer composition; elevate via tokens |
 | `ListItem` | `ListItem` | **shipped** 2026-07-17 | title/subtitle/meta + `selected` (bound bool) + hover wash (`surface_raised`); leading/trailing slots later |
-| `Modal` | `Dialog` / `Modal` | planned | In-tree chrome **and/or** OS dialog — see native plan |
+| `Modal` | `Dialog` | **shipped** 2026-07-19 (in-tree: `theme.scrim` + centered panel, detached overlay layout, scrim hit barrier, optional `onDismiss`; mount via `<if>`) | OS dialog remains a §12.1 effect — see native plan |
 
 ## Libra ops extras (not in json-render RN; keep)
 
@@ -84,7 +84,7 @@ never invents colors.
 | **3** | `Switch`, `Checkbox`, `Slider`, `Search` | Control set parity with RN catalog |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
 | **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
-| **6** | `SafeArea`, in-view `Modal`/`Dialog` + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
+| **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | `Tabs`, `Toast`, `Toolbar`, `StatusBar` | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
 | **9** | `Select`/`Combobox`/`Radio`/`CommandPalette`/`ContextMenu`/`Tooltip`/`Markdown`/`Icon` | Long-tail |

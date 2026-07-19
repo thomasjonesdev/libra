@@ -4,7 +4,7 @@
 //! content with this viewport's clip + test_id; `paint` clips it and
 //! `LaidTree::apply_scroll` offsets it by the scroll position.
 
-use crate::layout::{is_source_node, BuildCx};
+use crate::layout::{is_detached_node, BuildCx};
 use crate::node::*;
 use taffy::prelude::*;
 
@@ -18,7 +18,7 @@ pub(crate) fn build(
     // overflows the viewport instead of being squeezed to fit.
     let mut kids = Vec::new();
     for c in children {
-        if is_source_node(c) {
+        if is_detached_node(c) {
             let _ = cx.child(c)?;
         } else {
             kids.push(cx.child(c)?);

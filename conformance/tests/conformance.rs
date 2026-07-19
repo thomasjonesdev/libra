@@ -15,6 +15,7 @@ const INTERVAL_STREAM: &str = include_str!("../fixtures/interval_stream.lx");
 const ACCESSORS: &str = include_str!("../fixtures/accessors.lx");
 const CHROME: &str = include_str!("../fixtures/chrome.lx");
 const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
+const DIALOG: &str = include_str!("../fixtures/dialog.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -501,5 +502,43 @@ fn list_textarea_produces_identical_trees() {
         matches!(&children[3], ViewNode::Textarea { test_id, .. } if test_id == "body"),
         "{:?}",
         children[3]
+    );
+}
+
+/// PLAN-CATALOG `<Dialog>` (M6) — the in-tree modal: title as literal
+/// and binding, optional onDismiss, `<if>`-mounted; both engines agree.
+#[test]
+fn dialog_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(DIALOG, &state);
+        let compiled = generated::build_dialog(&state);
+        assert_eq!(interp, compiled, "engine drift on dialog fixture (variant #{i})");
+    }
+
+    // running=true mounts the bound-title dialog; the static one is
+    // always there. running=false drops the first (the `<if>` rule).
+    let on = interp_tree_src(DIALOG, &TestState::default());
+    let ViewNode::Column { children, .. } = &on else { panic!("{on:?}") };
+    let dialogs: Vec<_> =
+        children.iter().filter(|c| matches!(c, ViewNode::Dialog { .. })).collect();
+    assert_eq!(dialogs.len(), 2);
+    let ViewNode::Dialog { title, on_dismiss, test_id, children: kids } = dialogs[0] else {
+        unreachable!()
+    };
+    assert_eq!(title, &TestState::default().name);
+    assert_eq!(on_dismiss.as_deref(), Some("reset"));
+    assert_eq!(test_id.as_deref(), Some("the-dialog"));
+    assert_eq!(kids.len(), 3);
+    let ViewNode::Dialog { title, on_dismiss, .. } = dialogs[1] else { unreachable!() };
+    assert_eq!((title.as_str(), on_dismiss.is_none()), ("static title", true));
+
+    let off = interp_tree_src(DIALOG, &TestState { running: false, ..TestState::default() });
+    let ViewNode::Column { children, .. } = &off else { panic!("{off:?}") };
+    assert_eq!(
+        children.iter().filter(|c| matches!(c, ViewNode::Dialog { .. })).count(),
+        1,
+        "unmounted <if> drops its dialog"
     );
 }

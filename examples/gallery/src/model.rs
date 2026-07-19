@@ -31,8 +31,13 @@ pub const LAYOUT: &[(&str, &str)] =
     &[("column", "Column"), ("row", "Row"), ("spacer", "Spacer"), ("separator", "Separator")];
 pub const DISPLAY: &[(&str, &str)] =
     &[("text", "Text"), ("heading", "Heading"), ("badge", "Badge"), ("progress", "Progress")];
-pub const CONTROLS: &[(&str, &str)] =
-    &[("button", "Button"), ("input", "Input"), ("textarea", "Textarea"), ("list_item", "ListItem")];
+pub const CONTROLS: &[(&str, &str)] = &[
+    ("button", "Button"),
+    ("input", "Input"),
+    ("textarea", "Textarea"),
+    ("list_item", "ListItem"),
+    ("dialog", "Dialog"),
+];
 pub const DATA: &[(&str, &str)] = &[("chart", "Chart"), ("sparkline", "Sparkline")];
 
 /// The component selected on launch.

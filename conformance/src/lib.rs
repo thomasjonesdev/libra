@@ -118,4 +118,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/badge.rs"));
     include!(concat!(env!("OUT_DIR"), "/heading_progress.rs"));
     include!(concat!(env!("OUT_DIR"), "/scroll.rs"));
+    include!(concat!(env!("OUT_DIR"), "/dialog.rs"));
 }

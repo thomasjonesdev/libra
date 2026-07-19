@@ -15,10 +15,7 @@
         </Column>
       </Scroll>
       <Separator />
-      <Row gap={6} cross="center">
-        <Input value={new_folder_name} placeholder="new folder…" onChange={newFolderNameChanged} testId="new-folder" />
-        <Button variant="secondary" onPress={addFolder} testId="add-folder">Add</Button>
-      </Row>
+      <Button variant="secondary" onPress={openNewFolderDialog} testId="new-folder">New Folder</Button>
     </Column>
 
     <Separator vertical />
@@ -62,6 +59,7 @@
         <else>
           <Row gap={8}>
             <Button variant="ghost" onPress={deleteNote} testId="delete-note">Delete</Button>
+            <Button variant="ghost" onPress={openRenameFolderDialog} testId="rename-folder">Rename Folder</Button>
             <Button variant="ghost" onPress={deleteFolder} testId="delete-folder">Delete Folder</Button>
           </Row>
         </else>
@@ -74,4 +72,26 @@
   <Row gap={8} padding={8} cross="center">
     <Text size="sm" muted testId="list-summary">{list_summary}</Text>
   </Row>
+
+  <if test={show_folder_dialog}>
+    <Dialog title={dialog_title} onDismiss={dialogCancel} testId="folder-dialog">
+      <Input value={dialog_name} placeholder="folder name…" onChange={dialogNameChanged} testId="dialog-name" />
+      <Text size="sm" muted testId="dialog-error">{dialog_error}</Text>
+      <Row gap={8}>
+        <Spacer />
+        <Button variant="ghost" onPress={dialogCancel} testId="dialog-cancel">Cancel</Button>
+        <Button variant="primary" onPress={dialogConfirm} testId="dialog-confirm">Save</Button>
+      </Row>
+    </Dialog>
+  </if>
+  <if test={show_confirm_dialog}>
+    <Dialog title={dialog_title} onDismiss={dialogCancel} testId="confirm-dialog">
+      <Text size="sm" muted>This permanently deletes the note. There is no undo.</Text>
+      <Row gap={8}>
+        <Spacer />
+        <Button variant="ghost" onPress={dialogCancel} testId="confirm-cancel">Cancel</Button>
+        <Button variant="primary" onPress={dialogConfirm} testId="confirm-delete">Delete Forever</Button>
+      </Row>
+    </Dialog>
+  </if>
 </Column>

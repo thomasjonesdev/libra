@@ -125,6 +125,24 @@
         </Column>
       </if>
 
+      <if test={is_dialog}>
+        <Text bold muted>Playground</Text>
+        <Row gap={8}>
+          <Button variant="secondary" onPress={openDialog} testId="pg-open-dialog">Open dialog</Button>
+        </Row>
+        <Text size="sm" muted>In-tree modal: scrim + centered panel, deterministic and snapshot-covered. Click the scrim to dismiss.</Text>
+      </if>
+      <if test={dialog_open}>
+        <Dialog title="Workbench dialog" onDismiss={closeDialog} testId="pg-dialog">
+          <Text size="sm" muted>Ordinary markup children; the scrim is the modal barrier.</Text>
+          <Input value={ctl_input} placeholder="type…" onChange={inputChanged} testId="pg-dialog-input" />
+          <Row gap={8}>
+            <Spacer />
+            <Button variant="ghost" onPress={closeDialog} testId="pg-dialog-close">Close</Button>
+          </Row>
+        </Dialog>
+      </if>
+
       <if test={is_chart}>
         <Text bold muted>Live (data plane)</Text>
         <Chart series={wave} height={220} testId="pg-chart" />

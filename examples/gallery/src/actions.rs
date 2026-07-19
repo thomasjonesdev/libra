@@ -37,6 +37,14 @@ impl Gallery {
     /// Playground press target and variant demos — nothing to record.
     pub fn noop(&mut self) {}
 
+    pub fn open_dialog(&mut self) {
+        self.dialog_open = true;
+    }
+
+    pub fn close_dialog(&mut self) {
+        self.dialog_open = false;
+    }
+
     /// Progress numeric-binding demo: nudge `ctl_progress` in clean 0.1 steps
     /// (rounded so the bound value's Display stays tidy).
     pub fn progress_up(&mut self) {
@@ -72,6 +80,7 @@ impl Gallery {
         self.is_list_item = s == "list_item";
         self.is_chart = s == "chart";
         self.is_sparkline = s == "sparkline";
+        self.is_dialog = s == "dialog";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;
     }
 }

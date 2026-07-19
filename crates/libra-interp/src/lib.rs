@@ -454,6 +454,42 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Progress { value, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M6): the in-tree modal.
+        // Mount/unmount is the app's `<if>`; `title` is a literal or
+        // binding, `onDismiss` an optional unit action for
+        // click-outside dismissal.
+        "Dialog" => {
+            let mut title: Option<String> = None;
+            let mut on_dismiss: Option<String> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", AttrValue::Str(s)) => title = Some(s.clone()),
+                    ("title", AttrValue::Ident(p)) => {
+                        title = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("no action '{m}' on Action — check the enum"),
+                            ));
+                        }
+                        on_dismiss = Some(m.clone());
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title = title
+                .ok_or_else(|| err(*span, "<Dialog> requires title={binding} or title=\"…\""))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Dialog { title, on_dismiss, test_id, children: kids })
+        }
+
         "Scroll" => {
             let mut height = None;
             let mut test_id = None;
@@ -751,7 +787,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Dialog, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

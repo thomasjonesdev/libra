@@ -7,7 +7,9 @@
 use libra_core::Effect;
 
 use crate::actions::Action;
-use crate::model::{Folder, Note, FolderRow, NoteRow, StoreV2, RECENTLY_DELETED, STORE_KEY};
+use crate::model::{
+    DialogKind, Folder, FolderRow, Note, NoteRow, StoreV2, RECENTLY_DELETED, STORE_KEY,
+};
 
 #[derive(Default)]
 #[libra::state]
@@ -39,9 +41,14 @@ pub struct Notes {
     pub status: String,
     /// Controlled mirror of the selected note's body (Input value).
     pub editor_body: String,
-    /// Draft text for the interim add-folder row (stand-in for the
-    /// M6 Dialog).
-    pub new_folder_name: String,
+    /// Which modal is up (M6) — source of truth for the `show_*`
+    /// projections; not itself reflected.
+    #[libra(skip)]
+    pub dialog: Option<DialogKind>,
+    /// Controlled value of the dialog's name field.
+    pub dialog_name: String,
+    /// Inline validation line ("name can't be empty", "already exists").
+    pub dialog_error: String,
 
     // ---- display projections (§6.3, rebuilt by #[project]) ----
     pub folder_rows: Vec<FolderRow>,
@@ -55,6 +62,10 @@ pub struct Notes {
     /// Status-bar line: "7 notes · 7 shown" (scope count · post-search
     /// count), mirroring the reference app's footer.
     pub list_summary: String,
+    /// M6 dialog projections (§6.3, from `dialog`).
+    pub show_folder_dialog: bool,
+    pub show_confirm_dialog: bool,
+    pub dialog_title: String,
 }
 
 impl Notes {
@@ -113,15 +124,36 @@ impl Notes {
         use libra_core::Shortcut;
         let mut s = vec![
             Shortcut::action("cmd+n", "newNote"),
+            Shortcut::action("cmd+shift+n", "openNewFolderDialog"),
+            Shortcut::action("cmd+shift+r", "openRenameFolderDialog"),
             Shortcut::action("cmd+backspace", "deleteNote"),
             Shortcut::action("cmd+alt+down", "selectNextNote"),
             Shortcut::action("cmd+alt+up", "selectPrevNote"),
-            Shortcut::action("escape", "clearQuery"),
+            // Escape is contextual: open dialog → cancel it; else clear
+            // the search (the action decides — §19.2 static payloads).
+            Shortcut::action("escape", "dismiss"),
         ];
         for n in 1..=crate::model::MAX_FOLDERS {
             s.push(Shortcut::with_arg(&format!("cmd+{n}"), "jumpFolder", &n.to_string()));
         }
         s
+    }
+
+    /// M6 folder-name validation, shared by create and rename. `Ok` is
+    /// the trimmed name; `Err` is the inline `dialog_error` line.
+    pub(crate) fn validate_folder_name(&self, exclude: Option<u32>) -> Result<String, String> {
+        let name = self.dialog_name.trim().to_string();
+        if name.is_empty() {
+            return Err("name can't be empty".into());
+        }
+        if self
+            .folders
+            .iter()
+            .any(|f| Some(f.id) != exclude && f.name.eq_ignore_ascii_case(&name))
+        {
+            return Err(format!("\"{name}\" already exists"));
+        }
+        Ok(name)
     }
 
     /// Move the note selection by `delta` within the visible (projected)

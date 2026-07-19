@@ -8,9 +8,9 @@
 use libra_core::{Effect, Instant, KvResult};
 
 use crate::model::{
-    clip_bytes, migrate_v1, note_meta, note_snippet, note_title, Folder, FolderRow, Note, NoteRow,
-    StoredFormat, AUTOSAVE_DEBOUNCE_MS, MAX_BODY_BYTES, MAX_FOLDERS, MAX_NOTES, RECENTLY_DELETED,
-    STORE_KEY,
+    clip_bytes, migrate_v1, note_meta, note_snippet, note_title, DialogKind, Folder, FolderRow,
+    Note, NoteRow, StoredFormat, AUTOSAVE_DEBOUNCE_MS, MAX_BODY_BYTES, MAX_FOLDERS, MAX_NOTES,
+    RECENTLY_DELETED, STORE_KEY,
 };
 use crate::state::Notes;
 
@@ -109,39 +109,103 @@ impl Notes {
         Some(self.schedule_save(0))
     }
 
-    pub fn delete_note_permanently(&mut self) -> Option<Effect<Action>> {
+    /// Permanent delete asks first (M6): opens the confirm dialog; the
+    /// actual removal happens in `dialog_confirm`.
+    pub fn delete_note_permanently(&mut self) {
         let id = self.selected_note;
-        let before = self.notes.len();
-        self.notes.retain(|n| !(n.id == id && n.deleted_ms.is_some()));
-        if self.notes.len() == before {
-            return None;
+        if self.notes.iter().any(|n| n.id == id && n.deleted_ms.is_some()) {
+            self.dialog = Some(DialogKind::ConfirmDelete);
+            self.dialog_error.clear();
         }
-        self.selected_note = self.first_visible_note_id(self.selected_folder);
-        Some(self.schedule_save(0))
     }
 
-    // ---- folders (interim add-only UI; rename/create-via-dialog is M6) ----
+    // ---- dialogs (M6): create/rename folder + confirm permanent delete ----
 
-    pub fn new_folder_name_changed(&mut self, text: String) {
-        self.new_folder_name = text;
+    pub fn open_new_folder_dialog(&mut self) {
+        self.dialog = Some(DialogKind::NewFolder);
+        self.dialog_name.clear();
+        self.dialog_error.clear();
     }
 
-    pub fn add_folder(&mut self) -> Option<Effect<Action>> {
-        let name = self.new_folder_name.trim().to_string();
-        if name.is_empty()
-            || self.folders.len() >= MAX_FOLDERS
-            || self.folders.iter().any(|f| f.name.eq_ignore_ascii_case(&name))
-        {
-            self.status = "can't add that folder".into();
-            return None;
+    /// `cmd+shift+r` / the Rename button — prefills the current name.
+    pub fn open_rename_folder_dialog(&mut self) {
+        let id = self.selected_folder;
+        let Some(folder) = self.folders.iter().find(|f| f.id == id) else { return };
+        self.dialog_name = folder.name.clone();
+        self.dialog = Some(DialogKind::RenameFolder);
+        self.dialog_error.clear();
+    }
+
+    pub fn dialog_name_changed(&mut self, text: String) {
+        self.dialog_name = text;
+        self.dialog_error.clear();
+    }
+
+    pub fn dialog_cancel(&mut self) {
+        self.dialog = None;
+    }
+
+    /// Escape (§19.2): contextual — cancel an open dialog, else clear
+    /// the search.
+    pub fn dismiss(&mut self) {
+        if self.dialog.is_some() {
+            self.dialog = None;
+        } else {
+            self.query.clear();
         }
-        let id = self.next_folder_id;
-        self.next_folder_id += 1;
-        self.folders.push(Folder { id, name });
-        self.new_folder_name.clear();
-        self.selected_folder = id;
-        self.selected_note = 0;
-        Some(self.schedule_save(0))
+    }
+
+    /// The dialog's primary button. Validation failures set the inline
+    /// `dialog_error` and keep the dialog open (M6).
+    pub fn dialog_confirm(&mut self) -> Option<Effect<Action>> {
+        match self.dialog? {
+            DialogKind::NewFolder => {
+                if self.folders.len() >= MAX_FOLDERS {
+                    self.dialog_error = format!("folder limit reached ({MAX_FOLDERS})");
+                    return None;
+                }
+                match self.validate_folder_name(None) {
+                    Err(e) => {
+                        self.dialog_error = e;
+                        None
+                    }
+                    Ok(name) => {
+                        let id = self.next_folder_id;
+                        self.next_folder_id += 1;
+                        self.folders.push(Folder { id, name });
+                        self.selected_folder = id;
+                        self.selected_note = 0;
+                        self.dialog = None;
+                        Some(self.schedule_save(0))
+                    }
+                }
+            }
+            DialogKind::RenameFolder => {
+                let id = self.selected_folder;
+                match self.validate_folder_name(Some(id)) {
+                    Err(e) => {
+                        self.dialog_error = e;
+                        None
+                    }
+                    Ok(name) => {
+                        self.folders.iter_mut().find(|f| f.id == id)?.name = name;
+                        self.dialog = None;
+                        Some(self.schedule_save(0))
+                    }
+                }
+            }
+            DialogKind::ConfirmDelete => {
+                let id = self.selected_note;
+                self.dialog = None;
+                let before = self.notes.len();
+                self.notes.retain(|n| !(n.id == id && n.deleted_ms.is_some()));
+                if self.notes.len() == before {
+                    return None;
+                }
+                self.selected_note = self.first_visible_note_id(self.selected_folder);
+                Some(self.schedule_save(0))
+            }
+        }
     }
 
     /// Deleting a folder trashes its notes rather than destroying them
@@ -248,6 +312,18 @@ impl Notes {
     fn project(&mut self) {
         self.trash_count = self.notes.iter().filter(|n| n.deleted_ms.is_some()).count() as u32;
         self.has_trash = self.trash_count > 0;
+
+        // M6 dialog projections — the view mounts dialogs via `<if>`.
+        self.show_folder_dialog =
+            matches!(self.dialog, Some(DialogKind::NewFolder | DialogKind::RenameFolder));
+        self.show_confirm_dialog = matches!(self.dialog, Some(DialogKind::ConfirmDelete));
+        self.dialog_title = match self.dialog {
+            Some(DialogKind::NewFolder) => "New Folder",
+            Some(DialogKind::RenameFolder) => "Rename Folder",
+            Some(DialogKind::ConfirmDelete) => "Delete Forever?",
+            None => "",
+        }
+        .to_string();
 
         self.folder_rows = self
             .folders

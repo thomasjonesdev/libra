@@ -55,6 +55,18 @@ fn snapshot_recently_deleted_visible_after_a_delete() {
     h.assert_snapshot("notes_recently_deleted");
 }
 
+/// M6: the folder dialog renders over the app — scrim, centered panel,
+/// inline error line — byte-exactly.
+#[test]
+fn snapshot_folder_dialog_with_validation_error() {
+    let mut h = harness();
+    h.click(by::test_id("new-note"));
+    settle_save(&mut h);
+    h.click(by::test_id("new-folder"));
+    h.click(by::test_id("dialog-confirm")); // blank name → inline error
+    h.assert_snapshot("notes_folder_dialog");
+}
+
 #[test]
 fn light_and_dark_render_different_bytes() {
     let dark = Harness::<Notes>::with_viewport(VIEW, 900, 600).frame_png();

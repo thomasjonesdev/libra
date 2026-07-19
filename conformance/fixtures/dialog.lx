@@ -1,0 +1,17 @@
+<Column gap={8} padding={12}>
+  <Text testId="under">content under the dialog</Text>
+  <Button onPress={increment} testId="under-btn">press me</Button>
+  <if test={running}>
+    <Dialog title={name} onDismiss={reset} testId="the-dialog">
+      <Text size="sm" muted>dialog body</Text>
+      <Input value={status} placeholder="type…" onChange={nameChanged} testId="dialog-input" />
+      <Row gap={8}>
+        <Button variant="ghost" onPress={reset} testId="dialog-cancel">Cancel</Button>
+        <Button variant="primary" onPress={increment} testId="dialog-ok">OK</Button>
+      </Row>
+    </Dialog>
+  </if>
+  <Dialog title="static title" testId="plain-dialog">
+    <Text size="sm">no dismiss — scrim swallows clicks</Text>
+  </Dialog>
+</Column>

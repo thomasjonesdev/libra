@@ -76,9 +76,11 @@ fn a_save_completing_while_dirty_again_triggers_exactly_one_more_save() {
     h.fire_timer(t1);
     let first_save = h.expect_effect(fx::kv_set(STORE_KEY));
 
-    // A second structural edit lands while the first save is in flight.
-    h.dispatch(Action::NewFolderNameChanged("Work".into()));
-    h.click(by::test_id("add-folder"));
+    // A second structural edit lands while the first save is in flight
+    // (the M6 dialog flow, driven as actions).
+    h.dispatch(Action::OpenNewFolderDialog);
+    h.dispatch(Action::DialogNameChanged("Work".into()));
+    h.dispatch(Action::DialogConfirm);
     let t2 = h.expect_effect(fx::timer());
     h.fire_timer(t2);
     h.expect_no_effects(); // save_in_flight — this one becomes pending, not a new KvSet

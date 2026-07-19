@@ -38,6 +38,7 @@ pub struct Gallery {
     pub is_input: bool,
     pub is_textarea: bool,
     pub is_list_item: bool,
+    pub is_dialog: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
     /// The selected component exposes a text control (label playground).
@@ -50,6 +51,8 @@ pub struct Gallery {
     /// Numeric-binding demo: `<Progress value={ctl_progress}>` reads this f32
     /// live (the +/− buttons move it) — proof that numeric attrs bind (§26 #8).
     pub ctl_progress: f32,
+    /// Dialog playground: the modal is mounted while this is set (M6).
+    pub dialog_open: bool,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -77,6 +80,7 @@ impl Gallery {
             is_input: false,
             is_textarea: false,
             is_list_item: false,
+            is_dialog: false,
             is_chart: false,
             is_sparkline: false,
             has_text_control: false,
@@ -84,6 +88,7 @@ impl Gallery {
             ctl_input: "editable".into(),
             ctl_body: "line one\nline two".into(),
             ctl_progress: 0.5,
+            dialog_open: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

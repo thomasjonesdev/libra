@@ -130,3 +130,17 @@ fn theme_toggle_round_trips() {
     let _ = h.expect_effect(fx::set_theme());
     assert_eq!(h.frame_png(), dark, "toggling back restores identical bytes");
 }
+
+/// M6 `<Dialog>`: the workbench cell opens the modal; the snapshot
+/// covers scrim + panel byte-exactly, and dismissing restores the
+/// resting frame.
+#[test]
+fn snapshot_workbench_dialog_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("dialog".into()));
+    let resting = h.frame_png();
+    h.click(by::test_id("pg-open-dialog"));
+    h.assert_snapshot("workbench_dialog_dark");
+    h.click(by::test_id("pg-dialog-close"));
+    assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
+}

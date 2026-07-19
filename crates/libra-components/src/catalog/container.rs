@@ -1,7 +1,7 @@
 //! Column / Row — flex containers (§8). Build only: layout is their whole job,
 //! they paint nothing (their items are `ItemKind::Box`).
 
-use crate::layout::{box_style, is_source_node, BuildCx};
+use crate::layout::{box_style, BuildCx};
 use crate::node::*;
 use taffy::prelude::*;
 
@@ -33,7 +33,7 @@ fn build_children(cx: &mut BuildCx, children: &[ViewNode]) -> Result<Vec<NodeId>
         // §12.5: source elements occupy no layout — register them in meta
         // but keep them out of the flex tree so gap/grow of siblings stay
         // snapshot-stable.
-        if is_source_node(c) {
+        if crate::layout::is_detached_node(c) {
             let _ = cx.child(c)?;
         } else {
             kids.push(cx.child(c)?);

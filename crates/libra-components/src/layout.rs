@@ -23,6 +23,10 @@ pub(crate) struct BuildCx<'a> {
     pub meta: &'a mut Meta,
     pub m: &'a dyn TextMeasurer,
     pub theme: &'a Theme,
+    /// Overlay roots (`<Dialog>` scrims): detached from their markup
+    /// parents, laid out at the full viewport after the main pass, and
+    /// flattened last so they paint on top.
+    pub overlays: &'a mut Vec<NodeId>,
 }
 
 impl BuildCx<'_> {
@@ -68,6 +72,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Textarea { value, placeholder, on_change, test_id } => {
             catalog::textarea::build(cx, value, placeholder, on_change, test_id)
         }
+        ViewNode::Dialog { title, on_dismiss, test_id, children } => {
+            catalog::dialog::build(cx, title, on_dismiss, test_id, children)
+        }
         ViewNode::Spacer { size } => catalog::spacer::build(cx, *size),
         ViewNode::Separator { vertical } => catalog::separator::build(cx, *vertical),
         ViewNode::SourceFrames { on_tick } => catalog::source::build_frames(cx, on_tick),
@@ -86,9 +93,11 @@ pub fn layout(
 ) -> Result<LaidTree, LayoutError> {
     let mut tree: TaffyTree<()> = TaffyTree::new();
     let mut meta: Meta = Vec::new();
+    let mut overlays: Vec<NodeId> = Vec::new();
 
     let root = {
-        let mut cx = BuildCx { tree: &mut tree, meta: &mut meta, m: measurer, theme };
+        let mut cx =
+            BuildCx { tree: &mut tree, meta: &mut meta, m: measurer, theme, overlays: &mut overlays };
         build(&mut cx, view).map_err(|e| LayoutError(format!("{e:?}")))?
     };
 
@@ -110,6 +119,25 @@ pub fn layout(
     let mut items = Vec::with_capacity(meta.len());
     let mut seen = std::collections::HashSet::new();
     flatten(&tree, root, (0.0, 0.0), &meta, &mut items, &mut seen, None)?;
+
+    // Overlay pass (`<Dialog>`): each detached scrim root computes at the
+    // full viewport and flattens *after* the main items — top of the paint
+    // order, first in reverse hit order (the modal barrier).
+    for overlay in overlays {
+        let mut style =
+            tree.style(overlay).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
+        style.size = Size { width: length(viewport.0), height: length(viewport.1) };
+        tree.set_style(overlay, style).map_err(|e| LayoutError(format!("{e:?}")))?;
+        tree.compute_layout(
+            overlay,
+            Size {
+                width: AvailableSpace::Definite(viewport.0),
+                height: AvailableSpace::Definite(viewport.1),
+            },
+        )
+        .map_err(|e| LayoutError(format!("{e:?}")))?;
+        flatten(&tree, overlay, (0.0, 0.0), &meta, &mut items, &mut seen, None)?;
+    }
 
     // §12.5 source leaves are intentionally not flex children — attach
     // them with a zero rect so harness/`by::source` still see them.
@@ -213,4 +241,10 @@ pub(crate) fn is_source_node(n: &ViewNode) -> bool {
         n,
         ViewNode::SourceFrames { .. } | ViewNode::SourceInterval { .. } | ViewNode::SourceStream { .. }
     )
+}
+
+/// A child that builds but must NOT join its parent's flex tree: §12.5
+/// sources (zero-layout mounts) and `<Dialog>` (a detached overlay root).
+pub(crate) fn is_detached_node(n: &ViewNode) -> bool {
+    is_source_node(n) || matches!(n, ViewNode::Dialog { .. })
 }

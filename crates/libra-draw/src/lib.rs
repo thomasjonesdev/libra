@@ -227,6 +227,9 @@ pub struct Theme {
     /// (PLAN-TOKENS T1). Sits between `bg` and `secondary` so it reads
     /// as structure, not content.
     pub hairline: Color,
+    /// Full-viewport modal backdrop (`<Dialog>`, PLAN-CATALOG) — an
+    /// alpha wash over the app while a dialog is up.
+    pub scrim: Color,
     /// Semantic status colors (PLAN-TOKENS T1) — `Badge`/`Status`/
     /// `Toast` variants resolve these by meaning, never by hex.
     pub danger: Color,
@@ -294,6 +297,7 @@ impl Theme {
             secondary: tokens::SECONDARY,
             selection: Color::rgb(0x2A, 0x4A, 0x7A),
             hairline: Color::rgb(0x1E, 0x25, 0x31),
+            scrim: Color { r: 0x00, g: 0x00, b: 0x00, a: 0x8C },
             danger: Color::rgb(0xE5, 0x53, 0x4B),
             warning: Color::rgb(0xD9, 0xA4, 0x3F),
             success: Color::rgb(0x3F, 0xB9, 0x50),
@@ -340,6 +344,7 @@ impl Theme {
             secondary: Color::rgb(0xE4, 0xE7, 0xEC),
             selection: Color::rgb(0xB8, 0xD0, 0xF5),
             hairline: Color::rgb(0xDD, 0xE1, 0xE7),
+            scrim: Color { r: 0x14, g: 0x19, b: 0x23, a: 0x6E },
             danger: Color::rgb(0xC7, 0x35, 0x2E),
             warning: Color::rgb(0xA9, 0x71, 0x08),
             success: Color::rgb(0x1F, 0x87, 0x3D),
@@ -431,6 +436,7 @@ impl Theme {
                 "secondary" => t.secondary = color(value)?,
                 "selection" => t.selection = color(value)?,
                 "hairline" => t.hairline = color(value)?,
+                "scrim" => t.scrim = color(value)?,
                 "danger" => t.danger = color(value)?,
                 "warning" => t.warning = color(value)?,
                 "success" => t.success = color(value)?,

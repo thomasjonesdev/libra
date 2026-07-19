@@ -39,6 +39,15 @@ pub struct Note {
     pub deleted_ms: Option<u64>,
 }
 
+/// Which modal is up (M6). Not reflected — the view binds the
+/// projected `show_*`/`dialog_title` fields instead.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum DialogKind {
+    NewFolder,
+    RenameFolder,
+    ConfirmDelete,
+}
+
 // ---------------------------------------------------------------------
 // Display projections (§6.3) — structured `<for>` rows.
 // ---------------------------------------------------------------------

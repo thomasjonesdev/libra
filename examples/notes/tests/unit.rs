@@ -103,19 +103,31 @@ fn restore_note_returns_it_to_its_folder() {
 }
 
 #[test]
-fn permanent_delete_only_removes_an_already_trashed_note() {
+fn permanent_delete_asks_first_and_only_removes_an_already_trashed_note() {
     let mut s = boot();
     reduce(&mut s, Action::NewNote);
-    // Not trashed yet: permanent delete is a no-op.
-    assert!(reduce(&mut s, Action::DeleteNotePermanently).is_empty());
+    // Not trashed yet: no confirm dialog even opens.
+    reduce(&mut s, Action::DeleteNotePermanently);
+    assert!(!s.show_confirm_dialog);
     assert_eq!(s.notes.len(), 1);
+
     reduce(&mut s, Action::DeleteNote);
     reduce(&mut s, Action::OpenRecentlyDeleted);
     let id = s.note_rows[0].id;
     reduce(&mut s, Action::SelectNote(id.to_string()));
     reduce(&mut s, Action::DeleteNotePermanently);
+    assert!(s.show_confirm_dialog, "M6: permanent delete opens the confirm dialog");
+    assert_eq!(s.notes.len(), 1, "nothing deleted until confirmed");
+
+    // Cancel keeps the note; confirm removes it.
+    reduce(&mut s, Action::DialogCancel);
+    assert!(!s.show_confirm_dialog);
+    assert_eq!(s.notes.len(), 1);
+    reduce(&mut s, Action::DeleteNotePermanently);
+    reduce(&mut s, Action::DialogConfirm);
     assert_eq!(s.notes.len(), 0);
     assert!(!s.has_trash);
+    assert!(!s.show_confirm_dialog);
 }
 
 #[test]
@@ -164,35 +176,89 @@ fn folder_rows_track_live_note_counts_excluding_trash() {
     assert_eq!(s.folder_rows[0].count, 1);
 }
 
+/// The M6 folder dialog flow, driven as pure actions.
+fn add_folder(s: &mut Notes, name: &str) {
+    reduce(s, Action::OpenNewFolderDialog);
+    reduce(s, Action::DialogNameChanged(name.into()));
+    reduce(s, Action::DialogConfirm);
+}
+
 #[test]
-fn add_folder_switches_selection_and_rejects_duplicates_or_blank_names() {
+fn folder_dialog_validates_inline_and_switches_selection_on_create() {
     let mut s = boot();
-    let fx = reduce(&mut s, Action::AddFolder);
-    assert!(fx.is_empty(), "blank name is rejected");
+    reduce(&mut s, Action::OpenNewFolderDialog);
+    assert!(s.show_folder_dialog);
+    assert_eq!(s.dialog_title, "New Folder");
+
+    // Blank name: inline error, dialog stays open, nothing created.
+    let fx = reduce(&mut s, Action::DialogConfirm);
+    assert!(fx.is_empty());
+    assert!(s.show_folder_dialog, "validation failure keeps the dialog open");
+    assert_eq!(s.dialog_error, "name can't be empty");
     assert_eq!(s.folders.len(), 1);
 
-    reduce(&mut s, Action::NewFolderNameChanged("Work".into()));
-    reduce(&mut s, Action::AddFolder);
+    reduce(&mut s, Action::DialogNameChanged("Work".into()));
+    assert_eq!(s.dialog_error, "", "typing clears the error");
+    reduce(&mut s, Action::DialogConfirm);
+    assert!(!s.show_folder_dialog, "success closes the dialog");
     assert_eq!(s.folders.len(), 2);
     assert_eq!(s.selected_folder, 2);
 
-    reduce(&mut s, Action::NewFolderNameChanged("work".into())); // case-insensitive dup
-    reduce(&mut s, Action::AddFolder);
-    assert_eq!(s.folders.len(), 2, "duplicate folder name rejected");
+    // Case-insensitive duplicate: inline error.
+    reduce(&mut s, Action::OpenNewFolderDialog);
+    reduce(&mut s, Action::DialogNameChanged("work".into()));
+    reduce(&mut s, Action::DialogConfirm);
+    assert!(s.show_folder_dialog);
+    assert!(s.dialog_error.contains("already exists"), "{}", s.dialog_error);
+    assert_eq!(s.folders.len(), 2);
+}
+
+#[test]
+fn rename_dialog_prefills_validates_and_renames() {
+    let mut s = boot();
+    reduce(&mut s, Action::OpenRenameFolderDialog);
+    assert!(s.show_folder_dialog);
+    assert_eq!(s.dialog_title, "Rename Folder");
+    assert_eq!(s.dialog_name, "Notes", "prefilled with the current name");
+
+    // Renaming to itself is allowed (the folder excludes itself from
+    // the duplicate check).
+    reduce(&mut s, Action::DialogConfirm);
+    assert!(!s.show_folder_dialog);
+    assert_eq!(s.folders[0].name, "Notes");
+
+    reduce(&mut s, Action::OpenRenameFolderDialog);
+    reduce(&mut s, Action::DialogNameChanged("Journal".into()));
+    reduce(&mut s, Action::DialogConfirm);
+    assert_eq!(s.folders[0].name, "Journal");
+    assert_eq!(s.folder_name, "Journal", "projections follow the rename");
 }
 
 #[test]
 fn folder_cap_is_enforced() {
     let mut s = boot();
     for i in 1..MAX_FOLDERS {
-        reduce(&mut s, Action::NewFolderNameChanged(format!("Folder {i}")));
-        reduce(&mut s, Action::AddFolder);
+        add_folder(&mut s, &format!("Folder {i}"));
     }
     assert_eq!(s.folders.len(), MAX_FOLDERS);
-    reduce(&mut s, Action::NewFolderNameChanged("One too many".into()));
-    let fx = reduce(&mut s, Action::AddFolder);
+    reduce(&mut s, Action::OpenNewFolderDialog);
+    reduce(&mut s, Action::DialogNameChanged("One too many".into()));
+    let fx = reduce(&mut s, Action::DialogConfirm);
     assert!(fx.is_empty());
+    assert!(s.dialog_error.contains("folder limit"), "{}", s.dialog_error);
     assert_eq!(s.folders.len(), MAX_FOLDERS);
+}
+
+#[test]
+fn escape_dismiss_is_contextual() {
+    let mut s = boot();
+    reduce(&mut s, Action::QueryChanged("find".into()));
+    reduce(&mut s, Action::OpenNewFolderDialog);
+    reduce(&mut s, Action::Dismiss);
+    assert!(!s.show_folder_dialog, "dismiss cancels an open dialog first");
+    assert_eq!(s.query, "find", "…without touching the search");
+    reduce(&mut s, Action::Dismiss);
+    assert_eq!(s.query, "", "no dialog: dismiss clears the search");
 }
 
 #[test]
@@ -215,8 +281,7 @@ fn deleting_a_folder_trashes_its_notes_and_cannot_remove_the_last_folder() {
     assert!(reduce(&mut s, Action::DeleteFolder).is_empty(), "last folder can't be deleted");
     assert_eq!(s.folders.len(), 1);
 
-    reduce(&mut s, Action::NewFolderNameChanged("Work".into()));
-    reduce(&mut s, Action::AddFolder); // now on folder 2, empty
+    add_folder(&mut s, "Work"); // now on folder 2, empty
     reduce(&mut s, Action::SelectFolder("1".into()));
     reduce(&mut s, Action::DeleteFolder);
     assert_eq!(s.folders.len(), 1);
