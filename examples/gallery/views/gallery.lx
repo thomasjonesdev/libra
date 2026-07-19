@@ -117,10 +117,10 @@
       </if>
 
       <if test={is_list_item}>
-        <Text bold muted>Variants</Text>
+        <Text bold muted>Variants (right-click the plain row for a menu)</Text>
         <Column gap={2}>
           <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="pg-row-selected" />
-          <ListItem title="Plain row" subtitle="subtitle line" onPress={noop} />
+          <ListItem title="Plain row (right-click me)" subtitle="subtitle line" onPress={noop} onMenu={openMenu} testId="pg-row-menu" />
           <ListItem title="Title only" onPress={noop} />
         </Column>
       </if>
@@ -143,6 +143,12 @@
           <Button variant="secondary" onPress={openDialog} testId="pg-open-dialog">Open dialog</Button>
         </Row>
         <Text size="sm" muted>In-tree modal: scrim + centered panel, deterministic and snapshot-covered. Click the scrim to dismiss.</Text>
+      </if>
+      <if test={menu_open}>
+        <ContextMenu onDismiss={menuClose} testId="pg-menu">
+          <Button variant="ghost" onPress={menuClose} testId="pg-menu-a">Menu item A</Button>
+          <Button variant="ghost" onPress={menuClose} testId="pg-menu-b">Menu item B</Button>
+        </ContextMenu>
       </if>
       <if test={dialog_open}>
         <Dialog title="Workbench dialog" onDismiss={closeDialog} testId="pg-dialog">

@@ -17,6 +17,7 @@ const CHROME: &str = include_str!("../fixtures/chrome.lx");
 const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
 const DIALOG: &str = include_str!("../fixtures/dialog.lx");
 const SPLIT: &str = include_str!("../fixtures/split.lx");
+const MENU: &str = include_str!("../fixtures/menu.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -567,4 +568,33 @@ fn split_produces_identical_trees() {
     assert_eq!(panes.len(), 2);
     let ViewNode::Split { fraction, .. } = &children[1] else { panic!("{:?}", children[1]) };
     assert!((fraction - 0.3).abs() < 1e-6, "literal fraction");
+}
+
+/// PLAN-CATALOG `<ContextMenu>` + ListItem `onMenu` (M7) — the anchored
+/// overlay, right-click handlers with item-scoped args, `<if>`-mounted;
+/// both engines agree.
+#[test]
+fn menu_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(MENU, &state);
+        let compiled = generated::build_menu(&state);
+        assert_eq!(interp, compiled, "engine drift on menu fixture (variant #{i})");
+    }
+
+    let interp = interp_tree_src(MENU, &TestState::default());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::ListItem { on_menu, on_menu_arg, .. } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!(on_menu.as_deref(), Some("packet"));
+    assert_eq!(on_menu_arg.as_deref(), Some("1"), "item-scoped arg is the row id");
+    let ViewNode::ListItem { on_menu, .. } = &children[2] else { panic!("{:?}", children[2]) };
+    assert!(on_menu.is_none(), "onMenu is optional");
+    let ViewNode::ContextMenu { on_dismiss, test_id, children: items } = &children[3] else {
+        panic!("{:?}", children[3])
+    };
+    assert_eq!((on_dismiss.as_deref(), test_id.as_str()), (Some("reset"), "row-menu"));
+    assert_eq!(items.len(), 2);
 }

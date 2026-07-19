@@ -41,7 +41,7 @@ intercept:
 
 | Effect | Crate / approach | Harness |
 |---|---|---|
-| `Clipboard` | `arboard` (text) | **shipped** (shell); extend ops if needed |
+| `Clipboard` | `arboard` (text) | **shipped** — editing-core copy/paste (shell) **and** `Effect::ClipboardSet` with typed `ClipboardResult` ack + `fx::clipboard_set()`/`resolve_clipboard` harness parity (2026-07-19) |
 | `Dialog` | `rfd` / OS alert | `expect_effect` + `resolve_dialog` |
 | `Notify` | `notify-rust` | resolve as ack / ignore in tests |
 | `OpenUrl` | OS open | `expect_effect(fx::open_url(…))` |

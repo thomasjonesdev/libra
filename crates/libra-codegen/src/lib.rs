@@ -280,6 +280,47 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+        // §7.1 (PLAN-CATALOG / M7), matching libra-interp's
+        // "ContextMenu" arm exactly.
+        "ContextMenu" => {
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_dismiss = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<ContextMenu> requires testId=\"…\" (its anchor identity)"))?;
+            let (dismiss_expr, dismiss_at) = match &on_dismiss {
+                Some((m, mspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *mspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::ContextMenu {{ {at}\n\
+                 {i}    on_dismiss: {dismiss_expr}, {dismiss_at}\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = str_lit(&test_id),
+            ))
+        }
+
         // §7.1 (PLAN-CATALOG / M5), matching libra-interp's "Split" arm
         // exactly: typed fraction (Progress precedent), String-payload
         // onResize, required testId, exactly two children.
@@ -501,6 +542,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             let mut meta = "::std::string::String::new()".to_string();
             let mut selected = "false".to_string();
             let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_menu: Option<(String, Option<String>, Span)> = None;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -523,6 +565,10 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                     ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
                     ("onPress", AttrValue::Call { name: m, arg }) => {
                         on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onMenu", AttrValue::Ident(m)) => on_menu = Some((m.clone(), None, a.span)),
+                    ("onMenu", AttrValue::Call { name: m, arg }) => {
+                        on_menu = Some((m.clone(), Some(arg.clone()), a.span))
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -555,6 +601,38 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                     "::core::option::Option::None".to_string(),
                 ),
             };
+            // M7 right-click handler — same shapes as onPress.
+            let (menu_expr, menu_arg_expr) = match &on_menu {
+                None => ("::core::option::Option::None".to_string(), "::core::option::Option::None".to_string()),
+                Some((m, arg, mspan)) => {
+                    require_camel_case(m, *mspan)?;
+                    match arg {
+                        Some(binding) => {
+                            let value_ref = display_ref_expr(binding, bound).map_err(|e| err(*mspan, e))?;
+                            (
+                                format!(
+                                    "{{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                    msg_ty = cfg.action,
+                                    variant_ref = pascalize(m),
+                                    name_lit = str_lit(m),
+                                ),
+                                format!(
+                                    "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                                ),
+                            )
+                        }
+                        None => (
+                            format!(
+                                "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                msg_ty = cfg.action,
+                                variant_ref = pascalize(m),
+                                name_lit = str_lit(m),
+                            ),
+                            "::core::option::Option::None".to_string(),
+                        ),
+                    }
+                }
+            };
             Ok(format!(
                 "{i}::libra_components::ViewNode::ListItem {{ {at}\n\
                  {i}    title: {title},\n\
@@ -563,6 +641,8 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                  {i}    selected: {selected},\n\
                  {i}    on_press: {{ {check} {name_lit}.to_string() }}, {mat}\n\
                  {i}    on_press_arg: {arg_expr},\n\
+                 {i}    on_menu: {menu_expr},\n\
+                 {i}    on_menu_arg: {menu_arg_expr},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),

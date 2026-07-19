@@ -1,0 +1,12 @@
+<Column gap={8} padding={12}>
+  <for each={items} as="t" key={t.id}>
+    <ListItem title={t.label} onPress={nameChanged(t.id)} onMenu={packet(t.id)} />
+  </for>
+  <ListItem title="no menu row" onPress={increment} testId="plain-row" />
+  <if test={running}>
+    <ContextMenu onDismiss={reset} testId="row-menu">
+      <Button variant="ghost" onPress={increment} testId="menu-item-a">Item A</Button>
+      <Button variant="ghost" onPress={reset} testId="menu-item-b">Item B</Button>
+    </ContextMenu>
+  </if>
+</Column>

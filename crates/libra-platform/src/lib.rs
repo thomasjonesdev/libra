@@ -276,6 +276,7 @@ where
         scroll_state: libra_components::ScrollState::new(),
         shortcut_table,
         split_drag: None,
+        menu_anchor: (0.0, 0.0),
         gfx: None,
         watch_mtime,
         next_watch_check: Instant::now() + WATCH_INTERVAL,
@@ -340,6 +341,9 @@ struct Shell<A: App> {
     /// M5 `<Split>` drag: the split test_id being resized while the
     /// left button is down on its divider gutter.
     split_drag: Option<String>,
+    /// M7 `<ContextMenu>` anchor — the last right-click point (logical
+    /// px), a deterministic layout input like scroll offsets.
+    menu_anchor: (f32, f32),
     gfx: Option<Gfx>,
     watch_mtime: Option<std::time::SystemTime>,
     next_watch_check: Instant,
@@ -470,6 +474,9 @@ where
                     // positions before storing (rects are natural until now).
                     let mut laid = laid;
                     laid.apply_scroll(&self.scroll_state);
+                    // M7: float mounted context menus to the last
+                    // right-click point.
+                    laid.apply_menu_anchor(self.menu_anchor);
                     self.laid = Some(laid);
                     self.overlay = None;
                     self.push_a11y();
@@ -502,8 +509,10 @@ where
     fn dispatch(&mut self, msg: A::Msg) {
         let effects = self.app.update(msg);
         // SetTheme is presentation state (§11): the shell applies it;
+        // ClipboardSet is a UI-thread OS call (arboard) acked inline;
         // everything else goes to the effects runtime.
         let mut rest = Vec::with_capacity(effects.len());
+        let mut acks: Vec<A::Msg> = Vec::new();
         for effect in effects {
             if let Effect::SetTheme { name } = &effect {
                 match Theme::by_name(name) {
@@ -512,7 +521,22 @@ where
                 }
                 continue;
             }
+            if let Effect::ClipboardSet { text, on_done } = &effect {
+                let result = match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text.clone())) {
+                    Ok(()) => libra_core::ClipboardResult::Ok,
+                    Err(e) => libra_core::ClipboardResult::Err(e.to_string()),
+                };
+                if let Some(ctor) = on_done {
+                    acks.push(ctor(result));
+                }
+                continue;
+            }
             rest.push(effect);
+        }
+        for ack in acks {
+            // Re-enter: the ack is an ordinary action (one level deep —
+            // clipboard acks don't themselves set the clipboard).
+            self.dispatch(ack);
         }
         self.effects.execute_all(rest);
         self.relayout(); // collects mounted sources, then sync_subscriptions
@@ -719,6 +743,35 @@ where
         if let Some(gfx) = &self.gfx {
             gfx.window.request_redraw();
         }
+    }
+
+    /// M7: right-click — find the topmost row with an `onMenu` handler
+    /// under the pointer, record the anchor, and dispatch it (the app
+    /// mounts its `<ContextMenu>` via `<if>`; relayout floats it here).
+    fn right_click(&mut self) {
+        let scale = self.scale();
+        let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+        let Some(laid) = &self.laid else { return };
+        let Some((name, arg)) = laid.items.iter().rev().find_map(|i| match &i.kind {
+            ItemKind::ListItem { on_menu: Some((name, arg)), .. }
+                if i.rect.contains(lx, ly)
+                    && i.clip.map_or(true, |c| c.contains(lx, ly)) =>
+            {
+                Some((name.clone(), arg.clone()))
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        self.menu_anchor = (lx, ly);
+        let msg = match arg {
+            Some(a) => A::Msg::action_with_str(&name, a),
+            None => A::Msg::action_by_name(&name),
+        }
+        .unwrap_or_else(|| {
+            panic!("onMenu '{name}' resolved to no Action — reflection out of sync")
+        });
+        self.dispatch(msg);
     }
 
     /// M5: an active divider drag — re-derive the fraction from the
@@ -1222,6 +1275,11 @@ where
                 button: MouseButton::Left,
                 ..
             } => self.split_drag = None,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => self.right_click(),
             WindowEvent::RedrawRequested => {
                 if self.pending_relayout {
                     self.pending_relayout = false;

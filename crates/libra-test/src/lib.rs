@@ -47,6 +47,10 @@ pub struct Harness<A: App> {
     /// input like `hover`/`focus` — empty renders each scroll at the top;
     /// `scroll(id, dy)` moves one.
     scroll_state: ScrollState,
+    /// M7 `<ContextMenu>` anchor — pinned by `right_click` to the
+    /// clicked item's center; (0,0) otherwise. Deterministic, so
+    /// menu-open snapshots are byte-exact.
+    menu_anchor: (f32, f32),
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +95,7 @@ pub mod fx {
         Timer,
         Random,
         SetTheme,
+        ClipboardSet,
     }
 
     pub fn any() -> Matcher {
@@ -123,6 +128,9 @@ pub mod fx {
     pub fn set_theme() -> Matcher {
         Matcher::SetTheme
     }
+    pub fn clipboard_set() -> Matcher {
+        Matcher::ClipboardSet
+    }
 }
 
 fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
@@ -140,6 +148,7 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::Timer, Effect::Timer { .. }) => true,
         (Matcher::Random, Effect::Random { .. }) => true,
         (Matcher::SetTheme, Effect::SetTheme { .. }) => true,
+        (Matcher::ClipboardSet, Effect::ClipboardSet { .. }) => true,
         _ => false,
     }
 }
@@ -177,7 +186,27 @@ impl<A: App> Harness<A> {
             theme,
             hover: None,
             scroll_state: ScrollState::new(),
+            menu_anchor: (0.0, 0.0),
         }
+    }
+
+    /// M7: right-click the selected row — pins the menu anchor to the
+    /// item's center and dispatches its `onMenu` handler (item-scoped
+    /// arg included), exactly like the shell's right-click.
+    pub fn right_click(&mut self, sel: Selector) {
+        use libra_components::ItemKind;
+        let item = self.find(&sel).unwrap_or_else(|| panic!("right_click: no item matches {sel:?}"));
+        let ItemKind::ListItem { on_menu: Some((name, arg)), .. } = &item.kind else {
+            panic!("right_click: {sel:?} has no onMenu handler");
+        };
+        let (name, arg) = (name.clone(), arg.clone());
+        self.menu_anchor = item.rect.center();
+        let msg = match arg {
+            Some(a) => A::Msg::action_with_str(&name, a),
+            None => A::Msg::action_by_name(&name),
+        }
+        .unwrap_or_else(|| panic!("onMenu '{name}' resolved to no Action — reflection out of sync"));
+        self.dispatch(msg);
     }
 
     /// Scroll a `<Scroll testId=…>` viewport by `dy` logical px (down = +).
@@ -188,6 +217,7 @@ impl<A: App> Harness<A> {
         *pos = (*pos + dy).max(0.0);
         self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
         self.laid.apply_scroll(&self.scroll_state);
+        self.laid.apply_menu_anchor(self.menu_anchor);
     }
 
     /// Pin the hover point to the selected item's center (§7.1
@@ -301,6 +331,9 @@ impl<A: App> Harness<A> {
         }
         self.pending.extend(effects);
         self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        // Deterministic layout inputs survive the rebuild (PLAN-SCROLL / M7).
+        self.laid.apply_scroll(&self.scroll_state);
+        self.laid.apply_menu_anchor(self.menu_anchor);
     }
 
     /// Hit-test a synthetic click at the center of the selected item and
@@ -469,6 +502,17 @@ impl<A: App> Harness<A> {
         match effect {
             Effect::Timer { action, .. } => self.dispatch(action),
             other => panic!("fire_timer: not a Timer effect: {other:?}"),
+        }
+    }
+
+    /// Ack an intercepted `Effect::ClipboardSet` (PLAN-NATIVE-
+    /// INTEGRATIONS) — no OS clipboard is touched in tests; the effect
+    /// is the assertion surface, the result is hand-fed.
+    pub fn resolve_clipboard(&mut self, effect: Effect<A::Msg>, result: libra_core::ClipboardResult) {
+        match effect {
+            Effect::ClipboardSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
+            Effect::ClipboardSet { on_done: None, .. } => {}
+            other => panic!("resolve_clipboard: not a ClipboardSet effect: {other:?}"),
         }
     }
 

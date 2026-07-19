@@ -70,6 +70,7 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             Role::TextInput => AkRole::TextInput,
             Role::Separator => AkRole::GenericContainer, // visual rule; non-interactive
             Role::Dialog => AkRole::Dialog,
+            Role::Menu => AkRole::Menu,
             // Unreachable: snapshot() already filters Role::Source out
             // (§12.5 — source elements never reach the AccessKit
             // projection). Matched here only so this stays exhaustive.
@@ -145,6 +146,7 @@ mod tests {
             on_press_arg: None,
             clip: None,
             scroll: None,
+            menu: None,
         };
         LaidTree {
             items: vec![
@@ -172,6 +174,7 @@ mod tests {
             on_press_arg: None,
             clip: None,
             scroll: None,
+            menu: None,
         });
         let before = snapshot(&laid(), 1.0, None).items.len();
         let after = snapshot(&l, 1.0, None).items.len();

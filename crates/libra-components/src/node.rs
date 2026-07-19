@@ -123,6 +123,10 @@ pub enum ViewNode {
         selected: bool,
         on_press: String,
         on_press_arg: Option<String>,
+        /// `onMenu={action}` / `onMenu={action(loopVar.field)}` (M7):
+        /// dispatched by right-click; typically opens a `<ContextMenu>`.
+        on_menu: Option<String>,
+        on_menu_arg: Option<String>,
         test_id: Option<String>,
     },
     /// `<Textarea>` (§10.1, PLAN-TEXTAREA stage 1): multi-line
@@ -148,6 +152,16 @@ pub enum ViewNode {
     /// (the controlled shape; pane layout *is* app state — replayable,
     /// snapshot-exact). Exactly two children.
     Split { fraction: f32, on_resize: String, test_id: String, children: Vec<ViewNode> },
+    /// `<ContextMenu onDismiss?=… testId=…>` (§7.1, PLAN-CATALOG /
+    /// PLAN-NOTES-APP M7): an anchored floating menu — the Dialog
+    /// overlay machinery with an invisible full-viewport barrier and a
+    /// small panel positioned at the **menu anchor**, a deterministic
+    /// input like focus/hover/scroll (the shell records the right-click
+    /// point; the harness's `right_click` pins the item's center;
+    /// default (0,0)). Mount/unmount is the app's `<if>`; children are
+    /// ordinary markup (ghost Buttons as items). Clicking the barrier
+    /// dispatches `onDismiss` (or swallows without it).
+    ContextMenu { on_dismiss: Option<String>, test_id: String, children: Vec<ViewNode> },
     /// `<Dialog title=… onDismiss?=… testId?=…>` (§7.1, PLAN-CATALOG /
     /// PLAN-NOTES-APP M6): an **in-tree modal** — full-viewport scrim +
     /// centered panel holding ordinary markup children. Deterministic
@@ -198,6 +212,8 @@ pub enum Role {
     /// A visual divider (`<Separator>`); maps to a non-interactive
     /// generic node in the AccessKit projection.
     Separator,
+    /// A `<ContextMenu>` panel — maps to AccessKit's menu role.
+    Menu,
     /// A `<Dialog>` panel — maps to AccessKit's dialog role; its title
     /// is the semantics text.
     Dialog,
@@ -248,7 +264,16 @@ pub enum ItemKind {
     Textarea { value: String, placeholder: String, px: f32 },
     /// Pressable list row; `selected`/hover paint a `surface_raised`
     /// wash behind the text lines.
-    ListItem { title: String, subtitle: String, meta: String, selected: bool, px_md: f32, px_sm: f32 },
+    ListItem {
+        title: String,
+        subtitle: String,
+        meta: String,
+        selected: bool,
+        px_md: f32,
+        px_sm: f32,
+        /// M7 right-click handler `(name, optional item-scoped arg)`.
+        on_menu: Option<(String, Option<String>)>,
+    },
     /// A `<Split>` container — invisible; carries the split's identity
     /// (semantics test_id) and its `onResize` handler for the shell's
     /// divider drag and the harness's `resize_split`. The handler lives
@@ -263,6 +288,12 @@ pub enum ItemKind {
     /// as the modal barrier in `hit()` — with a handler it dispatches
     /// `onDismiss`, without one it swallows the click.
     Scrim,
+    /// A `<ContextMenu>`'s full-viewport barrier — paints nothing (no
+    /// dim for menus) but blocks/dismisses like `Scrim`.
+    MenuBarrier,
+    /// A `<ContextMenu>`'s floating panel — `surface_raised` card at
+    /// the menu anchor; its semantics carry the menu's test_id.
+    MenuPanel,
     /// A Dialog's centered panel: `surface_raised` card + hairline
     /// frame. The title renders as an ordinary bold Text child; the
     /// panel's semantics carry it for queries/a11y.
@@ -300,6 +331,9 @@ pub struct Item {
     /// PLAN-SCROLL: the `test_id` of the enclosing `<Scroll>`, if any —
     /// `apply_scroll` offsets this item's rect by that viewport's position.
     pub scroll: Option<String>,
+    /// M7: the `test_id` of the enclosing `<ContextMenu>` panel, if any —
+    /// `apply_menu_anchor` translates tagged items to the anchor point.
+    pub menu: Option<String>,
 }
 
 /// Scroll positions by `<Scroll>` test_id (PLAN-SCROLL). A deterministic input
@@ -318,6 +352,37 @@ impl LaidTree {
     /// Offset each scrolled item by its viewport's position (PLAN-SCROLL),
     /// clamped to `[0, content_overflow]`. Call once on a freshly-laid tree
     /// (rects are natural); the shell/harness re-lay-out before re-applying.
+    /// M7: translate every `<ContextMenu>` panel (and its children) to
+    /// the menu anchor — a deterministic input like scroll offsets. The
+    /// panel is clamped so it stays fully inside the viewport.
+    pub fn apply_menu_anchor(&mut self, anchor: (f32, f32)) {
+        let ids: Vec<String> = self
+            .items
+            .iter()
+            .filter(|i| matches!(i.kind, ItemKind::MenuPanel))
+            .filter_map(|i| i.semantics.test_id.clone())
+            .collect();
+        for id in ids {
+            let Some(panel) = self
+                .items
+                .iter()
+                .find(|i| matches!(i.kind, ItemKind::MenuPanel) && i.semantics.test_id.as_deref() == Some(&id))
+                .map(|i| i.rect)
+            else {
+                continue;
+            };
+            let dx = anchor.0.min(self.width - panel.w).max(0.0) - panel.x;
+            let dy = anchor.1.min(self.height - panel.h).max(0.0) - panel.y;
+            if dx == 0.0 && dy == 0.0 {
+                continue;
+            }
+            for item in self.items.iter_mut().filter(|i| i.menu.as_deref() == Some(id.as_str())) {
+                item.rect.x += dx;
+                item.rect.y += dy;
+            }
+        }
+    }
+
     pub fn apply_scroll(&mut self, scroll: &ScrollState) {
         for (id, &raw) in scroll {
             let Some(vp) = self

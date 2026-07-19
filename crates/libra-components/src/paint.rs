@@ -86,7 +86,7 @@ impl LaidTree {
                     // Containers, scroll viewports, and mounted sources paint nothing.
                     ItemKind::Box | ItemKind::Scroll | ItemKind::Source(_) => {}
                     ItemKind::Separator => catalog::separator::paint(&mut cx, item),
-                    ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm } => {
+                    ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm, .. } => {
                         catalog::list_item::paint(&mut cx, item, title, subtitle, meta, *selected, *px_md, *px_sm)
                     }
                     ItemKind::Textarea { value, placeholder, px } => {
@@ -109,6 +109,8 @@ impl LaidTree {
                     }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
+                    ItemKind::MenuBarrier => {}
+                    ItemKind::MenuPanel => catalog::context_menu::paint_panel(&mut cx, item.rect),
                     ItemKind::Split { .. } => {}
                     ItemKind::SplitDivider { .. } => catalog::split::paint_divider(&mut cx, item.rect),
                     ItemKind::DialogPanel => catalog::dialog::paint_panel(&mut cx, item.rect),
@@ -138,7 +140,10 @@ impl LaidTree {
             if i.on_press.is_some() {
                 return Some(i);
             }
-            if matches!(i.kind, ItemKind::Scrim | ItemKind::DialogPanel) {
+            if matches!(
+                i.kind,
+                ItemKind::Scrim | ItemKind::DialogPanel | ItemKind::MenuBarrier | ItemKind::MenuPanel
+            ) {
                 return None; // modal barrier
             }
         }

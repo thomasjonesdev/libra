@@ -66,14 +66,28 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Input { value, placeholder, on_change, test_id } => {
             catalog::input::build(cx, value, placeholder, on_change, test_id)
         }
-        ViewNode::ListItem { title, subtitle, meta, selected, on_press, on_press_arg, test_id } => {
-            catalog::list_item::build(cx, title, subtitle, meta, *selected, on_press, on_press_arg, test_id)
-        }
+        ViewNode::ListItem {
+            title,
+            subtitle,
+            meta,
+            selected,
+            on_press,
+            on_press_arg,
+            on_menu,
+            on_menu_arg,
+            test_id,
+        } => catalog::list_item::build(
+            cx, title, subtitle, meta, *selected, on_press, on_press_arg, on_menu, on_menu_arg,
+            test_id,
+        ),
         ViewNode::Textarea { value, placeholder, on_change, test_id } => {
             catalog::textarea::build(cx, value, placeholder, on_change, test_id)
         }
         ViewNode::Dialog { title, on_dismiss, test_id, children } => {
             catalog::dialog::build(cx, title, on_dismiss, test_id, children)
+        }
+        ViewNode::ContextMenu { on_dismiss, test_id, children } => {
+            catalog::context_menu::build(cx, on_dismiss, test_id, children)
         }
         ViewNode::Split { fraction, on_resize, test_id, children } => {
             catalog::split::build(cx, *fraction, on_resize, test_id, children)
@@ -121,7 +135,7 @@ pub fn layout(
     // Flatten with accumulated absolute positions, in paint (pre-)order.
     let mut items = Vec::with_capacity(meta.len());
     let mut seen = std::collections::HashSet::new();
-    flatten(&tree, root, (0.0, 0.0), &meta, &mut items, &mut seen, None)?;
+    flatten(&tree, root, (0.0, 0.0), &meta, &mut items, &mut seen, None, None)?;
 
     // Overlay pass (`<Dialog>`): each detached scrim root computes at the
     // full viewport and flattens *after* the main items — top of the paint
@@ -139,7 +153,7 @@ pub fn layout(
             },
         )
         .map_err(|e| LayoutError(format!("{e:?}")))?;
-        flatten(&tree, overlay, (0.0, 0.0), &meta, &mut items, &mut seen, None)?;
+        flatten(&tree, overlay, (0.0, 0.0), &meta, &mut items, &mut seen, None, None)?;
     }
 
     // §12.5 source leaves are intentionally not flex children — attach
@@ -154,6 +168,7 @@ pub fn layout(
                 on_press_arg: None,
                 clip: None,
                 scroll: None,
+                menu: None,
             });
         }
     }
@@ -172,17 +187,28 @@ fn flatten(
     // PLAN-SCROLL: the enclosing `<Scroll>` (test_id, viewport rect), if any —
     // descendants inherit it as their clip + scroll tag.
     scroll_ctx: Option<(String, Rect)>,
+    // M7: the enclosing `<ContextMenu>` panel's test_id, if any — tagged
+    // items translate together in `apply_menu_anchor`.
+    menu_ctx: Option<String>,
 ) -> Result<(), LayoutError> {
     let l = tree.layout(node).map_err(|e| LayoutError(format!("{e:?}")))?;
     let abs = (origin.0 + l.location.x, origin.1 + l.location.y);
     let rect = Rect::new(abs.0, abs.1, l.size.width, l.size.height);
 
     let mut child_ctx = scroll_ctx.clone();
+    let mut child_menu = menu_ctx.clone();
     if let Some((id, kind, sem, press)) = meta.iter().find(|(id, ..)| *id == node) {
         seen.insert(*id);
         let (clip, scroll) = match &scroll_ctx {
             Some((sid, vp)) => (Some(*vp), Some(sid.clone())),
             None => (None, None),
+        };
+        // The panel tags itself and its descendants (barrier stays untagged
+        // — it must keep covering the viewport, not follow the anchor).
+        let menu_tag = if matches!(kind, ItemKind::MenuPanel) {
+            sem.test_id.clone()
+        } else {
+            menu_ctx.clone()
         };
         out.push(Item {
             kind: kind.clone(),
@@ -192,15 +218,19 @@ fn flatten(
             on_press_arg: press.as_ref().and_then(|(_, arg)| arg.clone()),
             clip,
             scroll,
+            menu: menu_tag.clone(),
         });
         // A `<Scroll>` viewport becomes the scroll context for its descendants
         // (the viewport itself keeps the outer context — unclipped in v1).
         if matches!(kind, ItemKind::Scroll) {
             child_ctx = sem.test_id.clone().map(|tid| (tid, rect));
         }
+        if matches!(kind, ItemKind::MenuPanel) {
+            child_menu = menu_tag;
+        }
     }
     for child in tree.children(node).map_err(|e| LayoutError(format!("{e:?}")))? {
-        flatten(tree, child, abs, meta, out, seen, child_ctx.clone())?;
+        flatten(tree, child, abs, meta, out, seen, child_ctx.clone(), child_menu.clone())?;
     }
     Ok(())
 }
@@ -249,5 +279,5 @@ pub(crate) fn is_source_node(n: &ViewNode) -> bool {
 /// A child that builds but must NOT join its parent's flex tree: §12.5
 /// sources (zero-layout mounts) and `<Dialog>` (a detached overlay root).
 pub(crate) fn is_detached_node(n: &ViewNode) -> bool {
-    is_source_node(n) || matches!(n, ViewNode::Dialog { .. })
+    is_source_node(n) || matches!(n, ViewNode::Dialog { .. } | ViewNode::ContextMenu { .. })
 }

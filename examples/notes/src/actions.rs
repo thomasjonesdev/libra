@@ -5,7 +5,7 @@
 //!
 //! Architecture: ARCHITECTURE.md §5.9 (module layout), §5.2 (macro expansion).
 
-use libra_core::{Effect, Instant, KvResult};
+use libra_core::{ClipboardResult, Effect, Instant, KvResult};
 
 use crate::model::{
     clip_bytes, migrate_v1, note_meta, note_snippet, note_title, DialogKind, Folder, FolderRow,
@@ -119,6 +119,61 @@ impl Notes {
         }
     }
 
+    // ---- context menu (M7): right-click a note row ----
+
+    /// `onMenu={noteMenu(n.id)}` — selection follows the right-click
+    /// (like native lists), so the menu items below act on
+    /// `selected_note` with the existing actions.
+    pub fn note_menu(&mut self, id: String) {
+        let Ok(id) = id.parse::<u32>() else { return };
+        if self.notes.iter().any(|n| n.id == id) {
+            self.selected_note = id;
+            self.menu_note = Some(id);
+        }
+    }
+
+    pub fn menu_close(&mut self) {
+        self.menu_note = None;
+    }
+
+    /// Menu: copy the note's body to the OS clipboard with a typed
+    /// outcome (PLAN-NATIVE-INTEGRATIONS — `Effect::ClipboardSet`).
+    pub fn menu_copy(&mut self) -> Option<Effect<Action>> {
+        self.menu_note = None;
+        self.copy_note()
+    }
+
+    /// `cmd+shift+c` — copy the selected note's body.
+    pub fn copy_note(&mut self) -> Option<Effect<Action>> {
+        let id = self.selected_note;
+        let body = self.notes.iter().find(|n| n.id == id)?.body.clone();
+        Some(Effect::clipboard_set_acked(body, Action::Copied))
+    }
+
+    pub fn menu_delete(&mut self) -> Option<Effect<Action>> {
+        self.menu_note = None;
+        self.delete_note()
+    }
+
+    pub fn menu_restore(&mut self) -> Option<Effect<Action>> {
+        self.menu_note = None;
+        self.restore_note()
+    }
+
+    /// Menu: route into the M6 confirm dialog rather than deleting
+    /// outright.
+    pub fn menu_delete_forever(&mut self) {
+        self.menu_note = None;
+        self.delete_note_permanently();
+    }
+
+    fn copied(&mut self, result: ClipboardResult) {
+        self.status = match result {
+            ClipboardResult::Ok => "copied".into(),
+            ClipboardResult::Err(e) => format!("copy failed: {e}"),
+        };
+    }
+
     // ---- dialogs (M6): create/rename folder + confirm permanent delete ----
 
     pub fn open_new_folder_dialog(&mut self) {
@@ -145,10 +200,12 @@ impl Notes {
         self.dialog = None;
     }
 
-    /// Escape (§19.2): contextual — cancel an open dialog, else clear
-    /// the search.
+    /// Escape (§19.2): contextual — close an open menu, else cancel an
+    /// open dialog, else clear the search.
     pub fn dismiss(&mut self) {
-        if self.dialog.is_some() {
+        if self.menu_note.is_some() {
+            self.menu_note = None;
+        } else if self.dialog.is_some() {
             self.dialog = None;
         } else {
             self.query.clear();
@@ -333,6 +390,7 @@ impl Notes {
         self.show_folder_dialog =
             matches!(self.dialog, Some(DialogKind::NewFolder | DialogKind::RenameFolder));
         self.show_confirm_dialog = matches!(self.dialog, Some(DialogKind::ConfirmDelete));
+        self.show_note_menu = self.menu_note.is_some();
         self.dialog_title = match self.dialog {
             Some(DialogKind::NewFolder) => "New Folder",
             Some(DialogKind::RenameFolder) => "Rename Folder",

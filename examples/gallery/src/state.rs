@@ -54,6 +54,8 @@ pub struct Gallery {
     pub ctl_progress: f32,
     /// Dialog playground: the modal is mounted while this is set (M6).
     pub dialog_open: bool,
+    /// ContextMenu playground: mounted while set (M7).
+    pub menu_open: bool,
     /// Split playground fraction — echoed by `splitChanged` (M5).
     pub ctl_split: f32,
 
@@ -93,6 +95,7 @@ impl Gallery {
             ctl_body: "line one\nline two".into(),
             ctl_progress: 0.5,
             dialog_open: false,
+            menu_open: false,
             ctl_split: 0.5,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };

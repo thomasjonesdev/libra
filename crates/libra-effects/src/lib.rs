@@ -157,6 +157,9 @@ impl<M: Send + 'static> Effects<M> {
             // before effects reach the pool; reaching here means
             // headless — nothing to restyle.
             Effect::SetTheme { .. } => {}
+            // Shell-handled likewise (arboard is a UI-thread concern);
+            // headless reach-through is a no-op.
+            Effect::ClipboardSet { .. } => {}
         }
     }
 

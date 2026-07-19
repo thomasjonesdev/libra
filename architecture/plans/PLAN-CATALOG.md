@@ -92,7 +92,7 @@ From existing §7.1 mission-control set — still in scope, later waves:
 | `Status`, `Icon`, `Markdown`, `Tooltip` | display | |
 | `ButtonGroup`, `Radio`, `Select`, `Combobox`, `Stepper` | controls | |
 | `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |
-| `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, `ContextMenu` | chrome | |
+| `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse) | chrome | |
 | `Video` | late | §9.5 |
 | `Frames`, `Interval`, `Stream` | sources | **shipped** (Stream delivery thin) |
 | `Canvas` | escape | §7.4 |

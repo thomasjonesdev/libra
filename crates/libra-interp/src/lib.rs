@@ -454,6 +454,34 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Progress { value, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M7): the anchored menu —
+        // the Dialog overlay machinery, positioned by the menu-anchor
+        // input. Children are ordinary markup (ghost Buttons as items).
+        "ContextMenu" => {
+            let mut on_dismiss: Option<String> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("no action '{m}' on Action — check the enum"),
+                            ));
+                        }
+                        on_dismiss = Some(m.clone());
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<ContextMenu> requires testId=\"…\" (its anchor identity)"))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::ContextMenu { on_dismiss, test_id, children: kids })
+        }
+
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M5): the two-pane
         // splitter. `fraction` is typed like `<Progress value>`;
         // `onResize` is a String-payload action (the new fraction's
@@ -622,6 +650,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             let mut meta = String::new();
             let mut selected = false;
             let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_menu: Option<(String, Option<String>, Span)> = None;
             let mut test_id = None;
             let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
                 (scope.field)(path)
@@ -640,6 +669,10 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                     ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
                     ("onPress", AttrValue::Call { name: m, arg }) => {
                         on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onMenu", AttrValue::Ident(m)) => on_menu = Some((m.clone(), None, a.span)),
+                    ("onMenu", AttrValue::Call { name: m, arg }) => {
+                        on_menu = Some((m.clone(), Some(arg.clone()), a.span))
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -673,7 +706,45 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                     None
                 }
             };
-            Ok(ViewNode::ListItem { title, subtitle, meta, selected, on_press: msg, on_press_arg, test_id })
+            // M7: right-click handler, same dispatchability rules as onPress.
+            let (on_menu, on_menu_arg) = match on_menu {
+                None => (None, None),
+                Some((m, arg, mspan)) => {
+                    require_camel_case(&m, mspan)?;
+                    let resolved_arg = match &arg {
+                        Some(binding) => {
+                            if !(scope.has_str_action)(&m) {
+                                return Err(err(
+                                    mspan,
+                                    format!(
+                                        "action '{m}' takes no payload — `onMenu={{{m}({binding})}}` \
+                                         needs a String-payload action (fn {m}(&mut self, s: String))"
+                                    ),
+                                ));
+                            }
+                            Some(resolve(binding, mspan)?)
+                        }
+                        None => {
+                            if !(scope.has_action)(&m) {
+                                return Err(err(mspan, format!("no action '{m}' on Action — check the enum")));
+                            }
+                            None
+                        }
+                    };
+                    (Some(m), resolved_arg)
+                }
+            };
+            Ok(ViewNode::ListItem {
+                title,
+                subtitle,
+                meta,
+                selected,
+                on_press: msg,
+                on_press_arg,
+                on_menu,
+                on_menu_arg,
+                test_id,
+            })
         }
 
         // §10.1 stage 1 (PLAN-TEXTAREA): multi-line controlled entry —
@@ -831,7 +902,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Split, Dialog, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Split, Dialog, ContextMenu, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

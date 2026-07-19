@@ -18,6 +18,8 @@ pub(crate) fn build(
     selected: bool,
     on_press: &str,
     on_press_arg: &Option<String>,
+    on_menu: &Option<String>,
+    on_menu_arg: &Option<String>,
     test_id: &Option<String>,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
@@ -43,6 +45,7 @@ pub(crate) fn build(
             selected,
             px_md,
             px_sm,
+            on_menu: on_menu.as_ref().map(|m| (m.clone(), on_menu_arg.clone())),
         },
         Semantics { role: Role::Button, text: title.to_string(), test_id: test_id.clone() },
         Some((on_press.to_string(), on_press_arg.clone())),

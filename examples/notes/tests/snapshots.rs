@@ -73,3 +73,17 @@ fn light_and_dark_render_different_bytes() {
     let light = Harness::<Notes>::with_viewport(VIEW, 900, 600).theme("libra-light").frame_png();
     assert_ne!(dark, light, "theme must be part of the frame's identity");
 }
+
+/// M7: the context menu floats at the right-clicked row — anchored by
+/// a deterministic input, so the open-menu frame is byte-exact.
+#[test]
+fn snapshot_note_context_menu_open() {
+    let mut h = harness();
+    h.click(by::test_id("new-note"));
+    settle_save(&mut h);
+    h.type_text(by::test_id("editor-body"), "Menu target");
+    settle_save(&mut h);
+    h.blur();
+    h.right_click(by::text("Menu target"));
+    h.assert_snapshot("notes_context_menu");
+}

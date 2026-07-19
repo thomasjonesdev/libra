@@ -35,7 +35,7 @@
             <Text muted testId="empty">{empty_message}</Text>
           </if>
           <for each={note_rows} as="n" key={n.id}>
-            <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} />
+            <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} onMenu={noteMenu(n.id)} />
           </for>
         </Column>
       </Scroll>
@@ -70,6 +70,19 @@
   <Row gap={8} padding={8} cross="center">
     <Text size="sm" muted testId="list-summary">{list_summary}</Text>
   </Row>
+
+  <if test={show_note_menu}>
+    <ContextMenu onDismiss={menuClose} testId="note-menu">
+      <if test={selected_is_trashed}>
+        <Button variant="ghost" onPress={menuRestore} testId="menu-restore">Restore</Button>
+        <Button variant="ghost" onPress={menuDeleteForever} testId="menu-delete-forever">Delete Forever…</Button>
+        <else>
+          <Button variant="ghost" onPress={menuCopy} testId="menu-copy">Copy</Button>
+          <Button variant="ghost" onPress={menuDelete} testId="menu-delete">Delete</Button>
+        </else>
+      </if>
+    </ContextMenu>
+  </if>
 
   <if test={show_folder_dialog}>
     <Dialog title={dialog_title} onDismiss={dialogCancel} testId="folder-dialog">

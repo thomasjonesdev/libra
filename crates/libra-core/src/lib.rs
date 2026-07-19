@@ -196,6 +196,17 @@ pub enum Effect<M> {
     // Platform (§12.1): handled by the shell (and intercepted by the
     // harness), not the worker pool — the renderer re-resolves live.
     SetTheme { name: String },
+    /// Put text on the OS clipboard (PLAN-NATIVE-INTEGRATIONS): shell-
+    /// handled (arboard), acked with a [`ClipboardResult`] when a ctor
+    /// is given — "copy note" flows can report a typed outcome.
+    ClipboardSet { text: String, on_done: Option<ActionCtor<ClipboardResult, M>> },
+}
+
+/// Outcome of [`Effect::ClipboardSet`] (PLAN-NATIVE-INTEGRATIONS).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClipboardResult {
+    Ok,
+    Err(String),
 }
 
 /// Equality over the effect's *data*. Ctor fields compare by presence
@@ -225,6 +236,10 @@ impl<M: PartialEq> PartialEq for Effect<M> {
             ) => sa == sb && ia == ib,
             (Effect::IngestClose { series: a }, Effect::IngestClose { series: b }) => a == b,
             (Effect::SetTheme { name: a }, Effect::SetTheme { name: b }) => a == b,
+            (
+                Effect::ClipboardSet { text: ta, on_done: da },
+                Effect::ClipboardSet { text: tb, on_done: db },
+            ) => ta == tb && da.is_some() == db.is_some(),
             _ => false,
         }
     }
@@ -250,6 +265,15 @@ impl<M> Effect<M> {
     }
     pub fn timer(after_ms: u64, action: M) -> Self {
         Effect::Timer { id: None, after_ms, action }
+    }
+    pub fn clipboard_set(text: impl Into<String>) -> Self {
+        Effect::ClipboardSet { text: text.into(), on_done: None }
+    }
+    pub fn clipboard_set_acked(
+        text: impl Into<String>,
+        on_done: ActionCtor<ClipboardResult, M>,
+    ) -> Self {
+        Effect::ClipboardSet { text: text.into(), on_done: Some(on_done) }
     }
 }
 

@@ -259,3 +259,58 @@ fn pane_splits_resize_and_round_trip() {
     h.resize_split("sidebar-split", 0.21);
     assert_eq!(h.frame_png(), resting, "back to the default fraction: identical bytes");
 }
+
+/// M7: right-click opens the context menu at the row (selection
+/// follows), a menu item acts on that note, and the barrier click
+/// closes without touching the app beneath.
+#[test]
+fn right_click_menu_deletes_the_clicked_note() {
+    let mut h = harness();
+    add_note(&mut h, "First note");
+    h.dispatch(Action::Tick(libra_core::Instant::at(60_000.0)));
+    add_note(&mut h, "Second note");
+    assert_eq!(h.state().note_rows.len(), 2);
+
+    h.right_click(by::text("First note"));
+    assert!(h.state().show_note_menu);
+    assert_eq!(h.state().note_rows.iter().find(|r| r.selected).unwrap().title, "First note");
+
+    h.click(by::test_id("menu-delete"));
+    settle_save(&mut h);
+    assert!(!h.state().show_note_menu, "acting closes the menu");
+    assert_eq!(h.state().note_rows.len(), 1);
+    assert_eq!(h.state().note_rows[0].title, "Second note");
+    assert!(h.state().has_trash);
+}
+
+/// M7: the trashed-note menu offers Restore / Delete Forever, and
+/// Delete Forever routes through the M6 confirm dialog.
+#[test]
+fn trashed_row_menu_routes_delete_forever_through_the_confirm_dialog() {
+    let mut h = harness();
+    add_note(&mut h, "Doomed");
+    h.click(by::test_id("delete-note"));
+    settle_save(&mut h);
+    h.click(by::test_id("trash-folder"));
+
+    h.right_click(by::text("Doomed"));
+    h.click(by::test_id("menu-delete-forever"));
+    assert!(h.state().show_confirm_dialog, "menu routes into the confirm dialog");
+    h.click(by::test_id("confirm-delete"));
+    settle_save(&mut h);
+    assert_eq!(h.state().notes.len(), 0);
+}
+
+/// M7: escape closes the menu first (menu > dialog > search).
+#[test]
+fn escape_closes_the_menu_before_anything_else() {
+    let mut h = harness();
+    add_note(&mut h, "A note");
+    h.type_text(by::test_id("search"), "a");
+    h.blur();
+    h.right_click(by::text("A note"));
+    assert!(h.state().show_note_menu);
+    assert!(h.press_shortcut("escape"));
+    assert!(!h.state().show_note_menu);
+    assert_eq!(h.state().query, "a", "search untouched by the menu-closing escape");
+}

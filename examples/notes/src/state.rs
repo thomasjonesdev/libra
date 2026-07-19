@@ -50,6 +50,9 @@ pub struct Notes {
     /// projections; not itself reflected.
     #[libra(skip)]
     pub dialog: Option<DialogKind>,
+    /// M7: the note whose context menu is open (right-clicked row).
+    #[libra(skip)]
+    pub menu_note: Option<u32>,
     /// Controlled value of the dialog's name field.
     pub dialog_name: String,
     /// Inline validation line ("name can't be empty", "already exists").
@@ -71,6 +74,8 @@ pub struct Notes {
     pub show_folder_dialog: bool,
     pub show_confirm_dialog: bool,
     pub dialog_title: String,
+    /// M7: a note row's context menu is open.
+    pub show_note_menu: bool,
 }
 
 impl Notes {
@@ -134,6 +139,7 @@ impl Notes {
             Shortcut::action("cmd+shift+n", "openNewFolderDialog"),
             Shortcut::action("cmd+shift+r", "openRenameFolderDialog"),
             Shortcut::action("cmd+backspace", "deleteNote"),
+            Shortcut::action("cmd+shift+c", "copyNote"),
             Shortcut::action("cmd+alt+down", "selectNextNote"),
             Shortcut::action("cmd+alt+up", "selectPrevNote"),
             // Escape is contextual: open dialog → cancel it; else clear

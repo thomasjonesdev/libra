@@ -45,6 +45,15 @@ impl Gallery {
         self.dialog_open = false;
     }
 
+    /// `onMenu={openMenu}` on the ListItem cell (M7).
+    pub fn open_menu(&mut self) {
+        self.menu_open = true;
+    }
+
+    pub fn menu_close(&mut self) {
+        self.menu_open = false;
+    }
+
     /// `<Split onResize>` echo (M5 controlled shape).
     pub fn split_changed(&mut self, fraction: String) {
         if let Ok(f) = fraction.parse::<f32>() {

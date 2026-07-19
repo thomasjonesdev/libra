@@ -129,3 +129,40 @@ fn theme_toggle_emits_set_theme_and_restyles() {
     h.query(by::test_id("theme")).assert_text("libra-light");
     h.expect_no_effects();
 }
+
+/// M7 (PLAN-NATIVE-INTEGRATIONS): copying a note is an intercepted
+/// `Effect::ClipboardSet` carrying the body; the hand-fed ack lands as
+/// a typed outcome in status. No OS clipboard in tests.
+#[test]
+fn copy_note_emits_a_clipboard_effect_with_a_typed_outcome() {
+    let mut h = fresh_harness();
+    h.click(by::test_id("new-note"));
+    let t = h.expect_effect(fx::timer());
+    h.fire_timer(t);
+    let save = h.expect_effect(fx::kv_set(STORE_KEY));
+    h.resolve_kv_set(save, KvResult::Ok);
+    h.type_text(by::test_id("editor-body"), "the body to copy");
+    while h.pending_effects().any(|e| matches!(e, Effect::Timer { .. })) {
+        let t = h.expect_effect(fx::timer());
+        h.fire_timer(t);
+    }
+    while h.pending_effects().any(|e| matches!(e, Effect::KvSet { .. })) {
+        let kv = h.expect_effect(fx::kv_set(STORE_KEY));
+        h.resolve_kv_set(kv, KvResult::Ok);
+    }
+
+    h.blur();
+    assert!(h.press_shortcut("cmd+shift+c"));
+    let copy = h.expect_effect(fx::clipboard_set());
+    let Effect::ClipboardSet { text, .. } = &copy else { unreachable!() };
+    assert_eq!(text, "the body to copy");
+    h.resolve_clipboard(copy, libra_core::ClipboardResult::Ok);
+    h.query(by::test_id("status")).assert_text("copied");
+
+    // The failure path is a typed outcome too.
+    assert!(h.press_shortcut("cmd+shift+c"));
+    let copy = h.expect_effect(fx::clipboard_set());
+    h.resolve_clipboard(copy, libra_core::ClipboardResult::Err("denied".into()));
+    h.query(by::test_id("status")).assert_text("copy failed: denied");
+    h.expect_no_effects();
+}

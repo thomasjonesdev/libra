@@ -160,3 +160,16 @@ fn snapshot_workbench_split_dark_and_resize_round_trips() {
     h.resize_split("pg-split", 0.5);
     assert_eq!(h.frame_png(), at_half, "resizing back restores identical bytes");
 }
+
+/// M7 `<ContextMenu>`: right-click opens the anchored menu (byte-exact
+/// snapshot); a menu item closes it back to the identical resting frame.
+#[test]
+fn snapshot_workbench_menu_and_round_trip() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("list_item".into()));
+    let resting = h.frame_png();
+    h.right_click(by::test_id("pg-row-menu"));
+    h.assert_snapshot("workbench_menu_dark");
+    h.click(by::test_id("pg-menu-a"));
+    assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
+}
