@@ -4,13 +4,16 @@
   <Row gap={0} grow>
     <Column gap={4} padding={12} grow={1}>
       <Text bold>Folders</Text>
-      <for each={folder_rows} as="f" key={f.id}>
-        <ListItem title={f.name} meta={f.count} selected={f.selected} onPress={selectFolder(f.id)} />
-      </for>
-      <if test={has_trash}>
-        <ListItem title="Recently Deleted" meta={trash_count} onPress={openRecentlyDeleted} testId="trash-folder" />
-      </if>
-      <Spacer />
+      <Scroll testId="folder-scroll">
+        <Column gap={4}>
+          <for each={folder_rows} as="f" key={f.id}>
+            <ListItem title={f.name} meta={f.count} selected={f.selected} onPress={selectFolder(f.id)} />
+          </for>
+          <if test={has_trash}>
+            <ListItem title="Recently Deleted" meta={trash_count} onPress={openRecentlyDeleted} testId="trash-folder" />
+          </if>
+        </Column>
+      </Scroll>
       <Separator />
       <Row gap={6} cross="center">
         <Input value={new_folder_name} placeholder="new folder…" onChange={newFolderNameChanged} testId="new-folder" />
@@ -30,12 +33,16 @@
         <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
       </Row>
       <Separator />
-      <if test={note_rows.isEmpty}>
-        <Text muted testId="empty">{empty_message}</Text>
-      </if>
-      <for each={note_rows} as="n" key={n.id}>
-        <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} />
-      </for>
+      <Scroll testId="note-scroll">
+        <Column gap={4}>
+          <if test={note_rows.isEmpty}>
+            <Text muted testId="empty">{empty_message}</Text>
+          </if>
+          <for each={note_rows} as="n" key={n.id}>
+            <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} />
+          </for>
+        </Column>
+      </Scroll>
     </Column>
 
     <Separator vertical />

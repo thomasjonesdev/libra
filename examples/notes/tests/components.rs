@@ -138,3 +138,22 @@ fn interval_source_is_mounted_for_live_relative_timestamps() {
     let h = harness();
     assert!(h.has_source("interval"));
 }
+
+/// M2 tail (PLAN-NOTES-APP / PLAN-SCROLL): both list panes are scroll
+/// viewports; a long note list scrolls — offset is a deterministic
+/// harness input, and rows keep working after the offset applies.
+#[test]
+fn note_list_scrolls_when_it_overflows() {
+    let mut h = harness();
+    for i in 0..30 {
+        add_note(&mut h, &format!("Note number {i}\nbody text"));
+    }
+    h.query(by::test_id("note-scroll")).assert_text("");
+    h.query(by::test_id("folder-scroll")).assert_text("");
+
+    let resting = h.frame_png();
+    h.scroll("note-scroll", 200.0);
+    assert_ne!(h.frame_png(), resting, "scrolled list renders different bytes");
+    h.scroll("note-scroll", -200.0);
+    assert_eq!(h.frame_png(), resting, "scrolling back restores identical bytes");
+}
