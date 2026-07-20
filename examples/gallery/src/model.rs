@@ -44,6 +44,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("alert", "Alert"),
     ("skeleton", "Skeleton"),
     ("avatar", "Avatar"),
+    ("tooltip", "Tooltip"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),
@@ -53,6 +54,7 @@ pub const CONTROLS: &[(&str, &str)] = &[
     ("switch", "Switch"),
     ("checkbox", "Checkbox"),
     ("radio", "Radio"),
+    ("slider", "Slider"),
     ("dialog", "Dialog"),
     ("drawer", "Drawer"),
 ];

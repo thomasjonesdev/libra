@@ -239,3 +239,32 @@ fn snapshot_workbench_drawer_and_round_trip() {
     h.click(by::test_id("pg-drawer-close"));
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
+
+/// Slider: the harness verb drives the same controlled path as the
+/// shell's track drag, and it visibly moves the bound Progress too.
+#[test]
+fn snapshot_workbench_slider_and_set_round_trips() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("slider".into()));
+    h.assert_snapshot("workbench_slider_dark");
+    let at_half = h.frame_png();
+    h.set_slider("pg-slider", 0.8);
+    assert!((h.state().ctl_slider - 0.8).abs() < 1e-4);
+    assert_ne!(h.frame_png(), at_half, "knob, fill, and the bound Progress repaint");
+    h.set_slider("pg-slider", 0.5);
+    assert_eq!(h.frame_png(), at_half, "setting back restores identical bytes");
+}
+
+/// Tooltip: hidden at rest, floats over the hovered target, and clears
+/// back to identical resting bytes.
+#[test]
+fn snapshot_workbench_tooltip_hover() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("tooltip".into()));
+    let resting = h.frame_png();
+    h.hover(by::test_id("pg-tip-btn"));
+    assert_ne!(h.frame_png(), resting, "hover paints the label");
+    h.assert_snapshot("workbench_tooltip_hover_dark");
+    h.blur_hover();
+    assert_eq!(h.frame_png(), resting, "unhover restores identical bytes");
+}

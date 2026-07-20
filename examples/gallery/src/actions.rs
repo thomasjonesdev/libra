@@ -78,6 +78,13 @@ impl Gallery {
         self.drawer_open = false;
     }
 
+    /// `<Slider onChange>` echo (model-owned).
+    pub fn slider_changed(&mut self, v: String) {
+        if let Ok(f) = v.parse::<f32>() {
+            self.ctl_slider = f.clamp(0.0, 1.0);
+        }
+    }
+
     /// `<Split onResize>` echo (M5 controlled shape).
     pub fn split_changed(&mut self, fraction: String) {
         if let Ok(f) = fraction.parse::<f32>() {
@@ -131,6 +138,8 @@ impl Gallery {
         self.is_switch = s == "switch";
         self.is_checkbox = s == "checkbox";
         self.is_radio = s == "radio";
+        self.is_slider = s == "slider";
+        self.is_tooltip = s == "tooltip";
         self.radio_a = self.radio_pick == "a";
         self.radio_b = self.radio_pick == "b";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;

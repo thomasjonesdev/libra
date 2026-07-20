@@ -257,6 +257,30 @@ impl<A: App> Harness<A> {
         self.dispatch(msg);
     }
 
+    /// `<Slider>`: set the value through its `onChange` handler — the
+    /// deterministic counterpart of the shell's track drag (same clamp,
+    /// same `{:.4}` formatting).
+    pub fn set_slider(&mut self, test_id: &str, value: f32) {
+        use libra_components::ItemKind;
+        let on_change = self
+            .laid
+            .items
+            .iter()
+            .find_map(|i| match &i.kind {
+                ItemKind::SliderCtl { on_change, .. }
+                    if i.semantics.test_id.as_deref() == Some(test_id) =>
+                {
+                    Some(on_change.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("set_slider: no <Slider testId=\"{test_id}\">"));
+        let value = value.clamp(0.0, 1.0);
+        let msg = A::Msg::action_with_str(&on_change, format!("{value:.4}"))
+            .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Action variant"));
+        self.dispatch(msg);
+    }
+
     /// §19.2: press a declared keyboard shortcut by its chord string —
     /// drives the app's own validated table with the same precedence
     /// the shell applies (a focused text control suppresses reserved

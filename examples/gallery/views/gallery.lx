@@ -212,6 +212,24 @@
         <Radio selected={radio_b} onSelect={pickRadioB} testId="pg-radio-b">Option B</Radio>
       </if>
 
+      <if test={is_slider}>
+        <Text bold muted>Playground (model-owned — click or drag the track)</Text>
+        <Row gap={8} cross="center">
+          <Slider value={ctl_slider} onChange={sliderChanged} testId="pg-slider" />
+        </Row>
+        <Text bold muted>Bound elsewhere: the same value drives a Progress</Text>
+        <Row><Progress value={ctl_slider} /></Row>
+      </if>
+
+      <if test={is_tooltip}>
+        <Text bold muted>Hover the button (tooltips ride the hover input)</Text>
+        <Row gap={8}>
+          <Tooltip text="Deterministic tooltip — hover is an explicit input">
+            <Button variant="secondary" onPress={noop} testId="pg-tip-btn">Hover me</Button>
+          </Tooltip>
+        </Row>
+      </if>
+
       <if test={is_drawer}>
         <Text bold muted>Playground</Text>
         <Row gap={8}>

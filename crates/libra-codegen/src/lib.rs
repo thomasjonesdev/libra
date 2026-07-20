@@ -574,6 +574,70 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+        // §7.1, matching interp's "Slider" arm exactly.
+        "Slider" => {
+            let mut value = "0.0f32".to_string();
+            let mut on_change: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Num(v)) => value = f32_lit(*v),
+                    ("value", AttrValue::Ident(p)) => {
+                        value = display_ref_expr(p, bound).map_err(|m| err(a.span, m))?;
+                    }
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Slider> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Slider> requires testId=\"…\" (its drag identity)"))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Slider> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Slider {{ {at}\n\
+                 {i}    value: {value},\n\
+                 {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = str_lit(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Tooltip" arm exactly.
+        "Tooltip" => {
+            let mut text: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("text", AttrValue::Str(v)) => text = Some(format!("{}.to_string()", str_lit(v))),
+                    ("text", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        text = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let text =
+                text.ok_or_else(|| err(*span, "<Tooltip> requires text={binding} or text=\"…\""))?;
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Tooltip {{ {at}\n\
+                 {i}    text: {text},\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+            ))
+        }
+
         // §7.1 (PLAN-CATALOG / M7), matching libra-interp's
         // "ContextMenu" arm exactly.
         "ContextMenu" => {

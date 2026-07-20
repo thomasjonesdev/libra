@@ -275,7 +275,7 @@ where
         cursor: (0.0, 0.0),
         scroll_state: libra_components::ScrollState::new(),
         shortcut_table,
-        split_drag: None,
+        drag: None,
         menu_anchor: (0.0, 0.0),
         gfx: None,
         watch_mtime,
@@ -320,6 +320,13 @@ struct Gfx {
     a11y: accesskit_winit::Adapter,
 }
 
+/// What a pointer drag is attached to (M5 Split divider / Slider track).
+#[derive(Clone)]
+enum DragTarget {
+    Split(String),
+    Slider(String),
+}
+
 struct Shell<A: App> {
     opts: Options,
     app: A,
@@ -338,9 +345,9 @@ struct Shell<A: App> {
     /// §19.2: the app's validated chord → action table (built once at
     /// startup from `A::shortcuts()`).
     shortcut_table: Vec<(libra_core::Chord, libra_core::Shortcut)>,
-    /// M5 `<Split>` drag: the split test_id being resized while the
-    /// left button is down on its divider gutter.
-    split_drag: Option<String>,
+    /// Pointer drag target (M5 Split divider / Slider track), keyed by
+    /// the control's test_id while the left button is down.
+    drag: Option<DragTarget>,
     /// M7 `<ContextMenu>` anchor — the last right-click point (logical
     /// px), a deterministic layout input like scroll offsets.
     menu_anchor: (f32, f32),
@@ -703,12 +710,22 @@ where
         let Some(laid) = &self.laid else { return };
         // M5: pressing a `<Split>` divider gutter starts a drag instead
         // of a click (the gutter is not a pressable item).
-        let divider = laid.items.iter().rev().find_map(|i| match &i.kind {
-            ItemKind::SplitDivider { split } if i.rect.contains(lx, ly) => Some(split.clone()),
+        let target = laid.items.iter().rev().find_map(|i| match &i.kind {
+            ItemKind::SplitDivider { split } if i.rect.contains(lx, ly) => {
+                Some(DragTarget::Split(split.clone()))
+            }
+            ItemKind::SliderCtl { .. }
+                if i.rect.contains(lx, ly) && i.clip.map_or(true, |c| c.contains(lx, ly)) =>
+            {
+                i.semantics.test_id.clone().map(DragTarget::Slider)
+            }
             _ => None,
         });
-        if let Some(split) = divider {
-            self.split_drag = Some(split);
+        if let Some(target) = target {
+            self.drag = Some(target);
+            // Click-to-set: a slider press applies immediately (a drag
+            // with a single move).
+            self.drag_move();
             return;
         }
         let Some(hit) = laid.hit(lx, ly) else {
@@ -774,32 +791,41 @@ where
         self.dispatch(msg);
     }
 
-    /// M5: an active divider drag — re-derive the fraction from the
-    /// pointer's position within the split container and dispatch its
-    /// `onResize` action (String payload, `{:.4}` — the same formatting
-    /// the harness's `resize_split` uses, so both paths are identical).
-    fn drag_split(&mut self) {
-        let Some(split_id) = self.split_drag.clone() else { return };
+    /// Active pointer drag (M5 Split / Slider): re-derive the fraction
+    /// from the pointer within the control's rect and dispatch its
+    /// String-payload handler (`{:.4}` — identical formatting to the
+    /// harness's `resize_split`/`set_slider`, so both paths agree).
+    fn drag_move(&mut self) {
+        let Some(target) = self.drag.clone() else { return };
         let scale = self.scale();
         let lx = self.cursor.0 as f32 / scale;
         let Some(laid) = &self.laid else { return };
-        let Some((rect, on_resize)) = laid.items.iter().find_map(|i| match &i.kind {
-            ItemKind::Split { on_resize }
-                if i.semantics.test_id.as_deref() == Some(split_id.as_str()) =>
-            {
-                Some((i.rect, on_resize.clone()))
-            }
-            _ => None,
-        }) else {
-            return;
+        let found = match &target {
+            DragTarget::Split(id) => laid.items.iter().find_map(|i| match &i.kind {
+                ItemKind::Split { on_resize }
+                    if i.semantics.test_id.as_deref() == Some(id.as_str()) =>
+                {
+                    Some((i.rect, on_resize.clone(), 0.05f32, 0.95f32))
+                }
+                _ => None,
+            }),
+            DragTarget::Slider(id) => laid.items.iter().find_map(|i| match &i.kind {
+                ItemKind::SliderCtl { on_change, .. }
+                    if i.semantics.test_id.as_deref() == Some(id.as_str()) =>
+                {
+                    Some((i.rect, on_change.clone(), 0.0f32, 1.0f32))
+                }
+                _ => None,
+            }),
         };
+        let Some((rect, handler, lo, hi)) = found else { return };
         if rect.w <= 0.0 {
             return;
         }
-        let fraction = ((lx - rect.x) / rect.w).clamp(0.05, 0.95);
-        let msg = A::Msg::action_with_str(&on_resize, format!("{fraction:.4}"))
+        let fraction = ((lx - rect.x) / rect.w).clamp(lo, hi);
+        let msg = A::Msg::action_with_str(&handler, format!("{fraction:.4}"))
             .unwrap_or_else(|| {
-                panic!("'{on_resize}' resolved to no String-payload Action — reflection out of sync")
+                panic!("'{handler}' resolved to no String-payload Action — reflection out of sync")
             });
         self.dispatch(msg);
     }
@@ -1254,8 +1280,8 @@ where
                 // M5: an active divider drag re-derives the fraction from
                 // the pointer and dispatches onResize (the app echoes it
                 // into the bound field — the controlled Split shape).
-                if self.split_drag.is_some() {
-                    self.drag_split();
+                if self.drag.is_some() {
+                    self.drag_move();
                 }
                 // Hover is a paint input (ListItem washes); damage
                 // tracking absorbs the repaint cost when nothing under
@@ -1274,7 +1300,7 @@ where
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } => self.split_drag = None,
+            } => self.drag = None,
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Right,

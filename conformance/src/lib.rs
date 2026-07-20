@@ -123,4 +123,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/menu.rs"));
     include!(concat!(env!("OUT_DIR"), "/surfaces.rs"));
     include!(concat!(env!("OUT_DIR"), "/toggles.rs"));
+    include!(concat!(env!("OUT_DIR"), "/slider_tooltip.rs"));
 }

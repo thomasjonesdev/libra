@@ -112,6 +112,10 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Drawer { side, on_dismiss, test_id, children } => {
             catalog::drawer::build(cx, *side, on_dismiss, test_id, children)
         }
+        ViewNode::Slider { value, on_change, test_id } => {
+            catalog::slider::build(cx, *value, on_change, test_id)
+        }
+        ViewNode::Tooltip { text, children } => catalog::tooltip::build(cx, text, children),
         ViewNode::Split { fraction, on_resize, test_id, children } => {
             catalog::split::build(cx, *fraction, on_resize, test_id, children)
         }

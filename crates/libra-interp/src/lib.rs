@@ -688,6 +688,64 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Drawer { side, on_dismiss, test_id, children: kids })
         }
 
+        // §7.1 (PLAN-CATALOG): model-owned continuous control — typed
+        // value (the Progress rule), String-payload onChange.
+        "Slider" => {
+            let mut value = 0.0f32;
+            let mut on_change: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Num(v)) => value = *v,
+                    ("value", AttrValue::Ident(path)) => {
+                        let sv = (scope.field)(path)
+                            .ok_or_else(|| err(a.span, format!("no field '{path}' on State")))?;
+                        value = sv.parse::<f32>().map_err(|_| {
+                            err(a.span, format!("field '{path}' is not a number — <Slider value> expects 0..1"))
+                        })?;
+                    }
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Slider> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Slider> requires testId=\"…\" (its drag identity)"))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Slider> takes no children"));
+            }
+            Ok(ViewNode::Slider { value, on_change: msg, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): hover-input tooltip wrapper.
+        "Tooltip" => {
+            let mut text: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("text", AttrValue::Str(v)) => text = Some(v.clone()),
+                    ("text", AttrValue::Ident(p)) => {
+                        text = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let text =
+                text.ok_or_else(|| err(*span, "<Tooltip> requires text={binding} or text=\"…\""))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Tooltip { text, children: kids })
+        }
+
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M7): the anchored menu —
         // the Dialog overlay machinery, positioned by the menu-anchor
         // input. Children are ordinary markup (ghost Buttons as items).
@@ -1136,7 +1194,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

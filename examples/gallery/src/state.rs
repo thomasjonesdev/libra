@@ -48,6 +48,8 @@ pub struct Gallery {
     pub is_switch: bool,
     pub is_checkbox: bool,
     pub is_radio: bool,
+    pub is_slider: bool,
+    pub is_tooltip: bool,
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
@@ -74,6 +76,8 @@ pub struct Gallery {
     pub radio_pick: String,
     pub radio_a: bool,
     pub radio_b: bool,
+    /// Slider playground value (model-owned).
+    pub ctl_slider: f32,
     /// Split playground fraction — echoed by `splitChanged` (M5).
     pub ctl_split: f32,
 
@@ -113,6 +117,8 @@ impl Gallery {
             is_switch: false,
             is_checkbox: false,
             is_radio: false,
+            is_slider: false,
+            is_tooltip: false,
             is_split: false,
             is_chart: false,
             is_sparkline: false,
@@ -129,6 +135,7 @@ impl Gallery {
             radio_pick: "a".into(),
             radio_a: true,
             radio_b: false,
+            ctl_slider: 0.5,
             ctl_split: 0.5,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };

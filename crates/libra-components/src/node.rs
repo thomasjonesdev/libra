@@ -197,6 +197,18 @@ pub enum ViewNode {
         label: String,
         test_id: Option<String>,
     },
+    /// `<Slider value={0..1} onChange={action} testId=…>` (§7.1,
+    /// PLAN-CATALOG): a continuous control, **model-owned** like
+    /// Split/Switch — `value` binds a typed State f32, track
+    /// press/drag dispatches `onChange` with the new fraction's
+    /// Display, the app echoes it back.
+    Slider { value: f32, on_change: String, test_id: String },
+    /// `<Tooltip text=…>child</Tooltip>` (§7.1): a floating label over
+    /// its child while the **hover input** is inside it — hover is
+    /// already deterministic (shell cursor / harness `hover(sel)`), so
+    /// tooltip frames are snapshot-exact. Painted in a second pass, on
+    /// top of everything.
+    Tooltip { text: String, children: Vec<ViewNode> },
     /// `<Drawer side="left|right|bottom" onDismiss?=… testId?=…>` (§7.1):
     /// an edge-anchored modal on the Dialog overlay machinery — scrim +
     /// panel pinned to a side (`bottom` is the reference's Sheet).
@@ -347,6 +359,12 @@ pub enum ItemKind {
     CheckboxCtl { checked: bool, label: String, px: f32 },
     /// `<Radio>` — model-owned single choice + label.
     RadioCtl { selected: bool, label: String, px: f32 },
+    /// `<Slider>` — model-owned continuous control; carries its
+    /// handler for the shell's track drag / harness `set_slider`.
+    SliderCtl { value: f32, on_change: String },
+    /// `<Tooltip>` wrapper — invisible container; the second paint
+    /// pass draws `text` above it while hovered.
+    TooltipHost { text: String },
     /// A `<Split>` container — invisible; carries the split's identity
     /// (semantics test_id) and its `onResize` handler for the shell's
     /// divider drag and the harness's `resize_split`. The handler lives

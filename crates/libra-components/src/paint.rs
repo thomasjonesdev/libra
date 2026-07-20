@@ -110,6 +110,10 @@ impl LaidTree {
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
                     ItemKind::MenuBarrier => {}
+                    ItemKind::SliderCtl { value, .. } => {
+                        catalog::slider::paint(&mut cx, item.rect, *value)
+                    }
+                    ItemKind::TooltipHost { .. } => {}
                     ItemKind::Alert { tone, title, body, px_md, px_sm } => {
                         catalog::surface::paint_alert(&mut cx, item.rect, *tone, title, body, *px_md, *px_sm)
                     }
@@ -136,6 +140,23 @@ impl LaidTree {
                 }
                 if item.clip.is_some() {
                     cx.cmds.push(DrawCmd::PopClip);
+                }
+            }
+            // Second phase: hovered tooltips top the z-order.
+            if let Some((hx, hy)) = hover {
+                for item in &self.items {
+                    if let ItemKind::TooltipHost { text } = &item.kind {
+                        let inside = item.rect.contains(hx, hy)
+                            && item.clip.map_or(true, |c| c.contains(hx, hy));
+                        if inside {
+                            catalog::tooltip::paint_label(
+                                &mut cx,
+                                item.rect,
+                                text,
+                                (self.width, self.height),
+                            );
+                        }
+                    }
                 }
             }
         }

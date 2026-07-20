@@ -20,6 +20,7 @@ const SPLIT: &str = include_str!("../fixtures/split.lx");
 const MENU: &str = include_str!("../fixtures/menu.lx");
 const SURFACES: &str = include_str!("../fixtures/surfaces.lx");
 const TOGGLES: &str = include_str!("../fixtures/toggles.lx");
+const SLIDER_TOOLTIP: &str = include_str!("../fixtures/slider_tooltip.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -654,4 +655,27 @@ fn toggles_produce_identical_trees() {
     assert_eq!((*selected, on_select_arg.as_deref(), label.as_str()), (true, Some("1"), "Alpha"));
     let ViewNode::Radio { selected, .. } = &children[5] else { panic!("{:?}", children[5]) };
     assert!(!selected);
+}
+
+/// PLAN-CATALOG — Slider (typed value, model-owned) + Tooltip (hover
+/// label wrapper); both engines agree.
+#[test]
+fn slider_tooltip_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(SLIDER_TOOLTIP, &state);
+        let compiled = generated::build_slider_tooltip(&state);
+        assert_eq!(interp, compiled, "engine drift on slider_tooltip fixture (variant #{i})");
+    }
+
+    let state = TestState { ratio: 0.7, ..TestState::default() };
+    let interp = interp_tree_src(SLIDER_TOOLTIP, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Slider { value, test_id, .. } = &children[0] else { panic!("{:?}", children[0]) };
+    assert!((value - 0.7).abs() < 1e-6);
+    assert_eq!(test_id, "bound-slider");
+    let ViewNode::Tooltip { text, children: kids } = &children[2] else { panic!("{:?}", children[2]) };
+    assert_eq!(text, "ok");
+    assert_eq!(kids.len(), 1);
 }
