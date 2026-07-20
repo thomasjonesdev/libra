@@ -54,6 +54,30 @@ impl Gallery {
         self.menu_open = false;
     }
 
+    pub fn toggle_switch(&mut self) {
+        self.switch_on = !self.switch_on;
+    }
+
+    pub fn toggle_check(&mut self) {
+        self.check_on = !self.check_on;
+    }
+
+    pub fn pick_radio_a(&mut self) {
+        self.radio_pick = "a".into();
+    }
+
+    pub fn pick_radio_b(&mut self) {
+        self.radio_pick = "b".into();
+    }
+
+    pub fn open_drawer(&mut self) {
+        self.drawer_open = true;
+    }
+
+    pub fn close_drawer(&mut self) {
+        self.drawer_open = false;
+    }
+
     /// `<Split onResize>` echo (M5 controlled shape).
     pub fn split_changed(&mut self, fraction: String) {
         if let Ok(f) = fraction.parse::<f32>() {
@@ -98,6 +122,17 @@ impl Gallery {
         self.is_sparkline = s == "sparkline";
         self.is_dialog = s == "dialog";
         self.is_split = s == "split";
+        self.is_drawer = s == "drawer";
+        self.is_card = s == "card";
+        self.is_panel = s == "panel";
+        self.is_alert = s == "alert";
+        self.is_skeleton = s == "skeleton";
+        self.is_avatar = s == "avatar";
+        self.is_switch = s == "switch";
+        self.is_checkbox = s == "checkbox";
+        self.is_radio = s == "radio";
+        self.radio_a = self.radio_pick == "a";
+        self.radio_b = self.radio_pick == "b";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;
     }
 }

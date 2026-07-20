@@ -173,3 +173,69 @@ fn snapshot_workbench_menu_and_round_trip() {
     h.click(by::test_id("pg-menu-a"));
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
+
+/// Catalog parity wave: per-component snapshots + the model-owned
+/// toggle round trips.
+#[test]
+fn snapshot_workbench_alert_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("alert".into()));
+    h.assert_snapshot("workbench_alert_dark");
+}
+
+#[test]
+fn snapshot_workbench_card_and_panel_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("card".into()));
+    h.assert_snapshot("workbench_card_dark");
+    h.dispatch(Action::Select("panel".into()));
+    h.assert_snapshot("workbench_panel_dark");
+}
+
+#[test]
+fn snapshot_workbench_skeleton_and_avatar_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("skeleton".into()));
+    h.assert_snapshot("workbench_skeleton_dark");
+    h.dispatch(Action::Select("avatar".into()));
+    h.assert_snapshot("workbench_avatar_dark");
+}
+
+#[test]
+fn switch_and_checkbox_toggle_through_the_model() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("switch".into()));
+    h.assert_snapshot("workbench_switch_dark");
+    let on = h.frame_png();
+    h.click(by::test_id("pg-switch"));
+    assert!(!h.state().switch_on, "press dispatched; the app flipped the model");
+    assert_ne!(h.frame_png(), on, "knob repaints off");
+    h.click(by::test_id("pg-switch"));
+    assert_eq!(h.frame_png(), on, "toggling back restores identical bytes");
+
+    h.dispatch(Action::Select("checkbox".into()));
+    h.assert_snapshot("workbench_checkbox_dark");
+    h.click(by::test_id("pg-checkbox"));
+    assert!(!h.state().check_on);
+}
+
+#[test]
+fn radio_group_picks_one() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("radio".into()));
+    h.assert_snapshot("workbench_radio_dark");
+    h.click(by::test_id("pg-radio-b"));
+    assert_eq!(h.state().radio_pick, "b");
+    assert!(h.state().radio_b && !h.state().radio_a, "projection follows the pick");
+}
+
+#[test]
+fn snapshot_workbench_drawer_and_round_trip() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("drawer".into()));
+    let resting = h.frame_png();
+    h.click(by::test_id("pg-open-drawer"));
+    h.assert_snapshot("workbench_drawer_dark");
+    h.click(by::test_id("pg-drawer-close"));
+    assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
+}

@@ -71,6 +71,9 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             Role::Separator => AkRole::GenericContainer, // visual rule; non-interactive
             Role::Dialog => AkRole::Dialog,
             Role::Menu => AkRole::Menu,
+            Role::Switch => AkRole::Switch,
+            Role::Checkbox => AkRole::CheckBox,
+            Role::Radio => AkRole::RadioButton,
             // Unreachable: snapshot() already filters Role::Source out
             // (§12.5 — source elements never reach the AccessKit
             // projection). Matched here only so this stays exhaustive.
@@ -83,7 +86,9 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             }
             _ => node.set_label(item.text.clone()),
         }
-        if item.action.is_some() && item.role == Role::Button {
+        if item.action.is_some()
+            && matches!(item.role, Role::Button | Role::Switch | Role::Checkbox | Role::Radio)
+        {
             node.add_action(Action::Click);
         }
         let (x, y, w, h) = item.bounds;
@@ -121,7 +126,7 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
 pub fn action_for(snap: &A11ySnapshot, node_id: u64) -> Option<&str> {
     let idx = (node_id as usize).checked_sub(1)?;
     let item = snap.items.get(idx)?;
-    if item.role == Role::Button {
+    if matches!(item.role, Role::Button | Role::Switch | Role::Checkbox | Role::Radio) {
         item.action.as_deref()
     } else {
         None

@@ -110,6 +110,25 @@ impl LaidTree {
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
                     ItemKind::MenuBarrier => {}
+                    ItemKind::Alert { tone, title, body, px_md, px_sm } => {
+                        catalog::surface::paint_alert(&mut cx, item.rect, *tone, title, body, *px_md, *px_sm)
+                    }
+                    ItemKind::Surface { raised } => {
+                        catalog::surface::paint_surface(&mut cx, item.rect, *raised)
+                    }
+                    ItemKind::Skeleton => catalog::surface::paint_skeleton(&mut cx, item.rect),
+                    ItemKind::Avatar { initials, px } => {
+                        catalog::surface::paint_avatar(&mut cx, item.rect, initials, *px)
+                    }
+                    ItemKind::SwitchCtl { checked } => {
+                        catalog::toggle::paint_switch(&mut cx, item.rect, *checked)
+                    }
+                    ItemKind::CheckboxCtl { checked, label, px } => {
+                        catalog::toggle::paint_checkbox(&mut cx, item.rect, *checked, label, *px)
+                    }
+                    ItemKind::RadioCtl { selected, label, px } => {
+                        catalog::toggle::paint_radio(&mut cx, item.rect, *selected, label, *px)
+                    }
                     ItemKind::MenuPanel => catalog::context_menu::paint_panel(&mut cx, item.rect),
                     ItemKind::Split { .. } => {}
                     ItemKind::SplitDivider { .. } => catalog::split::paint_divider(&mut cx, item.rect),

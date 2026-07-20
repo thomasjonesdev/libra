@@ -52,7 +52,7 @@ pub(crate) fn paint(cx: &mut PaintCx, item: &Item, label: &str, tone: Tone, px: 
 }
 
 /// Map a tone to its `(background, foreground)` token pair.
-fn tone_colors(theme: &Theme, tone: Tone) -> (Color, Color) {
+pub(crate) fn tone_colors(theme: &Theme, tone: Tone) -> (Color, Color) {
     match tone {
         Tone::Neutral => (theme.surface_raised, theme.text_muted),
         Tone::Danger => (theme.danger_bg, theme.danger_fg),

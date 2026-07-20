@@ -280,6 +280,300 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+
+        // §7.1, matching interp's "Alert" arm exactly.
+        "Alert" => {
+            let mut tone = "Neutral";
+            let mut title: Option<String> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = tone_variant(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = Some(format!("{}.to_string()", str_lit(v))),
+                    ("title", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        title = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title = title
+                .ok_or_else(|| err(*span, "<Alert> requires title={binding} or title=\"…\""))?;
+            let body = gen_text_content(children, cfg, *span, d + 1, bound)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Alert {{ {at}\n\
+                 {i}    tone: ::libra_components::Tone::{tone},\n\
+                 {i}    title: {title},\n\
+                 {i}    body: {body},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Card"/"Panel" arms exactly.
+        "Card" | "Panel" => {
+            let (mut gap, mut padding, mut grow) = (0.0f32, 0.0f32, 0.0f32);
+            let mut width: Option<f32> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("gap", AttrValue::Num(v)) => gap = *v,
+                    ("padding", AttrValue::Num(v)) => padding = *v,
+                    ("grow", AttrValue::Flag) => grow = 1.0,
+                    ("grow", AttrValue::Num(v)) => grow = *v,
+                    ("width", AttrValue::Num(v)) => width = Some(*v),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::{name} {{ {at}\n\
+                 {i}    style: ::libra_components::BoxStyle {{ gap: {gap}, padding: {padding}, grow: {grow}, cross_center: false, main_center: false, width: {width} }},\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                gap = f32_lit(gap),
+                padding = f32_lit(padding),
+                grow = f32_lit(grow),
+                width = opt_f32(width),
+            ))
+        }
+
+        // §7.1, matching interp's "Skeleton" arm exactly.
+        "Skeleton" => {
+            let mut width: Option<f32> = None;
+            let mut height = 14.0f32;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("width", AttrValue::Num(v)) => width = Some(*v),
+                    ("height", AttrValue::Num(v)) => height = *v,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Skeleton> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Skeleton {{ {at}\n\
+                 {i}    width: {w},\n\
+                 {i}    height: {h},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                w = opt_f32(width),
+                h = f32_lit(height),
+            ))
+        }
+
+        // §7.1, matching interp's "Avatar" arm exactly.
+        "Avatar" => {
+            let mut avatar_name: Option<String> = None;
+            let mut size = 32.0f32;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("name", AttrValue::Str(v)) => avatar_name = Some(format!("{}.to_string()", str_lit(v))),
+                    ("name", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        avatar_name = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("size", AttrValue::Num(v)) => size = *v,
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let avatar_name = avatar_name
+                .ok_or_else(|| err(*span, "<Avatar> requires name={binding} or name=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Avatar> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Avatar {{ {at}\n\
+                 {i}    name: {avatar_name},\n\
+                 {i}    size: {size},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                size = f32_lit(size),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Switch" arm exactly.
+        "Switch" => {
+            let mut checked = "false".to_string();
+            let mut on_toggle: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("checked", v) => checked = bool_attr_expr(v, a.span, bound)?,
+                    ("onToggle", AttrValue::Ident(m)) => on_toggle = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_toggle.ok_or_else(|| err(*span, "<Switch> requires onToggle={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Switch> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Switch {{ {at}\n\
+                 {i}    checked: {checked},\n\
+                 {i}    on_toggle: {{ let _ = &{msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Checkbox" arm exactly.
+        "Checkbox" => {
+            let mut checked = "false".to_string();
+            let mut on_toggle: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("checked", v) => checked = bool_attr_expr(v, a.span, bound)?,
+                    ("onToggle", AttrValue::Ident(m)) => on_toggle = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_toggle.ok_or_else(|| err(*span, "<Checkbox> requires onToggle={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let label = gen_text_content(children, cfg, *span, d + 1, bound)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Checkbox {{ {at}\n\
+                 {i}    checked: {checked},\n\
+                 {i}    on_toggle: {{ let _ = &{msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    label: {label},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Radio" arm exactly.
+        "Radio" => {
+            let mut selected = "false".to_string();
+            let mut on_select: Option<(String, Option<String>, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", v) => selected = bool_attr_expr(v, a.span, bound)?,
+                    ("onSelect", AttrValue::Ident(m)) => on_select = Some((m.clone(), None, a.span)),
+                    ("onSelect", AttrValue::Call { name: m, arg }) => {
+                        on_select = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, arg, mspan) =
+                on_select.ok_or_else(|| err(*span, "<Radio> requires onSelect={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let (check, arg_expr) = match &arg {
+                Some(binding) => {
+                    let value_ref = display_ref_expr(binding, bound).map_err(|m| err(mspan, m))?;
+                    (
+                        format!(
+                            "let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref};",
+                            msg_ty = cfg.action,
+                            variant_ref = pascalize(&msg),
+                        ),
+                        format!(
+                            "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                        ),
+                    )
+                }
+                None => (
+                    format!("let _ = &{msg_ty}::{variant_ref};", msg_ty = cfg.action, variant_ref = pascalize(&msg)),
+                    "::core::option::Option::None".to_string(),
+                ),
+            };
+            let label = gen_text_content(children, cfg, *span, d + 1, bound)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Radio {{ {at}\n\
+                 {i}    selected: {selected},\n\
+                 {i}    on_select: {{ {check} {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_select_arg: {arg_expr},\n\
+                 {i}    label: {label},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Drawer" arm exactly.
+        "Drawer" => {
+            let mut side = "Left";
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("side", AttrValue::Str(v)) => {
+                        side = match v.as_str() {
+                            "left" => "Left",
+                            "right" => "Right",
+                            "bottom" => "Bottom",
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!("unknown side \"{other}\" — expected \"left\", \"right\" or \"bottom\""),
+                                ))
+                            }
+                        }
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_dismiss = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (dismiss_expr, dismiss_at) = match &on_dismiss {
+                Some((m, mspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *mspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Drawer {{ {at}\n\
+                 {i}    side: ::libra_components::DrawerSide::{side},\n\
+                 {i}    on_dismiss: {dismiss_expr}, {dismiss_at}\n\
+                 {i}    test_id: {tid},\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         // §7.1 (PLAN-CATALOG / M7), matching libra-interp's
         // "ContextMenu" arm exactly.
         "ContextMenu" => {
@@ -1230,6 +1524,37 @@ fn opt_str(s: &Option<String>) -> String {
         Some(v) => format!("::core::option::Option::Some({}.to_string())", str_lit(v)),
         None => "::core::option::Option::None".to_string(),
     }
+}
+
+
+/// Bool attr under the shared Display-"true" rule (Flag ⇒ true;
+/// binding ⇒ `to_string(&expr) == "true"`), matching interp exactly.
+fn bool_attr_expr(v: &AttrValue, span: Span, bound: &[String]) -> Result<String, CodegenError> {
+    match v {
+        AttrValue::Flag => Ok("true".to_string()),
+        AttrValue::Ident(p) => {
+            let expr = display_ref_expr(p, bound).map_err(|m| err(span, m))?;
+            Ok(format!("::std::string::ToString::to_string(&{expr}) == \"true\""))
+        }
+        _ => Err(err(span, "expected a bare flag or a {binding}")),
+    }
+}
+
+/// Badge/Alert tone string → `Tone` variant name (shared table).
+fn tone_variant(t: &str, span: Span) -> Result<&'static str, CodegenError> {
+    Ok(match t {
+        "neutral" => "Neutral",
+        "danger" => "Danger",
+        "warning" => "Warning",
+        "success" => "Success",
+        "info" => "Info",
+        other => {
+            return Err(err(
+                span,
+                format!("unknown tone \"{other}\" — expected neutral/danger/warning/success/info"),
+            ))
+        }
+    })
 }
 
 fn opt_f32(v: Option<f32>) -> String {

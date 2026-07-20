@@ -7,7 +7,7 @@
 //! Architecture: ARCHITECTURE.md §6.4 (one grammar, two engines).
 
 use libra_markup::{Attr, AttrValue, Inline, Node, Span};
-use libra_components::{BoxStyle, TextSize, Tone, Variant, ViewNode};
+use libra_components::{BoxStyle, DrawerSide, TextSize, Tone, Variant, ViewNode};
 use libra_core::CollectionRow;
 
 #[derive(Debug, Clone)]
@@ -452,6 +452,240 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                 return Err(err(*span, "<Progress> takes no children"));
             }
             Ok(ViewNode::Progress { value, test_id })
+        }
+
+
+        // §7.1 (PLAN-CATALOG): inline status callout — tone like Badge,
+        // title literal-or-binding, body from text content.
+        "Alert" => {
+            let mut tone = Tone::Neutral;
+            let mut title: Option<String> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = parse_tone(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = Some(v.clone()),
+                    ("title", AttrValue::Ident(p)) => {
+                        title = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title =
+                title.ok_or_else(|| err(*span, "<Alert> requires title={binding} or title=\"…\""))?;
+            let body = text_content(children, scope, *span)?;
+            Ok(ViewNode::Alert { tone, title, body, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): surface containers — Column semantics
+        // with token surface defaults.
+        "Card" | "Panel" => {
+            let mut style = BoxStyle::default();
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("gap", AttrValue::Num(v)) => style.gap = *v,
+                    ("padding", AttrValue::Num(v)) => style.padding = *v,
+                    ("grow", AttrValue::Flag) => style.grow = 1.0,
+                    ("grow", AttrValue::Num(v)) => style.grow = *v,
+                    ("width", AttrValue::Num(v)) => style.width = Some(*v),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(if name == "Card" {
+                ViewNode::Card { style, children: kids }
+            } else {
+                ViewNode::Panel { style, children: kids }
+            })
+        }
+
+        // §7.1 (PLAN-CATALOG): static loading placeholder.
+        "Skeleton" => {
+            let mut width = None;
+            let mut height = 14.0;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("width", AttrValue::Num(v)) => width = Some(*v),
+                    ("height", AttrValue::Num(v)) => height = *v,
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Skeleton> takes no children"));
+            }
+            Ok(ViewNode::Skeleton { width, height })
+        }
+
+        // §7.1 (PLAN-CATALOG): initials avatar.
+        "Avatar" => {
+            let mut avatar_name: Option<String> = None;
+            let mut size = 32.0;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("name", AttrValue::Str(v)) => avatar_name = Some(v.clone()),
+                    ("name", AttrValue::Ident(p)) => {
+                        avatar_name = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("size", AttrValue::Num(v)) => size = *v,
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let avatar_name = avatar_name
+                .ok_or_else(|| err(*span, "<Avatar> requires name={binding} or name=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Avatar> takes no children"));
+            }
+            Ok(ViewNode::Avatar { name: avatar_name, size, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): model-owned on/off. `checked` follows
+        // the bool Display-"true" rule; `onToggle` is a unit action.
+        "Switch" => {
+            let mut checked = false;
+            let mut on_toggle: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("checked", AttrValue::Flag) => checked = true,
+                    ("checked", AttrValue::Ident(p)) => {
+                        checked = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                            == "true"
+                    }
+                    ("onToggle", AttrValue::Ident(m)) => on_toggle = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_toggle.ok_or_else(|| err(*span, "<Switch> requires onToggle={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_action)(&msg) {
+                return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Switch> takes no children"));
+            }
+            Ok(ViewNode::Switch { checked, on_toggle: msg, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): model-owned binary choice; label is the
+        // text content.
+        "Checkbox" => {
+            let mut checked = false;
+            let mut on_toggle: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("checked", AttrValue::Flag) => checked = true,
+                    ("checked", AttrValue::Ident(p)) => {
+                        checked = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                            == "true"
+                    }
+                    ("onToggle", AttrValue::Ident(m)) => on_toggle = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, mspan) =
+                on_toggle.ok_or_else(|| err(*span, "<Checkbox> requires onToggle={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_action)(&msg) {
+                return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
+            }
+            let label = text_content(children, scope, *span)?;
+            Ok(ViewNode::Checkbox { checked, on_toggle: msg, label, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): single choice; item-scoped
+        // `onSelect={pick(opt.id)}` builds groups from a `<for>`.
+        "Radio" => {
+            let mut selected = false;
+            let mut on_select: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", AttrValue::Flag) => selected = true,
+                    ("selected", AttrValue::Ident(p)) => {
+                        selected = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                            == "true"
+                    }
+                    ("onSelect", AttrValue::Ident(m)) => on_select = Some((m.clone(), None, a.span)),
+                    ("onSelect", AttrValue::Call { name: m, arg }) => {
+                        on_select = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (msg, arg, mspan) =
+                on_select.ok_or_else(|| err(*span, "<Radio> requires onSelect={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let on_select_arg = match &arg {
+                Some(binding) => {
+                    if !(scope.has_str_action)(&msg) {
+                        return Err(err(
+                            mspan,
+                            format!("action '{msg}' takes no payload — `onSelect={{{msg}({binding})}}` needs a String-payload action"),
+                        ));
+                    }
+                    Some((scope.field)(binding).ok_or_else(|| {
+                        err(mspan, format!("no binding '{binding}' in scope"))
+                    })?)
+                }
+                None => {
+                    if !(scope.has_action)(&msg) {
+                        return Err(err(mspan, format!("no action '{msg}' on Action — check the enum")));
+                    }
+                    None
+                }
+            };
+            let label = text_content(children, scope, *span)?;
+            Ok(ViewNode::Radio { selected, on_select: msg, on_select_arg, label, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): edge-anchored modal (bottom = Sheet).
+        "Drawer" => {
+            let mut side = DrawerSide::Left;
+            let mut on_dismiss: Option<String> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("side", AttrValue::Str(v)) => {
+                        side = match v.as_str() {
+                            "left" => DrawerSide::Left,
+                            "right" => DrawerSide::Right,
+                            "bottom" => DrawerSide::Bottom,
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!("unknown side \"{other}\" — expected \"left\", \"right\" or \"bottom\""),
+                                ))
+                            }
+                        }
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_action)(m) {
+                            return Err(err(a.span, format!("no action '{m}' on Action — check the enum")));
+                        }
+                        on_dismiss = Some(m.clone());
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Drawer { side, on_dismiss, test_id, children: kids })
         }
 
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M7): the anchored menu —
@@ -902,10 +1136,27 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Split, Dialog, ContextMenu, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }
+}
+
+/// Badge/Alert `tone="…"` table (§7.1 status tones).
+fn parse_tone(t: &str, span: Span) -> Result<Tone, InterpError> {
+    Ok(match t {
+        "neutral" => Tone::Neutral,
+        "danger" => Tone::Danger,
+        "warning" => Tone::Warning,
+        "success" => Tone::Success,
+        "info" => Tone::Info,
+        other => {
+            return Err(err(
+                span,
+                format!("unknown tone \"{other}\" — expected neutral/danger/warning/success/info"),
+            ))
+        }
+    })
 }
 
 fn unknown_attr(el: &str, a: &Attr) -> InterpError {

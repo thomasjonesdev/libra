@@ -89,6 +89,29 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::ContextMenu { on_dismiss, test_id, children } => {
             catalog::context_menu::build(cx, on_dismiss, test_id, children)
         }
+        ViewNode::Alert { tone, title, body, test_id } => {
+            catalog::surface::build_alert(cx, *tone, title, body, test_id)
+        }
+        ViewNode::Card { style, children } => catalog::surface::build_surface(cx, style, children, true),
+        ViewNode::Panel { style, children } => {
+            catalog::surface::build_surface(cx, style, children, false)
+        }
+        ViewNode::Skeleton { width, height } => catalog::surface::build_skeleton(cx, *width, *height),
+        ViewNode::Avatar { name, size, test_id } => {
+            catalog::surface::build_avatar(cx, name, *size, test_id)
+        }
+        ViewNode::Switch { checked, on_toggle, test_id } => {
+            catalog::toggle::build_switch(cx, *checked, on_toggle, test_id)
+        }
+        ViewNode::Checkbox { checked, on_toggle, label, test_id } => {
+            catalog::toggle::build_checkbox(cx, *checked, on_toggle, label, test_id)
+        }
+        ViewNode::Radio { selected, on_select, on_select_arg, label, test_id } => {
+            catalog::toggle::build_radio(cx, *selected, on_select, on_select_arg, label, test_id)
+        }
+        ViewNode::Drawer { side, on_dismiss, test_id, children } => {
+            catalog::drawer::build(cx, *side, on_dismiss, test_id, children)
+        }
         ViewNode::Split { fraction, on_resize, test_id, children } => {
             catalog::split::build(cx, *fraction, on_resize, test_id, children)
         }
@@ -279,5 +302,6 @@ pub(crate) fn is_source_node(n: &ViewNode) -> bool {
 /// A child that builds but must NOT join its parent's flex tree: §12.5
 /// sources (zero-layout mounts) and `<Dialog>` (a detached overlay root).
 pub(crate) fn is_detached_node(n: &ViewNode) -> bool {
-    is_source_node(n) || matches!(n, ViewNode::Dialog { .. } | ViewNode::ContextMenu { .. })
+    is_source_node(n)
+        || matches!(n, ViewNode::Dialog { .. } | ViewNode::ContextMenu { .. } | ViewNode::Drawer { .. })
 }

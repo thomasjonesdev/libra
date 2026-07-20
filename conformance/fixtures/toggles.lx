@@ -1,0 +1,10 @@
+<Column gap={8} padding={12}>
+  <Switch checked={running} onToggle={increment} testId="bound-switch" />
+  <Switch checked onToggle={increment} />
+  <Checkbox checked={user.active} onToggle={increment} testId="bound-check">Stay signed in</Checkbox>
+  <Checkbox onToggle={increment}>Unchecked</Checkbox>
+  <for each={items} as="opt" key={opt.id}>
+    <Radio selected={opt.active} onSelect={nameChanged(opt.id)}>{opt.label}</Radio>
+  </for>
+  <Radio selected onSelect={reset} testId="static-radio">Static option</Radio>
+</Column>

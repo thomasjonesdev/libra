@@ -33,15 +33,28 @@ pub const LAYOUT: &[(&str, &str)] = &[
     ("spacer", "Spacer"),
     ("separator", "Separator"),
     ("split", "Split"),
+    ("card", "Card"),
+    ("panel", "Panel"),
 ];
-pub const DISPLAY: &[(&str, &str)] =
-    &[("text", "Text"), ("heading", "Heading"), ("badge", "Badge"), ("progress", "Progress")];
+pub const DISPLAY: &[(&str, &str)] = &[
+    ("text", "Text"),
+    ("heading", "Heading"),
+    ("badge", "Badge"),
+    ("progress", "Progress"),
+    ("alert", "Alert"),
+    ("skeleton", "Skeleton"),
+    ("avatar", "Avatar"),
+];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),
     ("input", "Input"),
     ("textarea", "Textarea"),
     ("list_item", "ListItem"),
+    ("switch", "Switch"),
+    ("checkbox", "Checkbox"),
+    ("radio", "Radio"),
     ("dialog", "Dialog"),
+    ("drawer", "Drawer"),
 ];
 pub const DATA: &[(&str, &str)] = &[("chart", "Chart"), ("sparkline", "Sparkline")];
 

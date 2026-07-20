@@ -137,6 +137,96 @@
         </Split>
       </if>
 
+      <if test={is_alert}>
+        <Text bold muted>Tones</Text>
+        <Alert tone="danger" title="Deploy failed">rollback started automatically</Alert>
+        <Alert tone="warning" title="Disk almost full">82% of quota used</Alert>
+        <Alert tone="success" title="All systems nominal">last check 2m ago</Alert>
+        <Alert tone="info" title="Heads up">maintenance window Sunday</Alert>
+        <Text bold muted>Playground</Text>
+        <Alert tone="info" title={ctl_label} testId="pg-alert">bound title above</Alert>
+      </if>
+
+      <if test={is_card}>
+        <Text bold muted>Bordered, elevated surface</Text>
+        <Card>
+          <Text bold>Card title</Text>
+          <Text size="sm" muted>Cards share the Dialog panel chrome — one surface language.</Text>
+          <Row gap={8}>
+            <Button variant="secondary" onPress={noop}>Action</Button>
+            <Button variant="ghost" onPress={noop}>Dismiss</Button>
+          </Row>
+        </Card>
+      </if>
+
+      <if test={is_panel}>
+        <Text bold muted>Plain surface</Text>
+        <Panel>
+          <Text size="sm">Panels are the unframed sibling of Card.</Text>
+        </Panel>
+      </if>
+
+      <if test={is_skeleton}>
+        <Text bold muted>Static placeholders (shimmer waits on §9.6)</Text>
+        <Skeleton width={220} height={24} />
+        <Skeleton />
+        <Skeleton width={320} />
+        <Skeleton width={180} />
+      </if>
+
+      <if test={is_avatar}>
+        <Text bold muted>Initials</Text>
+        <Row gap={8} cross="center">
+          <Avatar name="Ada Lovelace" testId="pg-avatar" />
+          <Avatar name="Grace Hopper" size={48} />
+          <Avatar name="Turing" size={24} />
+        </Row>
+        <Text bold muted>Playground (bound name)</Text>
+        <Avatar name={ctl_label} size={40} />
+      </if>
+
+      <if test={is_switch}>
+        <Text bold muted>Playground (model-owned — click it)</Text>
+        <Row gap={8} cross="center">
+          <Switch checked={switch_on} onToggle={toggleSwitch} testId="pg-switch" />
+          <Text size="sm" muted>bound to state</Text>
+        </Row>
+        <Text bold muted>States</Text>
+        <Row gap={8} cross="center">
+          <Switch checked onToggle={noop} />
+          <Switch onToggle={noop} />
+        </Row>
+      </if>
+
+      <if test={is_checkbox}>
+        <Text bold muted>Playground (model-owned — click it)</Text>
+        <Checkbox checked={check_on} onToggle={toggleCheck} testId="pg-checkbox">Stay signed in</Checkbox>
+        <Text bold muted>States</Text>
+        <Checkbox checked onToggle={noop}>Checked</Checkbox>
+        <Checkbox onToggle={noop}>Unchecked</Checkbox>
+      </if>
+
+      <if test={is_radio}>
+        <Text bold muted>Playground (pick one)</Text>
+        <Radio selected={radio_a} onSelect={pickRadioA} testId="pg-radio-a">Option A</Radio>
+        <Radio selected={radio_b} onSelect={pickRadioB} testId="pg-radio-b">Option B</Radio>
+      </if>
+
+      <if test={is_drawer}>
+        <Text bold muted>Playground</Text>
+        <Row gap={8}>
+          <Button variant="secondary" onPress={openDrawer} testId="pg-open-drawer">Open drawer</Button>
+        </Row>
+        <Text size="sm" muted>Edge-anchored modal on the Dialog machinery; side="bottom" is the Sheet.</Text>
+      </if>
+      <if test={drawer_open}>
+        <Drawer side="right" onDismiss={closeDrawer} testId="pg-drawer">
+          <Text bold>Drawer</Text>
+          <Text size="sm" muted>Pinned to the right edge; scrim dismisses.</Text>
+          <Button variant="ghost" onPress={closeDrawer} testId="pg-drawer-close">Close</Button>
+        </Drawer>
+      </if>
+
       <if test={is_dialog}>
         <Text bold muted>Playground</Text>
         <Row gap={8}>

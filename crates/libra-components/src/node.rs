@@ -49,6 +49,16 @@ pub enum Tone {
     Info,
 }
 
+/// Which edge a `<Drawer>` pins to (`bottom` covers the reference
+/// SDK's Sheet).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DrawerSide {
+    #[default]
+    Left,
+    Right,
+    Bottom,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BoxStyle {
     pub gap: f32,
@@ -152,6 +162,50 @@ pub enum ViewNode {
     /// (the controlled shape; pane layout *is* app state — replayable,
     /// snapshot-exact). Exactly two children.
     Split { fraction: f32, on_resize: String, test_id: String, children: Vec<ViewNode> },
+    /// `<Alert tone="danger" title=…>body</Alert>` (§7.1, PLAN-CATALOG):
+    /// an inline callout — status-token tinted panel, bold title line,
+    /// muted body from the element's text content.
+    Alert { tone: Tone, title: String, body: String, test_id: Option<String> },
+    /// `<Card>…</Card>` (§7.1): the bordered, elevated surface
+    /// container — `surface_raised` + hairline frame. Ordinary flex
+    /// column inside (gap/padding attrs like Column).
+    Card { style: BoxStyle, children: Vec<ViewNode> },
+    /// `<Panel>…</Panel>` (§7.1): the plain surface container.
+    Panel { style: BoxStyle, children: Vec<ViewNode> },
+    /// `<Skeleton width? height? />` (§7.1): a static loading
+    /// placeholder block (deterministic — shimmer waits on §9.6).
+    /// No width = stretch.
+    Skeleton { width: Option<f32>, height: f32 },
+    /// `<Avatar name={…} size? />` (§7.1): initials in a circle
+    /// (image variant waits on a deterministic decode path).
+    Avatar { name: String, size: f32, test_id: Option<String> },
+    /// `<Switch checked={bool} onToggle={action} />` (§7.1): on/off
+    /// with **model-owned state** — the bound bool is the truth, the
+    /// press dispatches, the app flips.
+    Switch { checked: bool, on_toggle: String, test_id: Option<String> },
+    /// `<Checkbox checked={bool} onToggle={action}>Label</Checkbox>`
+    /// (§7.1): binary choice, model-owned like Switch; the check glyph
+    /// draws with the display list's Polyline.
+    Checkbox { checked: bool, on_toggle: String, label: String, test_id: Option<String> },
+    /// `<Radio selected={bool} onSelect={action}>Label</Radio>` (§7.1):
+    /// single choice; groups come from a `<for>` with the item-scoped
+    /// `onSelect={pick(opt.id)}` form.
+    Radio {
+        selected: bool,
+        on_select: String,
+        on_select_arg: Option<String>,
+        label: String,
+        test_id: Option<String>,
+    },
+    /// `<Drawer side="left|right|bottom" onDismiss?=… testId?=…>` (§7.1):
+    /// an edge-anchored modal on the Dialog overlay machinery — scrim +
+    /// panel pinned to a side (`bottom` is the reference's Sheet).
+    Drawer {
+        side: DrawerSide,
+        on_dismiss: Option<String>,
+        test_id: Option<String>,
+        children: Vec<ViewNode>,
+    },
     /// `<ContextMenu onDismiss?=… testId=…>` (§7.1, PLAN-CATALOG /
     /// PLAN-NOTES-APP M7): an anchored floating menu — the Dialog
     /// overlay machinery with an invisible full-viewport barrier and a
@@ -214,6 +268,10 @@ pub enum Role {
     Separator,
     /// A `<ContextMenu>` panel — maps to AccessKit's menu role.
     Menu,
+    /// Model-owned controls (§7.1) — AccessKit Switch/CheckBox/RadioButton.
+    Switch,
+    Checkbox,
+    Radio,
     /// A `<Dialog>` panel — maps to AccessKit's dialog role; its title
     /// is the semantics text.
     Dialog,
@@ -274,6 +332,21 @@ pub enum ItemKind {
         /// M7 right-click handler `(name, optional item-scoped arg)`.
         on_menu: Option<(String, Option<String>)>,
     },
+    /// `<Alert>` — tinted callout painting its own title/body.
+    Alert { tone: Tone, title: String, body: String, px_md: f32, px_sm: f32 },
+    /// `<Card>`/`<Panel>` — a surface container behind its children
+    /// (`raised` adds the hairline frame + elevated fill).
+    Surface { raised: bool },
+    /// `<Skeleton>` — static placeholder block.
+    Skeleton,
+    /// `<Avatar>` — initials in a circle.
+    Avatar { initials: String, px: f32 },
+    /// `<Switch>` — model-owned on/off control.
+    SwitchCtl { checked: bool },
+    /// `<Checkbox>` — model-owned binary choice + label.
+    CheckboxCtl { checked: bool, label: String, px: f32 },
+    /// `<Radio>` — model-owned single choice + label.
+    RadioCtl { selected: bool, label: String, px: f32 },
     /// A `<Split>` container — invisible; carries the split's identity
     /// (semantics test_id) and its `onResize` handler for the shell's
     /// divider drag and the harness's `resize_split`. The handler lives

@@ -18,6 +18,8 @@ const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
 const DIALOG: &str = include_str!("../fixtures/dialog.lx");
 const SPLIT: &str = include_str!("../fixtures/split.lx");
 const MENU: &str = include_str!("../fixtures/menu.lx");
+const SURFACES: &str = include_str!("../fixtures/surfaces.lx");
+const TOGGLES: &str = include_str!("../fixtures/toggles.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -597,4 +599,59 @@ fn menu_produces_identical_trees() {
     };
     assert_eq!((on_dismiss.as_deref(), test_id.as_str()), (Some("reset"), "row-menu"));
     assert_eq!(items.len(), 2);
+}
+
+/// PLAN-CATALOG parity wave — Alert/Card/Panel/Skeleton/Avatar/Drawer:
+/// bound + literal attrs, `<if>`-mounted drawer; both engines agree.
+#[test]
+fn surfaces_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(SURFACES, &state);
+        let compiled = generated::build_surfaces(&state);
+        assert_eq!(interp, compiled, "engine drift on surfaces fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(SURFACES, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Alert { title, body, .. } = &children[0] else { panic!("{:?}", children[0]) };
+    assert_eq!((title.as_str(), body.as_str()), ("", "something broke"));
+    assert!(matches!(&children[2], ViewNode::Card { .. }));
+    assert!(matches!(&children[4], ViewNode::Skeleton { width: None, .. }));
+    let ViewNode::Avatar { name, .. } = &children[6] else { panic!("{:?}", children[6]) };
+    assert_eq!(name, "Ada");
+    assert!(matches!(
+        &children[8],
+        ViewNode::Drawer { side: libra_components::DrawerSide::Right, .. }
+    ));
+}
+
+/// PLAN-CATALOG parity wave — Switch/Checkbox/Radio: bool bindings
+/// under the Display-"true" rule, `<for>` radio groups with item-scoped
+/// payloads; both engines agree.
+#[test]
+fn toggles_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TOGGLES, &state);
+        let compiled = generated::build_toggles(&state);
+        assert_eq!(interp, compiled, "engine drift on toggles fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TOGGLES, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(matches!(&children[0], ViewNode::Switch { checked: true, .. }), "running=true binds");
+    assert!(matches!(&children[2], ViewNode::Checkbox { checked: true, .. }), "user.active binds");
+    assert!(matches!(&children[3], ViewNode::Checkbox { checked: false, .. }));
+    // The <for> radio group: Alpha active, Beta not; args carry row ids.
+    let ViewNode::Radio { selected, on_select_arg, label, .. } = &children[4] else {
+        panic!("{:?}", children[4])
+    };
+    assert_eq!((*selected, on_select_arg.as_deref(), label.as_str()), (true, Some("1"), "Alpha"));
+    let ViewNode::Radio { selected, .. } = &children[5] else { panic!("{:?}", children[5]) };
+    assert!(!selected);
 }

@@ -1,0 +1,21 @@
+<Column gap={8} padding={12}>
+  <Alert tone="danger" title={name} testId="bound-alert">something broke</Alert>
+  <Alert tone="success" title="All good">deploy finished</Alert>
+  <Card gap={4}>
+    <Text bold>Card title</Text>
+    <Text size="sm" muted>{status}</Text>
+  </Card>
+  <Panel>
+    <Text size="sm">plain panel</Text>
+  </Panel>
+  <Skeleton />
+  <Skeleton width={120} height={24} />
+  <Avatar name={user.name} testId="bound-avatar" />
+  <Avatar name="Grace Hopper" size={48} />
+  <if test={running}>
+    <Drawer side="right" onDismiss={reset} testId="the-drawer">
+      <Text bold>Drawer content</Text>
+      <Button variant="ghost" onPress={reset} testId="drawer-close">Close</Button>
+    </Drawer>
+  </if>
+</Column>
