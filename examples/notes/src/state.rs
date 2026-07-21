@@ -8,7 +8,7 @@ use libra_core::Effect;
 
 use crate::actions::Action;
 use crate::model::{
-    DialogKind, Folder, FolderRow, Note, NoteRow, StoreV2, RECENTLY_DELETED, STORE_KEY,
+    DialogKind, Folder, FolderRow, Note, NoteRow, SortOrder, StoreV2, RECENTLY_DELETED, STORE_KEY,
 };
 
 #[derive(Default)]
@@ -57,6 +57,24 @@ pub struct Notes {
     pub dialog_name: String,
     /// Inline validation line ("name can't be empty", "already exists").
     pub dialog_error: String,
+    /// Flips true once `StoreLoaded` fires (success or failure) — drives
+    /// the `is_loading` skeleton projection.
+    #[libra(skip)]
+    pub loaded: bool,
+    /// Set when a save fails; cleared on the next successful save.
+    /// Source of truth for the dismissable save-error Alert.
+    #[libra(skip)]
+    pub save_error: Option<String>,
+    /// Set when the persisted store couldn't be parsed at boot.
+    /// Source of truth for the dismissable store-warning Alert.
+    #[libra(skip)]
+    pub store_warning: Option<String>,
+    /// Note list ordering (Settings drawer Radio group).
+    #[libra(skip)]
+    pub sort_order: SortOrder,
+    /// Settings drawer open/closed.
+    #[libra(skip)]
+    pub settings_open: bool,
 
     // ---- display projections (§6.3, rebuilt by #[project]) ----
     pub folder_rows: Vec<FolderRow>,
@@ -76,6 +94,26 @@ pub struct Notes {
     pub dialog_title: String,
     /// M7: a note row's context menu is open.
     pub show_note_menu: bool,
+    /// The store hasn't answered `StoreLoaded` yet — drives the
+    /// note-list Skeleton placeholder.
+    pub is_loading: bool,
+    /// From `save_error` — a dismissable danger Alert.
+    pub show_save_error: bool,
+    pub error_message: String,
+    /// From `store_warning` — a dismissable warning Alert.
+    pub show_store_warning: bool,
+    pub warning_message: String,
+    /// From `settings_open` — the Settings Drawer.
+    pub show_settings: bool,
+    /// From `theme` — bound to the Settings drawer's dark-mode Switch.
+    pub is_dark_theme: bool,
+    /// From `sort_order` — bound to the Settings drawer's Radio group.
+    pub sort_by_updated: bool,
+    pub sort_by_created: bool,
+    pub sort_by_title: bool,
+    /// A note is open in the editor — the Breadcrumb's trailing crumb.
+    pub has_selected_note: bool,
+    pub selected_title: String,
 }
 
 impl Notes {
@@ -142,6 +180,7 @@ impl Notes {
             Shortcut::action("cmd+shift+c", "copyNote"),
             Shortcut::action("cmd+alt+down", "selectNextNote"),
             Shortcut::action("cmd+alt+up", "selectPrevNote"),
+            Shortcut::action("cmd+shift+s", "openSettings"),
             // Escape is contextual: open dialog → cancel it; else clear
             // the search (the action decides — §19.2 static payloads).
             Shortcut::action("escape", "dismiss"),

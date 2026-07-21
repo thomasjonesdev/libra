@@ -196,6 +196,101 @@ fn shortcuts_create_navigate_and_delete() {
     assert!(h.state().has_trash);
 }
 
+/// The Settings button (Tooltip-wrapped) opens the Drawer; its Switch
+/// and Radios are real model-owned controls wired to the app's own
+/// theme/sort-order state, and the scrim click dismisses it.
+#[test]
+fn settings_drawer_opens_toggles_appearance_and_sort_and_dismisses() {
+    let mut h = harness();
+    assert!(!h.state().show_settings);
+    h.click(by::test_id("settings"));
+    assert!(h.state().show_settings);
+
+    assert!(h.state().is_dark_theme);
+    h.click(by::test_id("settings-dark-switch"));
+    assert!(!h.state().is_dark_theme);
+    h.query(by::test_id("theme")).assert_text("libra-light");
+
+    assert!(h.state().sort_by_updated);
+    h.click(by::test_id("sort-title"));
+    assert!(h.state().sort_by_title);
+
+    // Scrim click (a coordinate the drawer panel doesn't cover) dismisses.
+    h.click(by::test_id("new-folder"));
+    assert!(!h.state().show_settings, "scrim click dismissed the drawer");
+}
+
+/// `cmd+shift+s` opens Settings the same as the button; escape closes
+/// it before falling through to clearing the search (menu > dialog >
+/// settings > search precedence).
+#[test]
+fn settings_shortcut_opens_and_escape_closes_before_search() {
+    let mut h = harness();
+    h.type_text(by::test_id("search"), "find");
+    h.blur();
+    assert!(h.press_shortcut("cmd+shift+s"));
+    assert!(h.state().show_settings);
+    assert!(h.press_shortcut("escape"));
+    assert!(!h.state().show_settings);
+    assert_eq!(h.state().query, "find", "search survives the settings-closing escape");
+}
+
+/// The note-list Skeleton placeholder shows before `StoreLoaded`
+/// answers, and the real list (with its empty-state message) replaces
+/// it once the store resolves.
+#[test]
+fn note_list_shows_a_skeleton_until_the_store_loads() {
+    let mut h = Harness::<Notes>::with_viewport(VIEW, 900, 600);
+    assert!(h.state().is_loading);
+    let load = h.expect_effect(fx::kv_get(STORE_KEY));
+    h.resolve_kv_get(load, None);
+    assert!(!h.state().is_loading);
+    h.query(by::test_id("empty")).assert_text("No notes yet");
+}
+
+/// A corrupt store on boot shows a dismissable warning Alert; the
+/// Dismiss button clears it without affecting anything else.
+#[test]
+fn store_warning_alert_shows_on_corrupt_boot_and_dismisses() {
+    let mut h = Harness::<Notes>::with_viewport(VIEW, 900, 600);
+    let load = h.expect_effect(fx::kv_get(STORE_KEY));
+    h.resolve_kv_get(load, Some(b"not json at all".to_vec()));
+    assert!(h.state().show_store_warning);
+    h.query(by::test_id("store-warning")).assert_text("Startup");
+    h.click(by::test_id("dismiss-warning"));
+    assert!(!h.state().show_store_warning);
+}
+
+/// A failed autosave shows a dismissable danger Alert alongside the
+/// existing status line; dismissing it doesn't touch `status`.
+#[test]
+fn save_error_alert_shows_on_failure_and_dismisses() {
+    let mut h = harness();
+    h.click(by::test_id("new-note"));
+    let t = h.expect_effect(fx::timer());
+    h.fire_timer(t);
+    let kv = h.expect_effect(fx::kv_set(STORE_KEY));
+    h.resolve_kv_set(kv, KvResult::Err("disk full".into()));
+    assert!(h.state().show_save_error);
+    h.query(by::test_id("status")).assert_text("save failed: disk full");
+    h.click(by::test_id("dismiss-save-error"));
+    assert!(!h.state().show_save_error);
+    h.query(by::test_id("status")).assert_text("save failed: disk full");
+}
+
+/// The header Breadcrumb's folder crumb closes the open note (back to
+/// the list) without touching the note itself; with nothing selected,
+/// only the folder crumb is shown.
+#[test]
+fn breadcrumb_folder_crumb_deselects_the_open_note() {
+    let mut h = harness();
+    add_note(&mut h, "Some note");
+    assert!(h.state().has_selected_note);
+    h.click(by::test_id("folder-name"));
+    assert!(!h.state().has_selected_note);
+    assert_eq!(h.state().note_rows.len(), 1, "the note itself is untouched");
+}
+
 /// §19.2 precedence: a focused text control suppresses non-`cmd`
 /// chords — escape blurs instead of dispatching; unfocused, it fires.
 #[test]
@@ -288,24 +383,36 @@ fn right_click_menu_deletes_the_clicked_note() {
 #[test]
 fn trashed_row_menu_routes_delete_forever_through_the_confirm_dialog() {
     let mut h = harness();
+    // A decoy note, distinct from the one under test: the selected
+    // note's title now also appears in the header Breadcrumb, so
+    // `by::text` needs a second, non-selected title to stay unambiguous.
+    add_note(&mut h, "Decoy");
+    h.click(by::test_id("delete-note"));
+    settle_save(&mut h);
+    h.dispatch(Action::Tick(libra_core::Instant::at(60_000.0)));
     add_note(&mut h, "Doomed");
     h.click(by::test_id("delete-note"));
     settle_save(&mut h);
     h.click(by::test_id("trash-folder"));
 
-    h.right_click(by::text("Doomed"));
+    h.right_click(by::text("Decoy"));
     h.click(by::test_id("menu-delete-forever"));
     assert!(h.state().show_confirm_dialog, "menu routes into the confirm dialog");
     h.click(by::test_id("confirm-delete"));
     settle_save(&mut h);
-    assert_eq!(h.state().notes.len(), 0);
+    assert_eq!(h.state().notes.len(), 1, "Doomed remains; only the decoy was deleted forever");
 }
 
 /// M7: escape closes the menu first (menu > dialog > search).
 #[test]
 fn escape_closes_the_menu_before_anything_else() {
     let mut h = harness();
+    // A second, non-selected note: the selected note's title also
+    // appears in the header Breadcrumb, so `by::text` needs an
+    // unambiguous title to right-click.
     add_note(&mut h, "A note");
+    h.dispatch(Action::Tick(libra_core::Instant::at(60_000.0)));
+    add_note(&mut h, "Another note");
     h.type_text(by::test_id("search"), "a");
     h.blur();
     h.right_click(by::text("A note"));

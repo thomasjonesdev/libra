@@ -48,6 +48,21 @@ pub enum DialogKind {
     ConfirmDelete,
 }
 
+/// Note list ordering (Settings drawer, Radio group). Not reflected —
+/// the view binds the projected `sort_by_*` bools instead.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SortOrder {
+    Updated,
+    Created,
+    Title,
+}
+
+impl Default for SortOrder {
+    fn default() -> Self {
+        SortOrder::Updated
+    }
+}
+
 // ---------------------------------------------------------------------
 // Display projections (§6.3) — structured `<for>` rows.
 // ---------------------------------------------------------------------

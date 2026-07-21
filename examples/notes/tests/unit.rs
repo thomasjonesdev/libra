@@ -422,3 +422,102 @@ fn corrupt_store_bytes_are_discarded_without_crashing() {
     assert_eq!(s.status, "couldn't read saved notes — starting fresh");
     assert_eq!(s.notes.len(), 0);
 }
+
+/// A corrupt store also raises the dismissable warning Alert; the
+/// dismiss action clears it independently of `status`.
+#[test]
+fn corrupt_store_raises_a_dismissable_warning() {
+    let mut s = boot();
+    reduce(&mut s, Action::StoreLoaded(Some(b"not json at all".to_vec())));
+    assert!(s.show_store_warning);
+    assert_eq!(s.warning_message, "couldn't read saved notes — starting fresh");
+    reduce(&mut s, Action::DismissStoreWarning);
+    assert!(!s.show_store_warning);
+    assert_eq!(s.warning_message, "");
+}
+
+/// A failed save raises the dismissable danger Alert; the next
+/// successful save clears it automatically.
+#[test]
+fn save_failure_raises_a_dismissable_alert_cleared_by_the_next_success() {
+    let mut s = boot();
+    reduce(&mut s, Action::NewNote);
+    let Some(Effect::Timer { action: Action::Autosave(gen), .. }) =
+        reduce(&mut s, Action::BodyChanged("v".into())).into_iter().next()
+    else {
+        panic!()
+    };
+    reduce(&mut s, Action::Autosave(gen));
+    reduce(&mut s, Action::Saved(KvResult::Err("disk full".into())));
+    assert!(s.show_save_error);
+    assert_eq!(s.error_message, "disk full");
+
+    reduce(&mut s, Action::DismissSaveError);
+    assert!(!s.show_save_error);
+
+    // A later successful save also clears it on its own.
+    reduce(&mut s, Action::Saved(KvResult::Err("disk full".into())));
+    assert!(s.show_save_error);
+    reduce(&mut s, Action::Saved(KvResult::Ok));
+    assert!(!s.show_save_error);
+}
+
+#[test]
+fn boot_starts_loading_until_the_store_answers() {
+    let (mut s, fx) = Notes::init();
+    assert_eq!(fx.len(), 1);
+    assert!(s.is_loading, "no StoreLoaded yet");
+    reduce(&mut s, Action::StoreLoaded(None));
+    assert!(!s.is_loading);
+}
+
+#[test]
+fn settings_drawer_open_and_close() {
+    let mut s = boot();
+    assert!(!s.show_settings);
+    reduce(&mut s, Action::OpenSettings);
+    assert!(s.show_settings);
+    reduce(&mut s, Action::CloseSettings);
+    assert!(!s.show_settings);
+
+    // Escape closes it too, ranking below menu/dialog but above search.
+    reduce(&mut s, Action::OpenSettings);
+    reduce(&mut s, Action::Dismiss);
+    assert!(!s.show_settings);
+}
+
+#[test]
+fn sort_order_switches_the_note_list_and_is_mutually_exclusive() {
+    let mut s = boot();
+    reduce(&mut s, Action::NewNote);
+    reduce(&mut s, Action::BodyChanged("Banana".into()));
+    reduce(&mut s, Action::NewNote);
+    reduce(&mut s, Action::BodyChanged("Apple".into()));
+    // Both notes share `now_ms` (default 0): updated-order is
+    // ambiguous, so switch to title order to observe a real difference.
+    assert!(s.sort_by_updated);
+    reduce(&mut s, Action::SetSortTitle);
+    assert!(s.sort_by_title);
+    assert!(!s.sort_by_updated);
+    assert_eq!(s.note_rows[0].title, "Apple");
+    assert_eq!(s.note_rows[1].title, "Banana");
+
+    reduce(&mut s, Action::SetSortCreated);
+    assert!(s.sort_by_created);
+    assert!(!s.sort_by_title);
+
+    reduce(&mut s, Action::SetSortUpdated);
+    assert!(s.sort_by_updated);
+}
+
+#[test]
+fn deselect_note_closes_the_editor_without_touching_the_list() {
+    let mut s = boot();
+    reduce(&mut s, Action::NewNote);
+    reduce(&mut s, Action::BodyChanged("keep me".into()));
+    assert!(s.has_selected_note);
+    reduce(&mut s, Action::DeselectNote);
+    assert!(!s.has_selected_note);
+    assert_eq!(s.selected_note, 0);
+    assert_eq!(s.note_rows.len(), 1, "the note itself is untouched");
+}

@@ -9,8 +9,8 @@ use libra_core::{ClipboardResult, Effect, Instant, KvResult};
 
 use crate::model::{
     clip_bytes, migrate_v1, note_meta, note_snippet, note_title, DialogKind, Folder, FolderRow,
-    Note, NoteRow, StoredFormat, AUTOSAVE_DEBOUNCE_MS, MAX_BODY_BYTES, MAX_FOLDERS, MAX_NOTES,
-    RECENTLY_DELETED, STORE_KEY,
+    Note, NoteRow, SortOrder, StoredFormat, AUTOSAVE_DEBOUNCE_MS, MAX_BODY_BYTES, MAX_FOLDERS,
+    MAX_NOTES, RECENTLY_DELETED, STORE_KEY,
 };
 use crate::state::Notes;
 
@@ -39,6 +39,11 @@ impl Notes {
         if self.notes.iter().any(|n| n.id == id) {
             self.selected_note = id;
         }
+    }
+
+    /// Breadcrumb's folder crumb — closes the open note, back to the list.
+    pub fn deselect_note(&mut self) {
+        self.selected_note = 0;
     }
 
     pub fn query_changed(&mut self, text: String) {
@@ -201,12 +206,15 @@ impl Notes {
     }
 
     /// Escape (§19.2): contextual — close an open menu, else cancel an
-    /// open dialog, else clear the search.
+    /// open dialog, else close the Settings drawer, else clear the
+    /// search.
     pub fn dismiss(&mut self) {
         if self.menu_note.is_some() {
             self.menu_note = None;
         } else if self.dialog.is_some() {
             self.dialog = None;
+        } else if self.settings_open {
+            self.settings_open = false;
         } else {
             self.query.clear();
         }
@@ -332,15 +340,50 @@ impl Notes {
         Effect::SetTheme { name: self.theme.clone() }
     }
 
+    // ---- settings drawer ----
+
+    pub fn open_settings(&mut self) {
+        self.settings_open = true;
+    }
+
+    pub fn close_settings(&mut self) {
+        self.settings_open = false;
+    }
+
+    pub fn dismiss_save_error(&mut self) {
+        self.save_error = None;
+    }
+
+    pub fn dismiss_store_warning(&mut self) {
+        self.store_warning = None;
+    }
+
+    pub fn set_sort_updated(&mut self) {
+        self.sort_order = SortOrder::Updated;
+    }
+
+    pub fn set_sort_created(&mut self) {
+        self.sort_order = SortOrder::Created;
+    }
+
+    pub fn set_sort_title(&mut self) {
+        self.sort_order = SortOrder::Title;
+    }
+
     // ---- continuations ----
 
     fn store_loaded(&mut self, bytes: Option<Vec<u8>>) {
         self.status = "ready".into();
+        self.loaded = true;
         let Some(bytes) = bytes else { return };
         match serde_json::from_slice::<StoredFormat>(&bytes) {
             Ok(StoredFormat::V2(store)) => self.hydrate(store),
             Ok(StoredFormat::V1(v1)) => self.hydrate(migrate_v1(v1)),
-            Err(_) => self.status = "couldn't read saved notes — starting fresh".into(),
+            Err(_) => {
+                let msg = "couldn't read saved notes — starting fresh";
+                self.status = msg.into();
+                self.store_warning = Some(msg.into());
+            }
         }
     }
 
@@ -368,8 +411,12 @@ impl Notes {
             KvResult::Ok => {
                 self.dirty = false;
                 self.status = "saved".into();
+                self.save_error = None;
             }
-            KvResult::Err(e) => self.status = format!("save failed: {e}"),
+            KvResult::Err(e) => {
+                self.status = format!("save failed: {e}");
+                self.save_error = Some(e);
+            }
         }
         if self.save_pending {
             self.save_pending = false;
@@ -391,6 +438,17 @@ impl Notes {
             matches!(self.dialog, Some(DialogKind::NewFolder | DialogKind::RenameFolder));
         self.show_confirm_dialog = matches!(self.dialog, Some(DialogKind::ConfirmDelete));
         self.show_note_menu = self.menu_note.is_some();
+
+        self.is_loading = !self.loaded;
+        self.show_save_error = self.save_error.is_some();
+        self.error_message = self.save_error.clone().unwrap_or_default();
+        self.show_store_warning = self.store_warning.is_some();
+        self.warning_message = self.store_warning.clone().unwrap_or_default();
+        self.show_settings = self.settings_open;
+        self.is_dark_theme = self.theme == "libra-dark";
+        self.sort_by_updated = matches!(self.sort_order, SortOrder::Updated);
+        self.sort_by_created = matches!(self.sort_order, SortOrder::Created);
+        self.sort_by_title = matches!(self.sort_order, SortOrder::Title);
         self.dialog_title = match self.dialog {
             Some(DialogKind::NewFolder) => "New Folder",
             Some(DialogKind::RenameFolder) => "Rename Folder",
@@ -432,7 +490,13 @@ impl Notes {
                     || n.body.to_lowercase().contains(&query)
             })
             .collect();
-        visible.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms));
+        match self.sort_order {
+            SortOrder::Updated => visible.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms)),
+            SortOrder::Created => visible.sort_by(|a, b| b.created_ms.cmp(&a.created_ms)),
+            SortOrder::Title => {
+                visible.sort_by(|a, b| note_title(a).to_lowercase().cmp(&note_title(b).to_lowercase()))
+            }
+        }
 
         let noun = if scope_count == 1 { "note" } else { "notes" };
         self.list_summary = format!("{scope_count} {noun} · {} shown", visible.len());
@@ -469,12 +533,16 @@ impl Notes {
                 self.editor_body = n.body.clone();
                 self.selected_meta = note_meta(self.now_ms, n);
                 self.selected_is_trashed = n.deleted_ms.is_some();
+                self.has_selected_note = true;
+                self.selected_title = note_title(n);
             }
             None => {
                 self.editor_body.clear();
                 self.selected_meta.clear();
                 self.selected_is_trashed = false;
                 self.selected_note = 0;
+                self.has_selected_note = false;
+                self.selected_title.clear();
             }
         }
     }

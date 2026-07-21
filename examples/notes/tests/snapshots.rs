@@ -3,7 +3,7 @@
 
 use libra_core::KvResult;
 use libra_test::{by, fx, Harness};
-use notes::{Notes, STORE_KEY, VIEW};
+use notes::{Action, Notes, STORE_KEY, VIEW};
 
 fn harness() -> Harness<Notes> {
     let mut h = Harness::<Notes>::with_viewport(VIEW, 900, 600);
@@ -67,6 +67,15 @@ fn snapshot_folder_dialog_with_validation_error() {
     h.assert_snapshot("notes_folder_dialog");
 }
 
+/// The Settings drawer: Card-grouped Switch + Radio group, anchored to
+/// the right edge over the scrim — byte-exactly.
+#[test]
+fn snapshot_settings_drawer_open() {
+    let mut h = harness();
+    h.click(by::test_id("settings"));
+    h.assert_snapshot("notes_settings_drawer");
+}
+
 #[test]
 fn light_and_dark_render_different_bytes() {
     let dark = Harness::<Notes>::with_viewport(VIEW, 900, 600).frame_png();
@@ -82,6 +91,14 @@ fn snapshot_note_context_menu_open() {
     h.click(by::test_id("new-note"));
     settle_save(&mut h);
     h.type_text(by::test_id("editor-body"), "Menu target");
+    settle_save(&mut h);
+    // A second, later, selected note: the selected note's title also
+    // appears in the header Breadcrumb, so `by::text` needs a
+    // non-selected title to right-click unambiguously.
+    h.dispatch(Action::Tick(libra_core::Instant::at(60_000.0)));
+    h.click(by::test_id("new-note"));
+    settle_save(&mut h);
+    h.type_text(by::test_id("editor-body"), "Other note");
     settle_save(&mut h);
     h.blur();
     h.right_click(by::text("Menu target"));

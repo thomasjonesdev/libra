@@ -1,6 +1,25 @@
 <Column gap={0}>
   <Interval every={30000} onTick={tick} />
 
+  <if test={show_store_warning}>
+    <Column gap={4} padding={8}>
+      <Alert tone="warning" title="Startup" testId="store-warning">{warning_message}</Alert>
+      <Row gap={8}>
+        <Spacer />
+        <Button variant="ghost" onPress={dismissStoreWarning} testId="dismiss-warning">Dismiss</Button>
+      </Row>
+    </Column>
+  </if>
+  <if test={show_save_error}>
+    <Column gap={4} padding={8}>
+      <Alert tone="danger" title="Save failed" testId="save-error">{error_message}</Alert>
+      <Row gap={8}>
+        <Spacer />
+        <Button variant="ghost" onPress={dismissSaveError} testId="dismiss-save-error">Dismiss</Button>
+      </Row>
+    </Column>
+  </if>
+
   <Split fraction={split_sidebar} onResize={sidebarSplitChanged} testId="sidebar-split">
     <Column gap={4} padding={12}>
       <Text bold>Folders</Text>
@@ -15,30 +34,58 @@
         </Column>
       </Scroll>
       <Separator />
-      <Button variant="secondary" onPress={openNewFolderDialog} testId="new-folder">New Folder</Button>
+      <Tooltip text="Cmd+Shift+N">
+        <Button variant="secondary" onPress={openNewFolderDialog} testId="new-folder">New Folder</Button>
+      </Tooltip>
     </Column>
 
     <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
     <Column gap={4} padding={12}>
       <Row gap={8} cross="center">
-        <Text bold grow testId="folder-name">{folder_name}</Text>
-        <Button variant="primary" onPress={newNote} testId="new-note">New</Button>
+        <Row grow cross="center">
+          <if test={has_selected_note}>
+            <Breadcrumb>
+              <BreadcrumbItem label={folder_name} onPress={deselectNote} testId="folder-name" />
+              <BreadcrumbItem label={selected_title} current testId="note-title-crumb" />
+            </Breadcrumb>
+            <else>
+              <Breadcrumb>
+                <BreadcrumbItem label={folder_name} current testId="folder-name" />
+              </Breadcrumb>
+            </else>
+          </if>
+        </Row>
+        <Tooltip text="Cmd+N">
+          <Button variant="primary" onPress={newNote} testId="new-note">New</Button>
+        </Tooltip>
       </Row>
       <Row gap={6} cross="center">
         <Input value={query} placeholder="search…" onChange={queryChanged} testId="search" />
-        <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
+        <Tooltip text="Clear search">
+          <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
+        </Tooltip>
       </Row>
       <Separator />
-      <Scroll testId="note-scroll">
-        <Column gap={4}>
-          <if test={note_rows.isEmpty}>
-            <Text muted testId="empty">{empty_message}</Text>
-          </if>
-          <for each={note_rows} as="n" key={n.id}>
-            <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} onMenu={noteMenu(n.id)} />
-          </for>
+      <if test={is_loading}>
+        <Column gap={8} padding={4}>
+          <Skeleton width={160} height={14} />
+          <Skeleton height={40} />
+          <Skeleton height={40} />
+          <Skeleton height={40} />
         </Column>
-      </Scroll>
+        <else>
+          <Scroll testId="note-scroll">
+            <Column gap={4}>
+              <if test={note_rows.isEmpty}>
+                <Text muted testId="empty">{empty_message}</Text>
+              </if>
+              <for each={note_rows} as="n" key={n.id}>
+                <ListItem title={n.title} subtitle={n.snippet} meta={n.meta} selected={n.selected} onPress={selectNote(n.id)} onMenu={noteMenu(n.id)} />
+              </for>
+            </Column>
+          </Scroll>
+        </else>
+      </if>
     </Column>
 
     <Column gap={8} padding={12}>
@@ -47,6 +94,9 @@
         <Spacer />
         <Text size="sm" muted testId="status">{status}</Text>
         <Button variant="ghost" onPress={toggleTheme} testId="theme">{theme}</Button>
+        <Tooltip text="Cmd+Shift+S">
+          <Button variant="ghost" onPress={openSettings} testId="settings">Settings</Button>
+        </Tooltip>
       </Row>
       <if test={selected_is_trashed}>
         <Row gap={8}>
@@ -104,5 +154,22 @@
         <Button variant="primary" onPress={dialogConfirm} testId="confirm-delete">Delete Forever</Button>
       </Row>
     </Dialog>
+  </if>
+  <if test={show_settings}>
+    <Drawer side="right" onDismiss={closeSettings} testId="settings-drawer">
+      <Card>
+        <Text bold>Appearance</Text>
+        <Row gap={8} cross="center">
+          <Switch checked={is_dark_theme} onToggle={toggleTheme} testId="settings-dark-switch" />
+          <Text size="sm" muted>Dark theme</Text>
+        </Row>
+      </Card>
+      <Card>
+        <Text bold>Sort notes by</Text>
+        <Radio selected={sort_by_updated} onSelect={setSortUpdated} testId="sort-updated">Last edited</Radio>
+        <Radio selected={sort_by_created} onSelect={setSortCreated} testId="sort-created">Date created</Radio>
+        <Radio selected={sort_by_title} onSelect={setSortTitle} testId="sort-title">Title</Radio>
+      </Card>
+    </Drawer>
   </if>
 </Column>
