@@ -116,6 +116,33 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             catalog::slider::build(cx, *value, on_change, test_id)
         }
         ViewNode::Tooltip { text, children } => catalog::tooltip::build(cx, text, children),
+        ViewNode::Breadcrumb { children } => catalog::breadcrumb::build_breadcrumb(cx, children),
+        ViewNode::BreadcrumbItem { label, current, on_press, on_press_arg, test_id } => {
+            catalog::breadcrumb::build_item(cx, label, *current, on_press, on_press_arg, test_id)
+        }
+        ViewNode::Pagination { current, total, on_page, test_id } => {
+            catalog::pagination::build(cx, *current, *total, on_page, test_id)
+        }
+        ViewNode::Stepper { current, children } => catalog::stepper::build(cx, *current, children),
+        // Only reachable if a `<StepperItem>` appears outside `<Stepper>`
+        // (a documented misuse) — Stepper's own build() constructs its
+        // children directly, computing status from sibling position.
+        ViewNode::StepperItem { label, test_id } => {
+            catalog::stepper::build(cx, 0, std::slice::from_ref(&ViewNode::StepperItem {
+                label: label.clone(),
+                test_id: test_id.clone(),
+            }))
+        }
+        ViewNode::Timeline { children } => catalog::timeline::build(cx, children),
+        ViewNode::TimelineItem { title, meta, done, test_id } => catalog::timeline::build(
+            cx,
+            std::slice::from_ref(&ViewNode::TimelineItem {
+                title: title.clone(),
+                meta: meta.clone(),
+                done: *done,
+                test_id: test_id.clone(),
+            }),
+        ),
         ViewNode::Split { fraction, on_resize, test_id, children } => {
             catalog::split::build(cx, *fraction, on_resize, test_id, children)
         }

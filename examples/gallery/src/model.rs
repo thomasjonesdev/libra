@@ -45,6 +45,10 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("skeleton", "Skeleton"),
     ("avatar", "Avatar"),
     ("tooltip", "Tooltip"),
+    ("breadcrumb", "Breadcrumb"),
+    ("pagination", "Pagination"),
+    ("stepper", "Stepper"),
+    ("timeline", "Timeline"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),

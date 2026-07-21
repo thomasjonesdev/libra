@@ -59,6 +59,9 @@ pub struct TestState {
     /// Numeric binding — `<Progress value={ratio}>`. Typed f32 field: interp
     /// parses its Display (round-trips), codegen accesses it directly (§6.5).
     pub ratio: f32,
+    /// Numeric binding — `<Pagination current={page}>` / `<Stepper
+    /// current={page}>`. Typed u32 field, same §6.5 rule as `ratio`.
+    pub page: u32,
 }
 
 impl Default for TestState {
@@ -81,6 +84,7 @@ impl Default for TestState {
             feed: "telemetry".into(),
             user: User { name: "Ada".into(), active: true },
             ratio: 0.5,
+            page: 0,
         }
     }
 }
@@ -124,4 +128,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/surfaces.rs"));
     include!(concat!(env!("OUT_DIR"), "/toggles.rs"));
     include!(concat!(env!("OUT_DIR"), "/slider_tooltip.rs"));
+    include!(concat!(env!("OUT_DIR"), "/nav.rs"));
 }

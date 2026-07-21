@@ -245,6 +245,39 @@
         </Drawer>
       </if>
 
+      <if test={is_breadcrumb}>
+        <Text bold muted>Trail (last crumb is current, non-pressable)</Text>
+        <Breadcrumb>
+          <BreadcrumbItem label="Home" onPress={noop} />
+          <BreadcrumbItem label="Settings" onPress={noop} testId="pg-crumb-mid" />
+          <BreadcrumbItem label="Profile" current testId="pg-crumb-current" />
+        </Breadcrumb>
+      </if>
+
+      <if test={is_pagination}>
+        <Text bold muted>Playground (click a page)</Text>
+        <Pagination current={ctl_page} total={12} onPage={pageChanged} testId="pg-pagination" />
+        <Text size="sm" muted testId="pg-page-label">page {ctl_page}</Text>
+      </if>
+
+      <if test={is_stepper}>
+        <Text bold muted>Playground (status follows the shared page index)</Text>
+        <Stepper current={ctl_page}>
+          <StepperItem label="Cart" testId="pg-step-0" />
+          <StepperItem label="Shipping" testId="pg-step-1" />
+          <StepperItem label="Payment" testId="pg-step-2" />
+        </Stepper>
+      </if>
+
+      <if test={is_timeline}>
+        <Text bold muted>Ledger (done fills the indicator)</Text>
+        <Timeline>
+          <TimelineItem title="Order placed" meta="2m ago" done testId="pg-tl-0" />
+          <TimelineItem title="Shipped" meta="1m ago" done testId="pg-tl-1" />
+          <TimelineItem title="Out for delivery" meta="pending" testId="pg-tl-2" />
+        </Timeline>
+      </if>
+
       <if test={is_dialog}>
         <Text bold muted>Playground</Text>
         <Row gap={8}>

@@ -51,6 +51,15 @@ pub enum Tone {
 
 /// Which edge a `<Drawer>` pins to (`bottom` covers the reference
 /// SDK's Sheet).
+/// A `<StepperItem>`'s derived status (§7.1) — computed by the
+/// enclosing `<Stepper>` from index vs. `current`, never an attr.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepStatus {
+    Completed,
+    Active,
+    Pending,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DrawerSide {
     #[default]
@@ -197,6 +206,42 @@ pub enum ViewNode {
         label: String,
         test_id: Option<String>,
     },
+    /// `<Breadcrumb>` (§7.1, PLAN-CATALOG): a hierarchy trail — its
+    /// `BreadcrumbItem` children render with an auto-inserted chevron
+    /// between them; the container is a Row-shaped wrapper.
+    Breadcrumb { children: Vec<ViewNode> },
+    /// `<BreadcrumbItem label=… current? onPress?=…>` (§7.1): one
+    /// crumb — pressable (a link) unless `current` (the trailing,
+    /// non-pressable, bold crumb). `onPress` supports the item-scoped
+    /// `action(loopVar.field)` form for `<for>`-generated trails.
+    BreadcrumbItem {
+        label: String,
+        current: bool,
+        on_press: Option<String>,
+        on_press_arg: Option<String>,
+        test_id: Option<String>,
+    },
+    /// `<Pagination current={u32} total={u32} onPage={action} testId=…>`
+    /// (§7.1): a fully generated page-nav row (Prev/Next + a windowed
+    /// run of page buttons around `current`, ellipsis for the rest).
+    /// `onPage` is a String-payload action; each page button dispatches
+    /// through the existing item-scoped mechanism (its own page number
+    /// as the payload) — no new dispatch machinery.
+    Pagination { current: u32, total: u32, on_page: String, test_id: Option<String> },
+    /// `<Stepper current={u32}>` (§7.1): progress stages — each
+    /// `StepperItem` child's completed/active/pending status is
+    /// derived from its position relative to `current` (0-based); a
+    /// connector line is auto-inserted between steps.
+    Stepper { current: u32, children: Vec<ViewNode> },
+    /// `<StepperItem label=… testId?=…>` (§7.1): one stage; status
+    /// comes from the parent `<Stepper>`'s index math, not an attr.
+    StepperItem { label: String, test_id: Option<String> },
+    /// `<Timeline>` (§7.1): a ledger list with per-row indicators and a
+    /// connecting line between `TimelineItem` children.
+    Timeline { children: Vec<ViewNode> },
+    /// `<TimelineItem title=… meta? done?>` (§7.1): one entry; `done`
+    /// fills its indicator dot (vs. a hollow ring).
+    TimelineItem { title: String, meta: String, done: bool, test_id: Option<String> },
     /// `<Slider value={0..1} onChange={action} testId=…>` (§7.1,
     /// PLAN-CATALOG): a continuous control, **model-owned** like
     /// Split/Switch — `value` binds a typed State f32, track
@@ -365,6 +410,34 @@ pub enum ItemKind {
     /// `<Tooltip>` wrapper — invisible container; the second paint
     /// pass draws `text` above it while hovered.
     TooltipHost { text: String },
+    /// `<Breadcrumb>` — invisible Row-shaped wrapper.
+    BreadcrumbBox,
+    /// One crumb — pressable unless current (handler lives in the
+    /// press slot, like Button).
+    BreadcrumbLabel { label: String, current: bool },
+    /// Auto-inserted "›" between crumbs.
+    Chevron,
+    /// `<Pagination>` — invisible; its page/prev/next buttons are
+    /// ordinary `ItemKind::Button`-shaped leaves it builds itself.
+    PaginationBox,
+    /// One Pagination button: a page number, or the ‹/› nav glyphs.
+    /// `active` bolds the current page; `enabled` dims + disables Prev
+    /// at the start / Next at the end.
+    PageButton { label: String, active: bool, enabled: bool },
+    /// The "…" gap in a windowed page run — not pressable.
+    PageEllipsis,
+    /// `<Stepper>` — invisible; paints the connector between steps.
+    StepperBox,
+    /// One stage — status derived by the container from index vs
+    /// `current`.
+    StepperDot { label: String, status: StepStatus, px: f32 },
+    /// Line segment between two Stepper steps (horizontal) or two
+    /// Timeline entries (vertical) — same primitive, different axis.
+    Connector { vertical: bool, filled: bool },
+    /// `<Timeline>` — invisible; paints the connector between entries.
+    TimelineBox,
+    /// One entry — dot + title/meta, connector drawn by the container.
+    TimelineDot { title: String, meta: String, done: bool, px_md: f32, px_sm: f32 },
     /// A `<Split>` container — invisible; carries the split's identity
     /// (semantics test_id) and its `onResize` handler for the shell's
     /// divider drag and the harness's `resize_split`. The handler lives

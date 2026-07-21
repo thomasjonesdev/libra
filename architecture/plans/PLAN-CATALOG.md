@@ -65,8 +65,8 @@ plan didn't yet track, with dispositions:
 | Theirs | Disposition |
 |---|---|
 | `Alert` (inline callout, variant styling) | **shipped** 2026-07-19 — `tone` → status token pair, title attr + body content |
-| `Accordion` (disclosure sections) | add, chrome wave — pure state (`open` bool per section via `<if>` today; a real component when Toggle exists |
-| `Breadcrumb`, `Pagination`, `Stepper`, `Timeline` | add rows, long-tail wave — all list-shaped, token-only paint |
+| `Accordion` (disclosure sections) | **no new primitive needed** — fully expressible today as `Button` (header) + `<if test={open}>` (body) + `Column` composition, now that `Switch`/`Checkbox` prove the model-owned toggle shape works; not promoted to a catalog component unless a real app's repetition asks for it |
+| `Breadcrumb`, `Pagination`, `Stepper`, `Timeline` | **shipped** 2026-07-20/21 — see the native-sdk.dev delta table above |
 | `Skeleton` (loading placeholder) | **shipped** 2026-07-19 (static); shimmer still waits on §9.6 |
 | `Drawer` / `Sheet` (side/bottom-anchored modals) | **shipped** 2026-07-19 as `<Drawer side=…>` (`bottom` = Sheet) — exactly the predicted fold onto the Dialog machinery |
 | `Dropdown Menu` (anchored floating menu) | the machinery `ContextMenu` (M7) needs — anchored (not centered) overlay placement is the one new piece on top of the Dialog pass |
@@ -90,9 +90,9 @@ From existing §7.1 mission-control set — still in scope, later waves:
 |---|---|---|
 | `Grid`, ~~`Split`~~ (**shipped** 2026-07-19 — model-owned fractions, drag + harness `resize_split`), `Panel` | layout+ | Dense consoles |
 | `Status`, `Icon`, `Markdown`, ~~`Tooltip`~~ (**shipped** 2026-07-19/20 — hover-input floating label, hidden-at-rest second paint pass) | display | |
-| `ButtonGroup`, ~~`Radio`~~ (**shipped** 2026-07-19 — groups via `<for>` + item-scoped `onSelect`), `Select`, `Combobox`, `Stepper` | controls | |
+| `ButtonGroup`, ~~`Radio`~~ (**shipped** 2026-07-19 — groups via `<for>` + item-scoped `onSelect`), `Select`, `Combobox`, ~~`Stepper`~~ (**shipped** 2026-07-20/21) | controls | |
 | `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |
-| `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse) | chrome | |
+| `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse), ~~`Breadcrumb`~~, ~~`Pagination`~~, ~~`Timeline`~~ (all **shipped** 2026-07-20/21) | chrome | |
 | `Video` | late | §9.5 |
 | `Frames`, `Interval`, `Stream` | sources | **shipped** (Stream delivery thin) |
 | `Canvas` | escape | §7.4 |
@@ -113,7 +113,7 @@ never invents colors.
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | `Tabs`, `Toast`, `Toolbar`, `StatusBar` | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
-| **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip` shipped) | Long-tail |
+| **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |
 
 Reorder freely when a real app needs something earlier — but still

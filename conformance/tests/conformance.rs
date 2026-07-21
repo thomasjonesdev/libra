@@ -21,6 +21,7 @@ const MENU: &str = include_str!("../fixtures/menu.lx");
 const SURFACES: &str = include_str!("../fixtures/surfaces.lx");
 const TOGGLES: &str = include_str!("../fixtures/toggles.lx");
 const SLIDER_TOOLTIP: &str = include_str!("../fixtures/slider_tooltip.lx");
+const NAV: &str = include_str!("../fixtures/nav.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
@@ -678,4 +679,51 @@ fn slider_tooltip_produce_identical_trees() {
     let ViewNode::Tooltip { text, children: kids } = &children[2] else { panic!("{:?}", children[2]) };
     assert_eq!(text, "ok");
     assert_eq!(kids.len(), 1);
+}
+
+/// PLAN-CATALOG nav wave — Breadcrumb/Pagination/Stepper/Timeline:
+/// item-scoped Breadcrumb press, Pagination's typed current/total,
+/// Stepper's index-derived status, Timeline's direct `done` attr; both
+/// engines agree.
+#[test]
+fn nav_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    // count doubles as Pagination.current / Stepper.current across states.
+    let variants = [
+        TestState::default(),
+        TestState { page: 1, name: "Ada".into(), status: "Shipped".into(), ..TestState::default() },
+        TestState { page: 2, name: "Grace".into(), status: "Delivered".into(), ..TestState::default() },
+    ];
+    for (i, state) in variants.iter().enumerate() {
+        let interp = interp_tree_src(NAV, state);
+        let compiled = generated::build_nav(state);
+        assert_eq!(interp, compiled, "engine drift on nav fixture (variant #{i})");
+    }
+
+    let state = TestState { page: 1, name: "Ada".into(), ..TestState::default() };
+    let interp = interp_tree_src(NAV, &state);
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+
+    let ViewNode::Breadcrumb { children: crumbs } = &children[0] else { panic!("{:?}", children[0]) };
+    assert_eq!(crumbs.len(), 3);
+    let ViewNode::BreadcrumbItem { label, current, on_press, .. } = &crumbs[1] else {
+        panic!("{:?}", crumbs[1])
+    };
+    assert_eq!((label.as_str(), *current, on_press.as_deref()), ("Ada", false, Some("reset")));
+    let ViewNode::BreadcrumbItem { current, on_press, .. } = &crumbs[2] else { panic!("{:?}", crumbs[2]) };
+    assert!(*current && on_press.is_none(), "the trailing crumb is non-pressable");
+
+    let ViewNode::Pagination { current, total, .. } = &children[1] else { panic!("{:?}", children[1]) };
+    assert_eq!((*current, *total), (1, 10));
+
+    let ViewNode::Stepper { current, children: steps } = &children[2] else { panic!("{:?}", children[2]) };
+    assert_eq!(*current, 1);
+    assert_eq!(steps.len(), 3);
+
+    let ViewNode::Timeline { children: entries } = &children[3] else { panic!("{:?}", children[3]) };
+    let ViewNode::TimelineItem { title, done, .. } = &entries[0] else { panic!("{:?}", entries[0]) };
+    assert_eq!((title.as_str(), *done), ("Order placed", true));
+    let ViewNode::TimelineItem { title, done, .. } = &entries[1] else { panic!("{:?}", entries[1]) };
+    assert_eq!((title.as_str(), *done), ("ok", false));
 }

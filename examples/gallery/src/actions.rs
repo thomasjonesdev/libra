@@ -85,6 +85,13 @@ impl Gallery {
         }
     }
 
+    /// `<Pagination onPage>` / `<StepperItem>` playground echo.
+    pub fn page_changed(&mut self, page: String) {
+        if let Ok(p) = page.parse::<u32>() {
+            self.ctl_page = p;
+        }
+    }
+
     /// `<Split onResize>` echo (M5 controlled shape).
     pub fn split_changed(&mut self, fraction: String) {
         if let Ok(f) = fraction.parse::<f32>() {
@@ -140,6 +147,10 @@ impl Gallery {
         self.is_radio = s == "radio";
         self.is_slider = s == "slider";
         self.is_tooltip = s == "tooltip";
+        self.is_breadcrumb = s == "breadcrumb";
+        self.is_pagination = s == "pagination";
+        self.is_stepper = s == "stepper";
+        self.is_timeline = s == "timeline";
         self.radio_a = self.radio_pick == "a";
         self.radio_b = self.radio_pick == "b";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;

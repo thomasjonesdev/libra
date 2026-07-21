@@ -268,3 +268,36 @@ fn snapshot_workbench_tooltip_hover() {
     h.blur_hover();
     assert_eq!(h.frame_png(), resting, "unhover restores identical bytes");
 }
+
+/// Nav wave: per-component snapshots + the shared page-index
+/// playground driving Pagination and Stepper together.
+#[test]
+fn snapshot_workbench_breadcrumb_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("breadcrumb".into()));
+    h.assert_snapshot("workbench_breadcrumb_dark");
+    // The current crumb has no handler at all (proven at the
+    // conformance layer); a middle crumb is a real link.
+    h.click(by::test_id("pg-crumb-mid"));
+}
+
+#[test]
+fn pagination_and_stepper_share_the_page_playground() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("pagination".into()));
+    h.assert_snapshot("workbench_pagination_dark");
+    h.query(by::test_id("pg-page-label")).assert_text("page 1");
+    h.click(by::text("3"));
+    assert_eq!(h.state().ctl_page, 2, "page button '3' is 1-based display for index 2");
+    h.query(by::test_id("pg-page-label")).assert_text("page 2");
+
+    h.dispatch(Action::Select("stepper".into()));
+    h.assert_snapshot("workbench_stepper_dark");
+}
+
+#[test]
+fn snapshot_workbench_timeline_dark() {
+    let mut h = harness("libra-dark");
+    h.dispatch(Action::Select("timeline".into()));
+    h.assert_snapshot("workbench_timeline_dark");
+}

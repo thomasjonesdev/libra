@@ -50,6 +50,10 @@ pub struct Gallery {
     pub is_radio: bool,
     pub is_slider: bool,
     pub is_tooltip: bool,
+    pub is_breadcrumb: bool,
+    pub is_pagination: bool,
+    pub is_stepper: bool,
+    pub is_timeline: bool,
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
@@ -78,6 +82,8 @@ pub struct Gallery {
     pub radio_b: bool,
     /// Slider playground value (model-owned).
     pub ctl_slider: f32,
+    /// Nav playground: current page / step (shared 0-based index).
+    pub ctl_page: u32,
     /// Split playground fraction — echoed by `splitChanged` (M5).
     pub ctl_split: f32,
 
@@ -119,6 +125,10 @@ impl Gallery {
             is_radio: false,
             is_slider: false,
             is_tooltip: false,
+            is_breadcrumb: false,
+            is_pagination: false,
+            is_stepper: false,
+            is_timeline: false,
             is_split: false,
             is_chart: false,
             is_sparkline: false,
@@ -136,6 +146,7 @@ impl Gallery {
             radio_a: true,
             radio_b: false,
             ctl_slider: 0.5,
+            ctl_page: 1,
             ctl_split: 0.5,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };

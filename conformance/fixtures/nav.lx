@@ -1,0 +1,20 @@
+<Column gap={12} padding={12}>
+  <Breadcrumb>
+    <BreadcrumbItem label="Home" onPress={increment} />
+    <BreadcrumbItem label={name} onPress={reset} testId="mid-crumb" />
+    <BreadcrumbItem label="Profile" current testId="last-crumb" />
+  </Breadcrumb>
+
+  <Pagination current={page} total={10} onPage={nameChanged} testId="pager" />
+
+  <Stepper current={page}>
+    <StepperItem label="Cart" />
+    <StepperItem label="Shipping" testId="step-shipping" />
+    <StepperItem label="Payment" />
+  </Stepper>
+
+  <Timeline>
+    <TimelineItem title="Order placed" meta="2m ago" done testId="tl-1" />
+    <TimelineItem title={status} meta="pending" testId="tl-2" />
+  </Timeline>
+</Column>

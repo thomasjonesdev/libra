@@ -17,6 +17,7 @@
 //! paint; `source.rs` the smallest build-only (mount, no layout, no paint).
 
 pub(crate) mod badge;
+pub(crate) mod breadcrumb;
 pub(crate) mod button;
 pub(crate) mod chart;
 pub(crate) mod container;
@@ -26,6 +27,7 @@ pub(crate) mod drawer;
 pub(crate) mod heading;
 pub(crate) mod input;
 pub(crate) mod list_item;
+pub(crate) mod pagination;
 pub(crate) mod progress;
 pub(crate) mod scroll;
 pub(crate) mod separator;
@@ -36,5 +38,7 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 pub(crate) mod split;
 pub(crate) mod spacer;
+pub(crate) mod stepper;
 pub(crate) mod text;
+pub(crate) mod timeline;
 pub(crate) mod textarea;

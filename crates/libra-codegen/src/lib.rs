@@ -574,6 +574,217 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
             ))
         }
 
+
+        // §7.1, matching interp's "Breadcrumb"/"BreadcrumbItem" arms.
+        "Breadcrumb" => {
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Breadcrumb {{ {at}\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+            ))
+        }
+
+        "BreadcrumbItem" => {
+            let mut label: Option<String> = None;
+            let mut current = "false".to_string();
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("label", AttrValue::Str(v)) => label = Some(format!("{}.to_string()", str_lit(v))),
+                    ("label", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        label = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("current", v) => current = bool_attr_expr(v, a.span, bound)?,
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = label
+                .ok_or_else(|| err(*span, "<BreadcrumbItem> requires label={binding} or label=\"…\""))?;
+            let (press_expr, arg_expr) = match &on_press {
+                None => ("::core::option::Option::None".to_string(), "::core::option::Option::None".to_string()),
+                Some((m, arg, mspan)) => {
+                    require_camel_case(m, *mspan)?;
+                    match arg {
+                        Some(binding) => {
+                            let value_ref = display_ref_expr(binding, bound).map_err(|e| err(*mspan, e))?;
+                            (
+                                format!(
+                                    "{{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                    msg_ty = cfg.action, variant_ref = pascalize(m), name_lit = str_lit(m),
+                                ),
+                                format!("::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"),
+                            )
+                        }
+                        None => (
+                            format!(
+                                "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                msg_ty = cfg.action, variant_ref = pascalize(m), name_lit = str_lit(m),
+                            ),
+                            "::core::option::Option::None".to_string(),
+                        ),
+                    }
+                }
+            };
+            if !children.is_empty() {
+                return Err(err(*span, "<BreadcrumbItem> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::BreadcrumbItem {{ {at}\n\
+                 {i}    label: {label},\n\
+                 {i}    current: {current},\n\
+                 {i}    on_press: {press_expr},\n\
+                 {i}    on_press_arg: {arg_expr},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Pagination" arm exactly.
+        "Pagination" => {
+            let mut current: Option<String> = None;
+            let mut total: Option<String> = None;
+            let mut on_page: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("current", v) => current = Some(u32_attr_expr(v, a.span, bound)?),
+                    ("total", v) => total = Some(u32_attr_expr(v, a.span, bound)?),
+                    ("onPage", AttrValue::Ident(m)) => on_page = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let current = current.ok_or_else(|| err(*span, "<Pagination> requires current={0-based page}"))?;
+            let total = total.ok_or_else(|| err(*span, "<Pagination> requires total={page count}"))?;
+            let (msg, mspan) =
+                on_page.ok_or_else(|| err(*span, "<Pagination> requires onPage={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Pagination> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Pagination {{ {at}\n\
+                 {i}    current: {current},\n\
+                 {i}    total: {total},\n\
+                 {i}    on_page: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                msg_ty = cfg.action, variant_ref = pascalize(&msg), name_lit = str_lit(&msg), mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Stepper"/"StepperItem" arms.
+        "Stepper" => {
+            let mut current: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("current", v) => current = Some(u32_attr_expr(v, a.span, bound)?),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let current = current.ok_or_else(|| err(*span, "<Stepper> requires current={0-based step index}"))?;
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Stepper {{ {at}\n\
+                 {i}    current: {current},\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+            ))
+        }
+
+        "StepperItem" => {
+            let mut label: Option<String> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("label", AttrValue::Str(v)) => label = Some(format!("{}.to_string()", str_lit(v))),
+                    ("label", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        label = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label =
+                label.ok_or_else(|| err(*span, "<StepperItem> requires label={binding} or label=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<StepperItem> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::StepperItem {{ {at}\n\
+                 {i}    label: {label},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1, matching interp's "Timeline"/"TimelineItem" arms.
+        "Timeline" => {
+            let kids = gen_children(children, cfg, d + 2, bound, name, *span)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Timeline {{ {at}\n\
+                 {i}    children: {kids},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+            ))
+        }
+
+        "TimelineItem" => {
+            let mut title: Option<String> = None;
+            let mut meta = "::std::string::String::new()".to_string();
+            let mut done = "false".to_string();
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", AttrValue::Str(v)) => title = Some(format!("{}.to_string()", str_lit(v))),
+                    ("title", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        title = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("meta", AttrValue::Str(v)) => meta = format!("{}.to_string()", str_lit(v)),
+                    ("meta", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound).map_err(|m| err(a.span, m))?;
+                        meta = format!("::std::string::ToString::to_string(&{expr})");
+                    }
+                    ("done", v) => done = bool_attr_expr(v, a.span, bound)?,
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title =
+                title.ok_or_else(|| err(*span, "<TimelineItem> requires title={binding} or title=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<TimelineItem> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::TimelineItem {{ {at}\n\
+                 {i}    title: {title},\n\
+                 {i}    meta: {meta},\n\
+                 {i}    done: {done},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         // §7.1, matching interp's "Slider" arm exactly.
         "Slider" => {
             let mut value = "0.0f32".to_string();
@@ -1593,6 +1804,20 @@ fn opt_str(s: &Option<String>) -> String {
 
 /// Bool attr under the shared Display-"true" rule (Flag ⇒ true;
 /// binding ⇒ `to_string(&expr) == "true"`), matching interp exactly.
+
+/// Typed `u32` attr (literal or bound field), matching interp's parse
+/// exactly — `<Pagination current>`/`<Pagination total>`/`<Stepper current>`.
+fn u32_attr_expr(v: &AttrValue, span: Span, bound: &[String]) -> Result<String, CodegenError> {
+    match v {
+        AttrValue::Num(n) => Ok(format!("{}u32", *n as u32)),
+        AttrValue::Ident(p) => {
+            let expr = display_ref_expr(p, bound).map_err(|m| err(span, m))?;
+            Ok(expr)
+        }
+        _ => Err(err(span, "expected a number literal or a {binding}")),
+    }
+}
+
 fn bool_attr_expr(v: &AttrValue, span: Span, bound: &[String]) -> Result<String, CodegenError> {
     match v {
         AttrValue::Flag => Ok("true".to_string()),

@@ -688,6 +688,211 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             Ok(ViewNode::Drawer { side, on_dismiss, test_id, children: kids })
         }
 
+
+        // §7.1 (PLAN-CATALOG): hierarchy trail — chevron auto-
+        // inserted by build(); children are BreadcrumbItem.
+        "Breadcrumb" => {
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Breadcrumb { children: kids })
+        }
+
+        // §7.1: one crumb. `current` follows the same bool rule as
+        // `<if>`; non-current crumbs may take an onPress (incl. the
+        // item-scoped `action(loopVar.field)` form for `<for>` trails).
+        "BreadcrumbItem" => {
+            let mut label: Option<String> = None;
+            let mut current = false;
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("label", AttrValue::Str(v)) => label = Some(v.clone()),
+                    ("label", AttrValue::Ident(p)) => {
+                        label = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("current", AttrValue::Flag) => current = true,
+                    ("current", AttrValue::Ident(p)) => {
+                        current = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                            == "true"
+                    }
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = label
+                .ok_or_else(|| err(*span, "<BreadcrumbItem> requires label={binding} or label=\"…\""))?;
+            let (on_press, on_press_arg) = match on_press {
+                None => (None, None),
+                Some((m, arg, mspan)) => {
+                    require_camel_case(&m, mspan)?;
+                    let resolved_arg = match &arg {
+                        Some(binding) => {
+                            if !(scope.has_str_action)(&m) {
+                                return Err(err(
+                                    mspan,
+                                    format!("action '{m}' takes no payload — `onPress={{{m}({binding})}}` needs a String-payload action"),
+                                ));
+                            }
+                            Some((scope.field)(binding).ok_or_else(|| {
+                                err(mspan, format!("no binding '{binding}' in scope"))
+                            })?)
+                        }
+                        None => {
+                            if !(scope.has_action)(&m) {
+                                return Err(err(mspan, format!("no action '{m}' on Action — check the enum")));
+                            }
+                            None
+                        }
+                    };
+                    (Some(m), resolved_arg)
+                }
+            };
+            if !children.is_empty() {
+                return Err(err(*span, "<BreadcrumbItem> takes no children"));
+            }
+            Ok(ViewNode::BreadcrumbItem { label, current, on_press, on_press_arg, test_id })
+        }
+
+        // §7.1: fully generated page-nav row — the windowing logic
+        // lives once in libra-components, shared by both engines.
+        "Pagination" => {
+            let mut current: Option<u32> = None;
+            let mut total: Option<u32> = None;
+            let mut on_page: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("current", AttrValue::Num(v)) => current = Some(*v as u32),
+                    ("current", AttrValue::Ident(p)) => {
+                        let s = (scope.field)(p).ok_or_else(|| err(a.span, format!("no field '{p}' on State")))?;
+                        current = Some(s.parse::<u32>().map_err(|_| {
+                            err(a.span, format!("field '{p}' is not a number — <Pagination current> expects a page index"))
+                        })?);
+                    }
+                    ("total", AttrValue::Num(v)) => total = Some(*v as u32),
+                    ("total", AttrValue::Ident(p)) => {
+                        let s = (scope.field)(p).ok_or_else(|| err(a.span, format!("no field '{p}' on State")))?;
+                        total = Some(s.parse::<u32>().map_err(|_| {
+                            err(a.span, format!("field '{p}' is not a number — <Pagination total> expects a page count"))
+                        })?);
+                    }
+                    ("onPage", AttrValue::Ident(m)) => on_page = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let current = current.ok_or_else(|| err(*span, "<Pagination> requires current={0-based page}"))?;
+            let total = total.ok_or_else(|| err(*span, "<Pagination> requires total={page count}"))?;
+            let (msg, mspan) =
+                on_page.ok_or_else(|| err(*span, "<Pagination> requires onPage={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            if !children.is_empty() {
+                return Err(err(*span, "<Pagination> takes no children"));
+            }
+            Ok(ViewNode::Pagination { current, total, on_page: msg, test_id })
+        }
+
+        // §7.1: progress stages — status is derived by the container
+        // from index vs `current`, never an attr on the item.
+        "Stepper" => {
+            let mut current: Option<u32> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("current", AttrValue::Num(v)) => current = Some(*v as u32),
+                    ("current", AttrValue::Ident(p)) => {
+                        let s = (scope.field)(p).ok_or_else(|| err(a.span, format!("no field '{p}' on State")))?;
+                        current = Some(s.parse::<u32>().map_err(|_| {
+                            err(a.span, format!("field '{p}' is not a number — <Stepper current> expects a step index"))
+                        })?);
+                    }
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let current = current.ok_or_else(|| err(*span, "<Stepper> requires current={0-based step index}"))?;
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Stepper { current, children: kids })
+        }
+
+        "StepperItem" => {
+            let mut label: Option<String> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("label", AttrValue::Str(v)) => label = Some(v.clone()),
+                    ("label", AttrValue::Ident(p)) => {
+                        label = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label =
+                label.ok_or_else(|| err(*span, "<StepperItem> requires label={binding} or label=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<StepperItem> takes no children"));
+            }
+            Ok(ViewNode::StepperItem { label, test_id })
+        }
+
+        // §7.1: ledger list — `done` is a direct attr per entry
+        // (unlike Stepper, not position-derived); the container draws
+        // the connector.
+        "Timeline" => {
+            let kids = resolve_children(children, scope, name, *span)?;
+            Ok(ViewNode::Timeline { children: kids })
+        }
+
+        "TimelineItem" => {
+            let mut title: Option<String> = None;
+            let mut meta = String::new();
+            let mut done = false;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("title", AttrValue::Str(v)) => title = Some(v.clone()),
+                    ("title", AttrValue::Ident(p)) => {
+                        title = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("meta", AttrValue::Str(v)) => meta = v.clone(),
+                    ("meta", AttrValue::Ident(p)) => {
+                        meta = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                    }
+                    ("done", AttrValue::Flag) => done = true,
+                    ("done", AttrValue::Ident(p)) => {
+                        done = (scope.field)(p)
+                            .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                            == "true"
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let title =
+                title.ok_or_else(|| err(*span, "<TimelineItem> requires title={binding} or title=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<TimelineItem> takes no children"));
+            }
+            Ok(ViewNode::TimelineItem { title, meta, done, test_id })
+        }
+
         // §7.1 (PLAN-CATALOG): model-owned continuous control — typed
         // value (the Progress rule), String-payload onChange.
         "Slider" => {
@@ -1194,7 +1399,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if"
             ),
         )),
     }

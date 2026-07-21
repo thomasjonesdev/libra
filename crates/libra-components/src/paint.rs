@@ -127,6 +127,31 @@ impl LaidTree {
                     ItemKind::SwitchCtl { checked } => {
                         catalog::toggle::paint_switch(&mut cx, item.rect, *checked)
                     }
+                    ItemKind::BreadcrumbBox
+                    | ItemKind::PaginationBox
+                    | ItemKind::StepperBox
+                    | ItemKind::TimelineBox => {}
+                    ItemKind::BreadcrumbLabel { label, current } => {
+                        catalog::breadcrumb::paint_label(&mut cx, item, label, *current)
+                    }
+                    ItemKind::Chevron => catalog::breadcrumb::paint_chevron(&mut cx, item),
+                    ItemKind::PageButton { label, active, enabled } => {
+                        catalog::pagination::paint_button(&mut cx, item, label, *active, *enabled)
+                    }
+                    ItemKind::PageEllipsis => catalog::pagination::paint_ellipsis(&mut cx, item.rect),
+                    ItemKind::StepperDot { label, status, px } => {
+                        catalog::stepper::paint_dot(&mut cx, item, label, *status, *px)
+                    }
+                    ItemKind::Connector { vertical, filled } => {
+                        if *vertical {
+                            catalog::timeline::paint_connector(&mut cx, item, *filled)
+                        } else {
+                            catalog::stepper::paint_connector(&mut cx, item, *filled)
+                        }
+                    }
+                    ItemKind::TimelineDot { title, meta, done, px_md, px_sm } => {
+                        catalog::timeline::paint_item(&mut cx, item, title, meta, *done, *px_md, *px_sm)
+                    }
                     ItemKind::CheckboxCtl { checked, label, px } => {
                         catalog::toggle::paint_checkbox(&mut cx, item.rect, *checked, label, *px)
                     }
