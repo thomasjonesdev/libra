@@ -48,7 +48,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
 | `Checkbox` | `Checkbox` | **shipped** 2026-07-19 | Model-owned; check glyph is a display-list Polyline |
-| `Slider` | `Slider` | planned | |
+| `Slider` | `Slider` | **shipped** 2026-07-19/20 | Model-owned; the shell's Split-drag machinery generalized to a `DragTarget` enum |
 | `SearchBar` | `Search` | planned | Input chrome + submit |
 | `Spinner` | `Spinner` | **blocked** | Needs either an arc/circle draw command (none today) **or** an animation phase on the paint path — the latter is §9.6 animated tokens (unbuilt). A deterministic *static* spinner is just decoration; revisit when §9.6 or an arc `DrawCmd` lands |
 | `ProgressBar` | `Progress` | **shipped** 2026-07-18 | `value={0..1}` — **literal or bound** (`value={ratio}`, typed f32; §6.5 preserved — [[26-open-questions|§26]] #8); `surface_raised` track + `accent` fill, pill radius |
@@ -89,7 +89,7 @@ From existing §7.1 mission-control set — still in scope, later waves:
 | Component | Wave | Note |
 |---|---|---|
 | `Grid`, ~~`Split`~~ (**shipped** 2026-07-19 — model-owned fractions, drag + harness `resize_split`), `Panel` | layout+ | Dense consoles |
-| `Status`, `Icon`, `Markdown`, `Tooltip` | display | |
+| `Status`, `Icon`, `Markdown`, ~~`Tooltip`~~ (**shipped** 2026-07-19/20 — hover-input floating label, hidden-at-rest second paint pass) | display | |
 | `ButtonGroup`, ~~`Radio`~~ (**shipped** 2026-07-19 — groups via `<for>` + item-scoped `onSelect`), `Select`, `Combobox`, `Stepper` | controls | |
 | `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |
 | `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse) | chrome | |
@@ -107,13 +107,13 @@ never invents colors.
 | **0** | Token table expansion | Shared foundation — **done** ([[PLAN-TOKENS]] T1) |
 | **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **Spacer/Separator done** (+ `width={px}` pane sizing on Column/Row, `chrome` conformance fixture); `Scroll` remains |
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
-| **3** | ✅ `Switch`, `Checkbox` (+`Radio`) shipped 2026-07-19; `Slider` next (the Split-drag machinery generalizes), `Search` | Control set parity |
+| **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; `Search` next | Control set parity |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
 | **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | `Tabs`, `Toast`, `Toolbar`, `StatusBar` | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
-| **9** | `Select`/`Combobox`/`Radio`/`CommandPalette`/`ContextMenu`/`Tooltip`/`Markdown`/`Icon` | Long-tail |
+| **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |
 
 Reorder freely when a real app needs something earlier — but still

@@ -82,7 +82,9 @@ pub(crate) fn build(
 }
 
 pub(crate) fn paint_divider(cx: &mut PaintCx, rect: Rect) {
-    // 1px hairline centered in the gutter.
+    // 1px hairline centered in the gutter. Floor to a whole-pixel x —
+    // a hairline at a fractional coordinate can trip a tiny-skia AA
+    // scan edge case (see the same fix in catalog/tooltip.rs).
     let x = rect.x + (GUTTER / 2.0).floor();
     cx.cmds.push(DrawCmd::Rect { rect: Rect::new(x, rect.y, 1.0, rect.h), color: cx.theme.hairline });
 }

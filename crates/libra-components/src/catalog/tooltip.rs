@@ -42,6 +42,12 @@ pub(crate) fn paint_label(cx: &mut PaintCx, host: Rect, text: &str, viewport: (f
     let (w, h) = (tw + 2.0 * pad, th + 2.0 * pad);
     let x = (host.x + (host.w - w) / 2.0).clamp(0.0, (viewport.0 - w).max(0.0));
     let y = (host.y - h - 4.0).max(0.0);
+    // Floor to whole-pixel coordinates: a 1px hairline border at a
+    // fractional x/y can hit a tiny-skia edge case in its AA hairline
+    // scan (a thin rect straddling two pixel columns with zero
+    // full-coverage inner columns) — the same class of bug Split's
+    // divider already floors around.
+    let (x, y) = (x.floor(), y.floor());
     let r = Rect::new(x, y, w, h);
     cx.cmds.push(DrawCmd::RRect { rect: r, radius: cx.theme.radius_sm, color: cx.theme.surface_raised });
     let c = cx.theme.hairline;
