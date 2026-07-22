@@ -43,8 +43,8 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
     match view {
         ViewNode::Column { style, children } => catalog::container::build_column(cx, style, children),
         ViewNode::Row { style, children } => catalog::container::build_row(cx, style, children),
-        ViewNode::Text { content, size, bold, muted, grow, test_id } => {
-            catalog::text::build(cx, content, *size, *bold, *muted, *grow, test_id)
+        ViewNode::Text { content, size, bold, muted, grow, wrap, test_id } => {
+            catalog::text::build(cx, content, *size, *bold, *muted, *grow, *wrap, test_id)
         }
         ViewNode::Button { label, variant, on_press, on_press_arg, test_id } => {
             catalog::button::build(cx, label, *variant, on_press, on_press_arg, test_id)
@@ -186,6 +186,8 @@ pub fn layout(
     )
     .map_err(|e| LayoutError(format!("{e:?}")))?;
 
+    reflow_wrapped_text(&mut tree, root, &meta, measurer, viewport)?;
+
     // Flatten with accumulated absolute positions, in paint (pre-)order.
     let mut items = Vec::with_capacity(meta.len());
     let mut seen = std::collections::HashSet::new();
@@ -228,6 +230,43 @@ pub fn layout(
     }
 
     Ok(LaidTree { items, width: viewport.0, height: viewport.1 })
+}
+
+/// After the first layout pass, `<Text wrap>` nodes get a height from their
+/// assigned width so wrapped copy doesn't clip.
+fn reflow_wrapped_text(
+    tree: &mut TaffyTree<()>,
+    root: NodeId,
+    meta: &Meta,
+    measurer: &dyn TextMeasurer,
+    viewport: (f32, f32),
+) -> Result<(), LayoutError> {
+    let space = Size {
+        width: AvailableSpace::Definite(viewport.0),
+        height: AvailableSpace::Definite(viewport.1),
+    };
+    let mut changed = false;
+    for (id, kind, _, _) in meta {
+        let ItemKind::Text { content, px, style, wrap: true, .. } = kind else {
+            continue;
+        };
+        let laid = tree.layout(*id).map_err(|e| LayoutError(format!("{e:?}")))?;
+        let max_w = laid.size.width;
+        if max_w <= 0.0 {
+            continue;
+        }
+        let h = catalog::text::wrapped_height(content, max_w, *px, *style, measurer);
+        if (laid.size.height - h).abs() > 0.5 {
+            let mut st = tree.style(*id).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
+            st.size.height = length(h);
+            tree.set_style(*id, st).map_err(|e| LayoutError(format!("{e:?}")))?;
+            changed = true;
+        }
+    }
+    if changed {
+        tree.compute_layout(root, space).map_err(|e| LayoutError(format!("{e:?}")))?;
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -296,6 +296,7 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
             let mut bold = false;
             let mut muted = false;
             let mut grow = false;
+            let mut wrap = false;
             let mut test_id = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -315,12 +316,13 @@ fn element(node: &Node, scope: &Scope) -> Result<ViewNode, InterpError> {
                     ("bold", AttrValue::Flag) => bold = true,
                     ("muted", AttrValue::Flag) => muted = true,
                     ("grow", AttrValue::Flag) => grow = true,
+                    ("wrap", AttrValue::Flag) => wrap = true,
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
             let content = text_content(children, scope, *span)?;
-            Ok(ViewNode::Text { content, size, bold, muted, grow, test_id })
+            Ok(ViewNode::Text { content, size, bold, muted, grow, wrap, test_id })
         }
 
         "Button" => {
@@ -1493,6 +1495,7 @@ mod tests {
                 bold: false,
                 muted: false,
                 grow: false,
+                wrap: false,
                 test_id: Some("count".into())
             }
         );

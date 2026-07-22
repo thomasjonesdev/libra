@@ -105,7 +105,7 @@ never invents colors.
 | Wave | Components | Why this order |
 |---|---|---|
 | **0** | Token table expansion | Shared foundation — **done** ([[PLAN-TOKENS]] T1) |
-| **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **Spacer/Separator done** (+ `width={px}` pane sizing on Column/Row, `chrome` conformance fixture); `Scroll` remains |
+| **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **all done** (Scroll 2026-07-18) |
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
 | **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; `Search` next | Control set parity |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |

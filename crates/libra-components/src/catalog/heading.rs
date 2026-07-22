@@ -33,7 +33,7 @@ pub(crate) fn build(
     })?;
     cx.meta.push((
         id,
-        ItemKind::Text { content: content.to_string(), px, style: FontStyle::Bold, color: theme.text },
+        ItemKind::Text { content: content.to_string(), px, style: FontStyle::Bold, color: theme.text, wrap: false },
         Semantics { role: Role::Text, text: content.to_string(), test_id: test_id.clone() },
         None,
     ));

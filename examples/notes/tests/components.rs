@@ -1,6 +1,6 @@
 //! Component tests (§15.3): harness verbs driving the real semantics
 //! tree — folder/note selection, search filtering, trash flow, the
-//! editor's controlled `Input` (until Textarea lands, [[PLAN-TEXTAREA]]).
+//! editor's controlled `Textarea`.
 
 use libra_core::{Effect, KvResult};
 use libra_test::{by, fx, Harness};

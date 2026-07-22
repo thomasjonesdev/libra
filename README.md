@@ -53,10 +53,11 @@ now run on (completed rename/ergonomics plans live under
   min/max column strips, sparse as stroked polylines); taffy layout;
   semantics; hit testing; paint to a DrawCmd display list
 - `libra-draw` — the display list (+ Polyline, Strips) + `Theme` (§11):
-  the named-token table components style through; `libra-dark` is
-  byte-identical to the Phase 0 tokens (snapshot identity preserved),
-  `libra-light` ships alongside; `Effect::SetTheme` swaps live
-- `libra-raster` — the canonical executor: tiny-skia + fontdue, manual
+  the named-token table components style through; `libra-dark` /
+  `libra-light` ship the Libra UI palette (Geist-inspired, PLAN-GEIST);
+  `Effect::SetTheme` swaps live
+- `libra-raster` — the canonical executor: tiny-skia + fontdue (Work Sans +
+  Space Mono bundled), manual
   src-over glyph blending, deterministic PNG output; damage-tracked
   incremental rendering (§9.3) that is byte-equivalent to a full
   render by property test
@@ -108,10 +109,9 @@ now run on (completed rename/ergonomics plans live under
   rows bound through `<for>`; `subscriptions:` drives one action per
   tick (pause-sensitive — see its module doc for why not `<Frames>`);
   tape → byte-exact chart snapshot tests
-- `examples/notes` — the Phase 3 reference app: an Input driving
-  `titleChanged(String)` per keystroke (controlled input; state is
-  the source of truth), Save persisting via kv, a live theme toggle
-  (Effect::SetTheme); caret/selection render byte-exactly in snapshots
+- `examples/notes` — the UI-surface reference app ([[PLAN-NOTES-APP]]):
+  folders · note list · multi-line Textarea editor, Kv persistence,
+  shortcuts, dialogs/menus, theme toggle; dark+light snapshot matrix
 - `examples/gallery` — a Storybook-style **component workbench** (Appendix C):
   a three-pane app (sidebar → isolated component canvas → controls), the PR
   visual-review surface, snapshot-covered per component under both built-in
@@ -145,8 +145,8 @@ Requires Rust >= 1.75. The test suite never needs a display.
 
 Snapshot truths (committed):
 
-    f6ac3073baecb403e071c753be6927609a14b7447d24b0f2effb4167407e6a68  counter_initial.png
-    b7436ed8150b6feb764aa9e9c0b9ffd7f73bac0909df88e316b9b52005e09fe6  counter_three.png
+    c11d318b322534f26f561611ee4fe10bc1612b0111cf8b310aa79fe5d78de35d  counter_initial.png
+    86ac1804d25464d736a134001c3a65286610715bc69f59c3d42e4ce04b5da783  counter_three.png
 
 Every stack layer is pure Rust (taffy / tiny-skia / fontdue), so these
 hashes should reproduce on any machine and OS. Run the suite on your

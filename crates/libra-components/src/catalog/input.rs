@@ -51,7 +51,8 @@ pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &st
 }
 
 /// Input painting (§10.1): field chrome, value or muted placeholder,
-/// and — when focused — a focus ring, the selection band, and a caret.
+/// and — when focused — a rounded accent focus ring (inset fill over an
+/// accent underlay — follows `radius_md`), the selection band, and a caret.
 /// Caret/selection x-positions come from prefix advance widths, so the
 /// same measurer that laid the text positions the caret.
 #[allow(clippy::too_many_arguments)]
@@ -65,15 +66,19 @@ fn paint_input(
     m: &dyn TextMeasurer,
     theme: &Theme,
 ) {
-    cmds.push(DrawCmd::RRect { rect, radius: theme.radius_md, color: theme.secondary });
-    if focus.is_some() {
-        // Focus ring: a 1px accent frame (four thin rects — no stroke
-        // rrect in the Phase 3 display list).
-        let c = theme.accent;
-        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y, rect.w, 1.0), color: c });
-        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y + rect.h - 1.0, rect.w, 1.0), color: c });
-        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y, 1.0, rect.h), color: c });
-        cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x + rect.w - 1.0, rect.y, 1.0, rect.h), color: c });
+    const RING: f32 = 1.0;
+    let radius = theme.radius_md;
+    if focus.is_some() && rect.w > 2.0 * RING && rect.h > 2.0 * RING {
+        // Focus ring: accent underlay + inset fill — follows `radius_md`
+        // (the old four-rect frame was square at the corners).
+        cmds.push(DrawCmd::RRect { rect, radius, color: theme.accent });
+        cmds.push(DrawCmd::RRect {
+            rect: Rect::new(rect.x + RING, rect.y + RING, rect.w - 2.0 * RING, rect.h - 2.0 * RING),
+            radius: (radius - RING).max(0.0),
+            color: theme.secondary,
+        });
+    } else {
+        cmds.push(DrawCmd::RRect { rect, radius, color: theme.secondary });
     }
     let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);

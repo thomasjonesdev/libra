@@ -47,12 +47,14 @@ pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &st
     paint_textarea(cx.cmds, item.rect, value, placeholder, px, focused, cx.measurer, cx.theme);
 }
 
-/// Textarea painting (§10.1 stage 1): field chrome, hard-newline lines
-/// (no soft wrap yet), muted placeholder when empty, and — when
-/// focused — the focus ring, per-line selection bands, and a
-/// line-positioned caret. Line height is measured height +
-/// [`TEXTAREA_LEADING`]; x positions come from prefix advances within
-/// the caret's line, same measurer that laid the text.
+/// Textarea painting (§10.1 stage 1 / PLAN-NOTES-APP M8): **no field
+/// chrome** — the editor dissolves into the pane background (Input
+/// keeps the boxed `secondary` fill). Hard-newline lines (no soft wrap
+/// yet), muted placeholder when empty, and — when focused — the accent
+/// focus ring, per-line selection bands, and a line-positioned caret.
+/// Line height is measured height + [`TEXTAREA_LEADING`]; x positions
+/// come from prefix advances within the caret's line, same measurer
+/// that laid the text.
 #[allow(clippy::too_many_arguments)]
 fn paint_textarea(
     cmds: &mut Vec<DrawCmd>,
@@ -64,7 +66,6 @@ fn paint_textarea(
     m: &dyn TextMeasurer,
     theme: &Theme,
 ) {
-    cmds.push(DrawCmd::RRect { rect, radius: theme.radius_md, color: theme.secondary });
     if focus.is_some() {
         let c = theme.accent;
         cmds.push(DrawCmd::Rect { rect: Rect::new(rect.x, rect.y, rect.w, 1.0), color: c });

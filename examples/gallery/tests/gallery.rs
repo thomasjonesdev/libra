@@ -1,6 +1,7 @@
-//! The workbench (PLAN-GALLERY): sidebar select → isolated component canvas +
-//! controls. Snapshots are now **per-component** (isolation), so a rendering
-//! change fails only the affected component's frame.
+//! The workbench (PLAN-GALLERY / PLAN-NOTES-APP M8): sidebar select →
+//! isolated component canvas + controls. Snapshots are **per-component**
+//! under both built-in themes, so a rendering change fails only the
+//! affected component × theme frame.
 
 use gallery::{Action, Gallery, VIEW, WAVE};
 use libra_data::Sample;
@@ -18,6 +19,12 @@ fn feed_wave(h: &Harness<Gallery>) {
 fn harness(theme: &str) -> Harness<Gallery> {
     let mut h = Harness::<Gallery>::with_viewport(VIEW, 1200, 760).theme(theme);
     let _ = h.expect_effect(fx::any()); // the IngestOpen — tests feed directly
+    h
+}
+
+fn select(theme: &str, id: &str) -> Harness<Gallery> {
+    let mut h = harness(theme);
+    h.dispatch(Action::Select(id.into()));
     h
 }
 
@@ -48,32 +55,41 @@ fn selecting_a_component_swaps_the_canvas() {
 
 #[test]
 fn snapshot_workbench_badge_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("badge".into()));
-    h.assert_snapshot("workbench_badge_dark");
+    select("libra-dark", "badge").assert_snapshot("workbench_badge_dark");
+}
+
+#[test]
+fn snapshot_workbench_badge_light() {
+    select("libra-light", "badge").assert_snapshot("workbench_badge_light");
 }
 
 #[test]
 fn snapshot_workbench_heading_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("heading".into()));
+    let h = select("libra-dark", "heading");
     h.query(by::test_id("canvas-title")).assert_text("Heading");
     h.assert_snapshot("workbench_heading_dark");
 }
 
 #[test]
+fn snapshot_workbench_heading_light() {
+    select("libra-light", "heading").assert_snapshot("workbench_heading_light");
+}
+
+#[test]
 fn snapshot_workbench_progress_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("progress".into()));
-    h.assert_snapshot("workbench_progress_dark");
+    select("libra-dark", "progress").assert_snapshot("workbench_progress_dark");
+}
+
+#[test]
+fn snapshot_workbench_progress_light() {
+    select("libra-light", "progress").assert_snapshot("workbench_progress_light");
 }
 
 /// Numeric binding end-to-end: the +/− control moves the `ctl_progress` f32,
 /// and the `<Progress value={ctl_progress}>` bar repaints to match (§26 #8).
 #[test]
 fn progress_control_moves_the_bound_bar() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("progress".into()));
+    let mut h = select("libra-dark", "progress");
     let at_half = h.frame_png();
     h.click(by::test_id("ctl-progress-up"));
     assert!((h.state().ctl_progress - 0.6).abs() < 1e-6, "up nudges +0.1");
@@ -96,6 +112,14 @@ fn snapshot_workbench_chart_dark() {
     feed_wave(&h);
     h.dispatch(Action::Select("chart".into()));
     h.assert_snapshot("workbench_chart_dark");
+}
+
+#[test]
+fn snapshot_workbench_chart_light() {
+    let mut h = harness("libra-light");
+    feed_wave(&h);
+    h.dispatch(Action::Select("chart".into()));
+    h.assert_snapshot("workbench_chart_light");
 }
 
 /// PLAN-SCROLL: at a short viewport the sidebar overflows; scrolling clips +
@@ -136,8 +160,7 @@ fn theme_toggle_round_trips() {
 /// resting frame.
 #[test]
 fn snapshot_workbench_dialog_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("dialog".into()));
+    let mut h = select("libra-dark", "dialog");
     let resting = h.frame_png();
     h.click(by::test_id("pg-open-dialog"));
     h.assert_snapshot("workbench_dialog_dark");
@@ -145,13 +168,19 @@ fn snapshot_workbench_dialog_dark() {
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_dialog_light() {
+    let mut h = select("libra-light", "dialog");
+    h.click(by::test_id("pg-open-dialog"));
+    h.assert_snapshot("workbench_dialog_light");
+}
+
 /// M5 `<Split>`: the harness resize verb drives the same controlled
 /// path as the shell's divider drag; resizing repaints, and resizing
 /// back restores identical bytes.
 #[test]
 fn snapshot_workbench_split_dark_and_resize_round_trips() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("split".into()));
+    let mut h = select("libra-dark", "split");
     h.assert_snapshot("workbench_split_dark");
     let at_half = h.frame_png();
     h.resize_split("pg-split", 0.25);
@@ -161,12 +190,16 @@ fn snapshot_workbench_split_dark_and_resize_round_trips() {
     assert_eq!(h.frame_png(), at_half, "resizing back restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_split_light() {
+    select("libra-light", "split").assert_snapshot("workbench_split_light");
+}
+
 /// M7 `<ContextMenu>`: right-click opens the anchored menu (byte-exact
 /// snapshot); a menu item closes it back to the identical resting frame.
 #[test]
 fn snapshot_workbench_menu_and_round_trip() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("list_item".into()));
+    let mut h = select("libra-dark", "list_item");
     let resting = h.frame_png();
     h.right_click(by::test_id("pg-row-menu"));
     h.assert_snapshot("workbench_menu_dark");
@@ -174,37 +207,81 @@ fn snapshot_workbench_menu_and_round_trip() {
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_menu_light() {
+    let mut h = select("libra-light", "list_item");
+    h.right_click(by::test_id("pg-row-menu"));
+    h.assert_snapshot("workbench_menu_light");
+}
+
+/// Resting ListItem / Textarea canvases (notes-critical; M8).
+#[test]
+fn snapshot_workbench_list_item_dark() {
+    select("libra-dark", "list_item").assert_snapshot("workbench_list_item_dark");
+}
+
+#[test]
+fn snapshot_workbench_list_item_light() {
+    select("libra-light", "list_item").assert_snapshot("workbench_list_item_light");
+}
+
+#[test]
+fn snapshot_workbench_textarea_dark() {
+    select("libra-dark", "textarea").assert_snapshot("workbench_textarea_dark");
+}
+
+#[test]
+fn snapshot_workbench_textarea_light() {
+    select("libra-light", "textarea").assert_snapshot("workbench_textarea_light");
+}
+
 /// Catalog parity wave: per-component snapshots + the model-owned
 /// toggle round trips.
 #[test]
 fn snapshot_workbench_alert_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("alert".into()));
-    h.assert_snapshot("workbench_alert_dark");
+    select("libra-dark", "alert").assert_snapshot("workbench_alert_dark");
+}
+
+#[test]
+fn snapshot_workbench_alert_light() {
+    select("libra-light", "alert").assert_snapshot("workbench_alert_light");
 }
 
 #[test]
 fn snapshot_workbench_card_and_panel_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("card".into()));
+    let mut h = select("libra-dark", "card");
     h.assert_snapshot("workbench_card_dark");
     h.dispatch(Action::Select("panel".into()));
     h.assert_snapshot("workbench_panel_dark");
 }
 
 #[test]
+fn snapshot_workbench_card_and_panel_light() {
+    let mut h = select("libra-light", "card");
+    h.assert_snapshot("workbench_card_light");
+    h.dispatch(Action::Select("panel".into()));
+    h.assert_snapshot("workbench_panel_light");
+}
+
+#[test]
 fn snapshot_workbench_skeleton_and_avatar_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("skeleton".into()));
+    let mut h = select("libra-dark", "skeleton");
     h.assert_snapshot("workbench_skeleton_dark");
     h.dispatch(Action::Select("avatar".into()));
     h.assert_snapshot("workbench_avatar_dark");
 }
 
 #[test]
+fn snapshot_workbench_skeleton_and_avatar_light() {
+    let mut h = select("libra-light", "skeleton");
+    h.assert_snapshot("workbench_skeleton_light");
+    h.dispatch(Action::Select("avatar".into()));
+    h.assert_snapshot("workbench_avatar_light");
+}
+
+#[test]
 fn switch_and_checkbox_toggle_through_the_model() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("switch".into()));
+    let mut h = select("libra-dark", "switch");
     h.assert_snapshot("workbench_switch_dark");
     let on = h.frame_png();
     h.click(by::test_id("pg-switch"));
@@ -220,9 +297,16 @@ fn switch_and_checkbox_toggle_through_the_model() {
 }
 
 #[test]
+fn snapshot_workbench_switch_and_checkbox_light() {
+    let mut h = select("libra-light", "switch");
+    h.assert_snapshot("workbench_switch_light");
+    h.dispatch(Action::Select("checkbox".into()));
+    h.assert_snapshot("workbench_checkbox_light");
+}
+
+#[test]
 fn radio_group_picks_one() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("radio".into()));
+    let mut h = select("libra-dark", "radio");
     h.assert_snapshot("workbench_radio_dark");
     h.click(by::test_id("pg-radio-b"));
     assert_eq!(h.state().radio_pick, "b");
@@ -230,9 +314,13 @@ fn radio_group_picks_one() {
 }
 
 #[test]
+fn snapshot_workbench_radio_light() {
+    select("libra-light", "radio").assert_snapshot("workbench_radio_light");
+}
+
+#[test]
 fn snapshot_workbench_drawer_and_round_trip() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("drawer".into()));
+    let mut h = select("libra-dark", "drawer");
     let resting = h.frame_png();
     h.click(by::test_id("pg-open-drawer"));
     h.assert_snapshot("workbench_drawer_dark");
@@ -240,12 +328,18 @@ fn snapshot_workbench_drawer_and_round_trip() {
     assert_eq!(h.frame_png(), resting, "closing restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_drawer_light() {
+    let mut h = select("libra-light", "drawer");
+    h.click(by::test_id("pg-open-drawer"));
+    h.assert_snapshot("workbench_drawer_light");
+}
+
 /// Slider: the harness verb drives the same controlled path as the
 /// shell's track drag, and it visibly moves the bound Progress too.
 #[test]
 fn snapshot_workbench_slider_and_set_round_trips() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("slider".into()));
+    let mut h = select("libra-dark", "slider");
     h.assert_snapshot("workbench_slider_dark");
     let at_half = h.frame_png();
     h.set_slider("pg-slider", 0.8);
@@ -255,12 +349,16 @@ fn snapshot_workbench_slider_and_set_round_trips() {
     assert_eq!(h.frame_png(), at_half, "setting back restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_slider_light() {
+    select("libra-light", "slider").assert_snapshot("workbench_slider_light");
+}
+
 /// Tooltip: hidden at rest, floats over the hovered target, and clears
 /// back to identical resting bytes.
 #[test]
 fn snapshot_workbench_tooltip_hover() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("tooltip".into()));
+    let mut h = select("libra-dark", "tooltip");
     let resting = h.frame_png();
     h.hover(by::test_id("pg-tip-btn"));
     assert_ne!(h.frame_png(), resting, "hover paints the label");
@@ -269,12 +367,18 @@ fn snapshot_workbench_tooltip_hover() {
     assert_eq!(h.frame_png(), resting, "unhover restores identical bytes");
 }
 
+#[test]
+fn snapshot_workbench_tooltip_hover_light() {
+    let mut h = select("libra-light", "tooltip");
+    h.hover(by::test_id("pg-tip-btn"));
+    h.assert_snapshot("workbench_tooltip_hover_light");
+}
+
 /// Nav wave: per-component snapshots + the shared page-index
 /// playground driving Pagination and Stepper together.
 #[test]
 fn snapshot_workbench_breadcrumb_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("breadcrumb".into()));
+    let mut h = select("libra-dark", "breadcrumb");
     h.assert_snapshot("workbench_breadcrumb_dark");
     // The current crumb has no handler at all (proven at the
     // conformance layer); a middle crumb is a real link.
@@ -282,9 +386,13 @@ fn snapshot_workbench_breadcrumb_dark() {
 }
 
 #[test]
+fn snapshot_workbench_breadcrumb_light() {
+    select("libra-light", "breadcrumb").assert_snapshot("workbench_breadcrumb_light");
+}
+
+#[test]
 fn pagination_and_stepper_share_the_page_playground() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("pagination".into()));
+    let mut h = select("libra-dark", "pagination");
     h.assert_snapshot("workbench_pagination_dark");
     h.query(by::test_id("pg-page-label")).assert_text("page 1");
     h.click(by::text("3"));
@@ -296,8 +404,19 @@ fn pagination_and_stepper_share_the_page_playground() {
 }
 
 #[test]
+fn snapshot_workbench_pagination_and_stepper_light() {
+    let mut h = select("libra-light", "pagination");
+    h.assert_snapshot("workbench_pagination_light");
+    h.dispatch(Action::Select("stepper".into()));
+    h.assert_snapshot("workbench_stepper_light");
+}
+
+#[test]
 fn snapshot_workbench_timeline_dark() {
-    let mut h = harness("libra-dark");
-    h.dispatch(Action::Select("timeline".into()));
-    h.assert_snapshot("workbench_timeline_dark");
+    select("libra-dark", "timeline").assert_snapshot("workbench_timeline_dark");
+}
+
+#[test]
+fn snapshot_workbench_timeline_light() {
+    select("libra-light", "timeline").assert_snapshot("workbench_timeline_light");
 }

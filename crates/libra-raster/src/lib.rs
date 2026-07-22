@@ -15,21 +15,30 @@ use libra_components::TextMeasurer;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 pub struct Renderer {
+    /// Work Sans Medium (500) — bundled as [`FontStyle::Regular`] (PLAN-GEIST G1).
     regular: fontdue::Font,
+    /// Work Sans Bold (700) — [`FontStyle::Bold`].
     bold: fontdue::Font,
+    /// Space Mono Regular — reserved for future `type.mono.*` (PLAN-GEIST G4); parsed
+    /// at init so a bad bundle fails fast, not on first mono draw.
+    #[allow(dead_code)]
+    mono: fontdue::Font,
 }
 
-const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/LiberationSans-Regular.ttf");
-const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/LiberationSans-Bold.ttf");
+const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Medium.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Bold.ttf");
+const FONT_MONO: &[u8] = include_bytes!("../../../assets/fonts/SpaceMono-Regular.ttf");
 
 impl Renderer {
     pub fn new() -> Self {
         let settings = fontdue::FontSettings::default();
         Renderer {
             regular: fontdue::Font::from_bytes(FONT_REGULAR, settings.clone())
-                .expect("bundled regular font parses"),
-            bold: fontdue::Font::from_bytes(FONT_BOLD, settings)
-                .expect("bundled bold font parses"),
+                .expect("bundled Work Sans Medium parses"),
+            bold: fontdue::Font::from_bytes(FONT_BOLD, settings.clone())
+                .expect("bundled Work Sans Bold parses"),
+            mono: fontdue::Font::from_bytes(FONT_MONO, settings)
+                .expect("bundled Space Mono Regular parses"),
         }
     }
 

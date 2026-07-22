@@ -90,7 +90,7 @@ pub struct BoxStyle {
 pub enum ViewNode {
     Column { style: BoxStyle, children: Vec<ViewNode> },
     Row { style: BoxStyle, children: Vec<ViewNode> },
-    Text { content: String, size: TextSize, bold: bool, muted: bool, grow: bool, test_id: Option<String> },
+    Text { content: String, size: TextSize, bold: bool, muted: bool, grow: bool, wrap: bool, test_id: Option<String> },
     /// `on_press` is the handler action name; `on_press_arg`, when
     /// `Some`, is the resolved `String` payload for an item-scoped
     /// handler (`onPress={toggle(item)}`, §6.2) — the dispatch uses
@@ -362,7 +362,7 @@ pub enum ItemKind {
     Box, // Column/Row/Spacer (no visual; containers are transparent)
     /// `<Separator>` — paints a `theme.hairline` rect over its rect.
     Separator,
-    Text { content: String, px: f32, style: FontStyle, color: Color },
+    Text { content: String, px: f32, style: FontStyle, color: Color, wrap: bool },
     Button { label: String, px: f32, variant: Variant },
     /// Status pill — `tone` picks a `theme.<tone>_bg`/`_fg` pair.
     Badge { label: String, tone: Tone, px: f32 },

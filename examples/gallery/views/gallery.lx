@@ -379,7 +379,7 @@
             </Row>
             <Spacer />
             <else>
-              <Text size="sm" muted testId="no-controls">This component's variants are shown at left; it has no text control.</Text>
+              <Text size="sm" muted wrap testId="no-controls">This component's variants are shown at left; it has no text control.</Text>
             </else>
           </if>
         </else>

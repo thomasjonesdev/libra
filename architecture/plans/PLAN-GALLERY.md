@@ -12,7 +12,9 @@ type: plan
 
 # Gallery → component workbench (Libra Storybook)
 
-**Status: in progress — G0–G3 landed 2026-07-18.** Grew `examples/gallery`
+**Status: in progress — G0–G3 landed 2026-07-18; M8 (2026-07-21) completed the
+per-component × dark/light snapshot matrix** (every shipped workbench cell has
+both themes; Textarea/ListItem resting canvases added). Grew `examples/gallery`
 from a single flat matrix into a **Storybook-style workbench**: a sidebar of
 every catalog component, click one to load it *in isolation* with its variants
 and a live text control. Modeled on the `examples/notes` three-pane layout

@@ -25,7 +25,7 @@ pub(crate) fn build(
     children: &[ViewNode],
 ) -> Result<NodeId, taffy::TaffyError> {
     // Panel content: bold title line, then the markup children.
-    let mut kids = vec![catalog::text::build(cx, title, TextSize::Md, true, false, false, &None)?];
+    let mut kids = vec![catalog::text::build(cx, title, TextSize::Md, true, false, false, false, &None)?];
     for c in children {
         if crate::layout::is_detached_node(c) {
             let _ = cx.child(c)?;

@@ -21,13 +21,14 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-IF]] | complete | [[06.2-closed-grammar|§6.2]], [[12.5-declarative-subscriptions|§12.5]], [[26-open-questions|§26]] |
 | [[PLAN-SOURCES]] | complete | [[12.5-declarative-subscriptions|§12.5]], [[12.1-effect-vocabulary|§12.1]] |
 | [[PLAN-ACCESSORS]] | complete | [[06.2-closed-grammar|§6.2]], [[26-open-questions|§26]] |
-| [[PLAN-NOTES-APP]] | in progress (M0/M1 done) | [[10.1-text-entry|§10.1]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
-| [[PLAN-TEXTAREA]] | planned | [[10.1-text-entry|§10.1]] |
+| [[PLAN-NOTES-APP]] | complete (M0–M9) | [[10.1-text-entry|§10.1]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-TEXTAREA]] | in progress (stage 1 done) | [[10.1-text-entry|§10.1]] |
 | [[PLAN-UI-SURFACE]] | planned | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[19-platform-integration|§19]] |
 | [[PLAN-TOKENS]] | in progress (T1–T4 done) | [[11-theming|§11]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-GEIST]] | complete (G1–G3) | [[11-theming|§11]], [[09-rendering|§9]], [[PLAN-TOKENS]] |
 | [[PLAN-CATALOG]] | planned | [[07-components|§7]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-COMPONENTS]] | in progress (C0–C3 done) | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[PLAN-UI-SURFACE]], [[PLAN-TOKENS]] |
-| [[PLAN-GALLERY]] | in progress (G0–G3 done) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
+| [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
 | [[PLAN-NATIVE-INTEGRATIONS]] | planned | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | planned | [[23-roadmap|§23]] |

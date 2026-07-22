@@ -121,7 +121,7 @@ pub(crate) fn paint_dot(cx: &mut PaintCx, item: &Item, label: &str, status: Step
     cx.cmds.push(DrawCmd::RRect { rect: dot, radius: cx.theme.radius_full, color: fill });
     if matches!(status, StepStatus::Completed) {
         // A Polyline check glyph, not a Unicode "✓" Text: the bundled
-        // Liberation Sans (fontdue, advance-only) doesn't cover it —
+        // Work Sans (fontdue, advance-only) doesn't cover it —
         // renders as a tofu box. Checkbox already draws its check this
         // way for the same reason; match it here.
         cx.cmds.push(DrawCmd::Polyline {

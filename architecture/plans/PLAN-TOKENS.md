@@ -96,6 +96,7 @@ control.height.sm|md|lg / control.pad.x|y
 
 1. **`Theme::dark()` / `libra-dark` values for existing keys stay
    bit-identical** until an intentional bless of the whole snapshot set.
+   *(The [[PLAN-GEIST]] retheme took that bless on 2026-07-21 — done.)*
 2. Tokens are data — switching themes is an effect / harness option, not
    ambient process env on the paint path.
 3. Missing token at paint = bug (debug assert / overlay), not silent

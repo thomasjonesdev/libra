@@ -138,48 +138,51 @@ impl Rect {
     }
 }
 
-/// Design tokens (ARCHITECTURE.md §11). Phase 0's hard-coded dark
-/// values, kept verbatim as the `libra-dark` theme's table — snapshot
-/// snapshot identity depends on them.
+/// Libra UI design tokens (§11, PLAN-GEIST). Geist-inspired palette; the
+/// built-in `libra-dark` / `libra-light` themes resolve through these values.
+/// Concrete hex pinned from Geist reference scales (see §11 mapping table).
 pub mod tokens {
     use super::Color;
 
-    pub const BG: Color = Color::rgb(0x0B, 0x0E, 0x14);
-    pub const SURFACE: Color = Color::rgb(0x15, 0x1A, 0x23);
-    pub const TEXT: Color = Color::rgb(0xE6, 0xEA, 0xF2);
-    pub const TEXT_MUTED: Color = Color::rgb(0x8A, 0x93, 0xA6);
-    pub const ACCENT: Color = Color::rgb(0x4C, 0x8D, 0xFF);
+    // --- Dark theme (Geist dark / background-100 #0a0a0a) ---
+    pub const BG: Color = Color::rgb(0x0A, 0x0A, 0x0A);
+    pub const SURFACE: Color = Color::rgb(0x0A, 0x0A, 0x0A);
+    pub const TEXT: Color = Color::rgb(0xED, 0xED, 0xED); // gray-1000
+    pub const TEXT_MUTED: Color = Color::rgb(0xA1, 0xA1, 0xA1); // gray-900
+    pub const ACCENT: Color = Color::rgb(0x00, 0x70, 0xF3); // blue-700
     pub const ACCENT_TEXT: Color = Color::rgb(0xFF, 0xFF, 0xFF);
-    pub const SECONDARY: Color = Color::rgb(0x23, 0x2B, 0x3A);
+    pub const SECONDARY: Color = Color::rgb(0x1A, 0x1A, 0x1A); // gray-100
 
-    pub const RADIUS_MD: f32 = 6.0;
+    // --- Light theme anchors (used by Theme::light()) ---
+    pub const LIGHT_BG: Color = Color::rgb(0xFF, 0xFF, 0xFF);
+    pub const LIGHT_SURFACE: Color = Color::rgb(0xFF, 0xFF, 0xFF);
+    pub const LIGHT_TEXT: Color = Color::rgb(0x17, 0x17, 0x17); // gray-1000
+    pub const LIGHT_TEXT_MUTED: Color = Color::rgb(0x66, 0x66, 0x66); // gray-900
+    pub const LIGHT_ACCENT: Color = Color::rgb(0x00, 0x70, 0xF3);
+    pub const LIGHT_SECONDARY: Color = Color::rgb(0xF2, 0xF2, 0xF2); // gray-100
 
-    pub const TYPE_SM: f32 = 12.0;
-    pub const TYPE_MD: f32 = 14.0;
-    pub const TYPE_XL: f32 = 24.0;
-
-    pub const BTN_PAD_X: f32 = 12.0;
-    pub const BTN_PAD_Y: f32 = 6.0;
-
-    // --- PLAN-TOKENS T2 scales (metrics are theme-independent; shared by
-    //     libra-dark and libra-light). Read only by post-T1 components, so
-    //     existing snapshots are undisturbed. ---
-
+    // --- Shared metrics (Geist-inspired; theme-independent) ---
     pub const RADIUS_SM: f32 = 4.0;
-    pub const RADIUS_LG: f32 = 10.0;
+    pub const RADIUS_MD: f32 = 6.0; // everyday surfaces + controls
+    pub const RADIUS_LG: f32 = 12.0; // menus / modals
     /// Pill radius — clamped by the rasterizer to half the rect's short side.
     pub const RADIUS_FULL: f32 = 9999.0;
 
-    pub const TYPE_XS: f32 = 11.0;
-    pub const TYPE_LG: f32 = 18.0;
+    pub const TYPE_XS: f32 = 12.0;
+    pub const TYPE_SM: f32 = 13.0;
+    pub const TYPE_MD: f32 = 14.0; // copy-14 / label-14 base
+    pub const TYPE_LG: f32 = 16.0;
+    pub const TYPE_XL: f32 = 24.0;
 
-    /// Spacing scale, steps 1..=8 (4px-ish base). Resolve via `Theme::space`
-    /// so global density applies.
-    pub const SPACE: [f32; 8] = [2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
+    pub const BTN_PAD_X: f32 = 12.0;
+    pub const BTN_PAD_Y: f32 = 8.0;
 
-    pub const CONTROL_H_SM: f32 = 24.0;
-    pub const CONTROL_H_MD: f32 = 32.0;
-    pub const CONTROL_H_LG: f32 = 40.0;
+    /// Geist 4px spacing scale → steps 1..=8.
+    pub const SPACE: [f32; 8] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0, 40.0, 64.0];
+
+    pub const CONTROL_H_SM: f32 = 32.0;
+    pub const CONTROL_H_MD: f32 = 40.0;
+    pub const CONTROL_H_LG: f32 = 48.0;
 }
 
 /// Global spacing density (§11, PLAN-TOKENS T4). Multiplies the spacing scale
@@ -243,9 +246,9 @@ pub struct Theme {
     pub btn_pad_x: f32,
     pub btn_pad_y: f32,
 
-    // --- PLAN-TOKENS T2/T4: the expanded named table. Every field below is
-    //     read only by post-T1 components, so libra-dark / libra-light stay
-    //     byte-identical for existing snapshots (tests/theme assert this). ---
+    // --- PLAN-TOKENS T2/T4: the expanded named table. Libra UI palette
+    // (PLAN-GEIST) — Geist-inspired values pinned in `Theme::dark()` /
+    // `Theme::light()` and the `tokens` module. ---
     /// Text on an accent or status fill (e.g. a Badge label).
     pub text_inverse: Color,
     /// Structural outline, one step stronger than `hairline` — input/card edges.
@@ -279,50 +282,47 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// The mission-control default. Byte-identical to the Phase 0
-    /// token values — existing snapshots are recorded under it. New
-    /// T1 keys (`surface_raised`/`hairline`/status colors) are only
-    /// read by post-T1 components, so adding them cannot disturb any
-    /// committed snapshot.
+    /// Libra UI dark theme (`libra-dark`). Geist-inspired palette (§11 /
+    /// PLAN-GEIST); Work Sans + Space Mono bundled in `libra-raster`.
     pub fn dark() -> Theme {
         Theme {
             name: "libra-dark".to_string(),
             bg: tokens::BG,
             surface: tokens::SURFACE,
-            surface_raised: Color::rgb(0x1B, 0x22, 0x2E),
+            surface_raised: Color::rgb(0x17, 0x17, 0x17), // background-200
             text: tokens::TEXT,
             text_muted: tokens::TEXT_MUTED,
             accent: tokens::ACCENT,
             accent_text: tokens::ACCENT_TEXT,
             secondary: tokens::SECONDARY,
-            selection: Color::rgb(0x2A, 0x4A, 0x7A),
-            hairline: Color::rgb(0x1E, 0x25, 0x31),
-            scrim: Color { r: 0x00, g: 0x00, b: 0x00, a: 0x8C },
-            danger: Color::rgb(0xE5, 0x53, 0x4B),
-            warning: Color::rgb(0xD9, 0xA4, 0x3F),
-            success: Color::rgb(0x3F, 0xB9, 0x50),
+            selection: Color::rgb(0x0F, 0x2A, 0x44), // blue-200 (dark)
+            hairline: Color { r: 0xFF, g: 0xFF, b: 0xFF, a: 0x24 }, // gray-alpha-400
+            border: Color { r: 0xFF, g: 0xFF, b: 0xFF, a: 0x24 },
+            scrim: Color { r: 0x00, g: 0x00, b: 0x00, a: 0xA6 },
+            danger: Color::rgb(0xE5, 0x48, 0x4D), // red-700
+            warning: Color::rgb(0xFF, 0xB2, 0x24), // amber-700
+            success: Color::rgb(0x46, 0xA7, 0x58), // green-700
             info: tokens::ACCENT,
+            radius_sm: tokens::RADIUS_SM,
             radius_md: tokens::RADIUS_MD,
+            radius_lg: tokens::RADIUS_LG,
+            radius_full: tokens::RADIUS_FULL,
+            type_xs: tokens::TYPE_XS,
             type_sm: tokens::TYPE_SM,
             type_md: tokens::TYPE_MD,
+            type_lg: tokens::TYPE_LG,
             type_xl: tokens::TYPE_XL,
             btn_pad_x: tokens::BTN_PAD_X,
             btn_pad_y: tokens::BTN_PAD_Y,
             text_inverse: Color::rgb(0xFF, 0xFF, 0xFF),
-            border: Color::rgb(0x2A, 0x33, 0x41),
-            danger_bg: Color::rgb(0x3A, 0x1D, 0x1B),
-            danger_fg: Color::rgb(0xF0, 0xA8, 0xA3),
-            warning_bg: Color::rgb(0x3A, 0x2E, 0x14),
-            warning_fg: Color::rgb(0xE9, 0xC7, 0x7E),
-            success_bg: Color::rgb(0x16, 0x31, 0x1F),
-            success_fg: Color::rgb(0x8F, 0xD6, 0xA3),
-            info_bg: Color::rgb(0x16, 0x26, 0x3A),
-            info_fg: Color::rgb(0x9D, 0xC0, 0xF0),
-            radius_sm: tokens::RADIUS_SM,
-            radius_lg: tokens::RADIUS_LG,
-            radius_full: tokens::RADIUS_FULL,
-            type_xs: tokens::TYPE_XS,
-            type_lg: tokens::TYPE_LG,
+            danger_bg: Color::rgb(0x3A, 0x12, 0x14), // red-200 (dark)
+            danger_fg: Color::rgb(0xFF, 0x8A, 0x8A), // red-900
+            warning_bg: Color::rgb(0x3A, 0x2A, 0x0A), // amber-200 (dark)
+            warning_fg: Color::rgb(0xFF, 0xB2, 0x24),
+            success_bg: Color::rgb(0x0F, 0x2A, 0x16), // green-200 (dark)
+            success_fg: Color::rgb(0x86, 0xEF, 0xAC), // green-900
+            info_bg: Color::rgb(0x0F, 0x2A, 0x44),
+            info_fg: Color::rgb(0x93, 0xC5, 0xFD),
             space: tokens::SPACE,
             control_h_sm: tokens::CONTROL_H_SM,
             control_h_md: tokens::CONTROL_H_MD,
@@ -331,45 +331,46 @@ impl Theme {
         }
     }
 
+    /// Libra UI light theme (`libra-light`). Same token names, Geist light values.
     pub fn light() -> Theme {
         Theme {
             name: "libra-light".to_string(),
-            bg: Color::rgb(0xF5, 0xF6, 0xF8),
-            surface: Color::rgb(0xFF, 0xFF, 0xFF),
-            surface_raised: Color::rgb(0xEC, 0xEF, 0xF3),
-            text: Color::rgb(0x1A, 0x20, 0x2B),
-            text_muted: Color::rgb(0x6B, 0x74, 0x84),
-            accent: Color::rgb(0x2A, 0x66, 0xD9),
+            bg: tokens::LIGHT_BG,
+            surface: tokens::LIGHT_SURFACE,
+            surface_raised: Color::rgb(0xF2, 0xF2, 0xF2), // gray-100
+            text: tokens::LIGHT_TEXT,
+            text_muted: tokens::LIGHT_TEXT_MUTED,
+            accent: tokens::LIGHT_ACCENT,
             accent_text: Color::rgb(0xFF, 0xFF, 0xFF),
-            secondary: Color::rgb(0xE4, 0xE7, 0xEC),
-            selection: Color::rgb(0xB8, 0xD0, 0xF5),
-            hairline: Color::rgb(0xDD, 0xE1, 0xE7),
-            scrim: Color { r: 0x14, g: 0x19, b: 0x23, a: 0x6E },
-            danger: Color::rgb(0xC7, 0x35, 0x2E),
-            warning: Color::rgb(0xA9, 0x71, 0x08),
-            success: Color::rgb(0x1F, 0x87, 0x3D),
-            info: Color::rgb(0x2A, 0x66, 0xD9),
+            secondary: tokens::LIGHT_SECONDARY,
+            selection: Color::rgb(0xDB, 0xEA, 0xFE), // blue-200
+            hairline: Color { r: 0x00, g: 0x00, b: 0x00, a: 0x14 }, // gray-alpha-400
+            border: Color { r: 0x00, g: 0x00, b: 0x00, a: 0x14 },
+            scrim: Color { r: 0x00, g: 0x00, b: 0x00, a: 0x6E },
+            danger: Color::rgb(0xE5, 0x48, 0x4D),
+            warning: Color::rgb(0xF5, 0x9E, 0x0B), // amber-700 (light)
+            success: Color::rgb(0x16, 0xA3, 0x4A), // green-700 (light)
+            info: tokens::LIGHT_ACCENT,
+            radius_sm: tokens::RADIUS_SM,
             radius_md: tokens::RADIUS_MD,
+            radius_lg: tokens::RADIUS_LG,
+            radius_full: tokens::RADIUS_FULL,
+            type_xs: tokens::TYPE_XS,
             type_sm: tokens::TYPE_SM,
             type_md: tokens::TYPE_MD,
+            type_lg: tokens::TYPE_LG,
             type_xl: tokens::TYPE_XL,
             btn_pad_x: tokens::BTN_PAD_X,
             btn_pad_y: tokens::BTN_PAD_Y,
             text_inverse: Color::rgb(0xFF, 0xFF, 0xFF),
-            border: Color::rgb(0xD0, 0xD5, 0xDC),
-            danger_bg: Color::rgb(0xFB, 0xE9, 0xE7),
-            danger_fg: Color::rgb(0xA2, 0x28, 0x20),
-            warning_bg: Color::rgb(0xFB, 0xF0, 0xDA),
-            warning_fg: Color::rgb(0x8A, 0x5B, 0x06),
-            success_bg: Color::rgb(0xE3, 0xF4, 0xE8),
-            success_fg: Color::rgb(0x1B, 0x6E, 0x33),
-            info_bg: Color::rgb(0xE4, 0xED, 0xFB),
-            info_fg: Color::rgb(0x1E, 0x4F, 0xA8),
-            radius_sm: tokens::RADIUS_SM,
-            radius_lg: tokens::RADIUS_LG,
-            radius_full: tokens::RADIUS_FULL,
-            type_xs: tokens::TYPE_XS,
-            type_lg: tokens::TYPE_LG,
+            danger_bg: Color::rgb(0xFE, 0xE2, 0xE2), // red-100
+            danger_fg: Color::rgb(0xB9, 0x1C, 0x1C), // red-900
+            warning_bg: Color::rgb(0xFE, 0xF3, 0xC7), // amber-100
+            warning_fg: Color::rgb(0xB4, 0x53, 0x09), // amber-900
+            success_bg: Color::rgb(0xDC, 0xFC, 0xE7), // green-100
+            success_fg: Color::rgb(0x16, 0x6A, 0x3A), // green-900
+            info_bg: Color::rgb(0xDB, 0xEA, 0xFE),
+            info_fg: Color::rgb(0x1E, 0x40, 0xAF),
             space: tokens::SPACE,
             control_h_sm: tokens::CONTROL_H_SM,
             control_h_md: tokens::CONTROL_H_MD,
@@ -544,8 +545,8 @@ mod theme_tests {
     #[test]
     fn expanded_tokens_and_scales_present() {
         for th in [Theme::dark(), Theme::light()] {
-            // Ramps are ordered and sane.
-            assert!(th.radius_sm < th.radius_md && th.radius_md < th.radius_lg);
+            // Ramps are ordered and sane (sm ≤ md < lg).
+            assert!(th.radius_sm <= th.radius_md && th.radius_md < th.radius_lg);
             assert!(th.type_xs < th.type_sm && th.type_lg < th.type_xl);
             assert_eq!(th.space.len(), 8);
             assert!(th.space.windows(2).all(|w| w[0] < w[1]), "spacing scale ascends");

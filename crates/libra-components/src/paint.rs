@@ -98,8 +98,8 @@ impl LaidTree {
                     ItemKind::Input { value, placeholder, px } => {
                         catalog::input::paint(&mut cx, item, value, placeholder, *px)
                     }
-                    ItemKind::Text { content, px, style, color } => {
-                        catalog::text::paint(&mut cx, item, content, *px, *style, *color)
+                    ItemKind::Text { content, px, style, color, wrap } => {
+                        catalog::text::paint(&mut cx, item, content, *px, *style, *color, *wrap)
                     }
                     ItemKind::Button { label, px, variant } => {
                         catalog::button::paint(&mut cx, item, label, *px, *variant)

@@ -153,7 +153,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
         "Text" => {
             // Mirror of interp's Text table (size default Md).
             let mut size = "Md";
-            let (mut bold, mut muted, mut grow) = (false, false, false);
+            let (mut bold, mut muted, mut grow, mut wrap) = (false, false, false, false);
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -173,6 +173,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                     ("bold", AttrValue::Flag) => bold = true,
                     ("muted", AttrValue::Flag) => muted = true,
                     ("grow", AttrValue::Flag) => grow = true,
+                    ("wrap", AttrValue::Flag) => wrap = true,
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
@@ -182,7 +183,7 @@ fn gen_node(node: &Node, cfg: &Config, d: usize, bound: &[String]) -> Result<Str
                 "{i}::libra_components::ViewNode::Text {{ {at}\n\
                  {i}    content: {content},\n\
                  {i}    size: ::libra_components::TextSize::{size},\n\
-                 {i}    bold: {bold}, muted: {muted}, grow: {grow},\n\
+                 {i}    bold: {bold}, muted: {muted}, grow: {grow}, wrap: {wrap},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),

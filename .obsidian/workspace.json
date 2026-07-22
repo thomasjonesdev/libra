@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
+                "file": "architecture/sections/04.1-layer-diagram.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "PLAN-NATIVE-INTEGRATIONS"
+              "title": "04.1-layer-diagram"
             }
           }
         ]
@@ -183,54 +183,31 @@
       "bases:Create new base": false
     }
   },
-  "floating": {
-    "id": "8796d15ceb85c118",
-    "type": "floating",
-    "children": [
-      {
-        "id": "aa242c9acb54e140",
-        "type": "window",
-        "children": [
-          {
-            "id": "0a628272e313539f",
-            "type": "tabs",
-            "children": [
-              {
-                "id": "8526468f49d5f9b4",
-                "type": "leaf",
-                "state": {
-                  "type": "empty",
-                  "state": {},
-                  "icon": "lucide-file",
-                  "title": "New tab"
-                }
-              }
-            ]
-          }
-        ],
-        "direction": "vertical",
-        "x": 352,
-        "y": 95,
-        "width": 1024,
-        "height": 800,
-        "maximize": false,
-        "zoom": 0
-      }
-    ]
-  },
   "active": "987e4302a8c3c601",
   "lastOpenFiles": [
-    "target/debug/deps/dashboard-52cd0c599af5f6e4",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.0m14vrf16winzb2nufs0t37d8.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.9jagfgwu0u6enuvwoxqxndq10.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.7gk5eegulytygysx7b798wuh5.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.2uqu7hztq1h46pc7jaaummlpa.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.76zrqny05v9r2e3nod15mn1jl.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.akw8tav7d3f2mho7opqf4fzr7.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.9taky60nk10lm0hoijv7ect6u.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.2cvcl3t4rafpvr8dzwtltvmrl.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.7wisao072yc4qfzebb3e6hwgf.00lwqet.rcgu.o",
-    "target/debug/deps/dashboard-52cd0c599af5f6e4.6mp4rf5qundt30o6okw4f9alg.00lwqet.rcgu.o",
+    "architecture/sections/04.2-frame-lifecycle.md",
+    "architecture/appendices/appendix-a-determinism-checklist.md",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/work-products.bin",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/e1w60etw2hkejdld9flxvlkpj.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/query-cache.bin",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dq7zi9394egv5iua16wjbc5pr.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dn687rui4ussdne0saqz6fro1.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dep-graph.bin",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dbvu7jwk5q6fg28d9hxti0bs1.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/cp8ofbei03r0jxtnfvbd8jllf.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/b0t1zl6btqtedg1woo4ha5h46.o",
+    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/a2m0vhu5ji5idxlo0ieb0s1uq.o",
+    "examples/gallery/tests/snapshots/workbench_tooltip_hover_dark.diff.png",
+    "examples/gallery/tests/snapshots/workbench_textarea_light.diff.png",
+    "examples/gallery/tests/snapshots/workbench_tooltip_hover_light.diff.png",
+    "examples/gallery/tests/snapshots/workbench_switch_dark.diff.png",
+    "examples/gallery/tests/snapshots/workbench_textarea_dark.diff.png",
+    "examples/gallery/tests/snapshots/workbench_timeline_dark.diff.png",
+    "examples/gallery/tests/snapshots/workbench_timeline_light.diff.png",
+    "examples/gallery/tests/snapshots/workbench_split_light.diff.png",
+    "examples/gallery/tests/snapshots/workbench_switch_light.diff.png",
+    "examples/gallery/tests/snapshots/workbench_split_dark.diff.png",
+    "Untitled.canvas",
     "architecture/plans/PLAN-NATIVE-INTEGRATIONS.md",
     "architecture/plans/PLAN-CATALOG.md",
     "architecture/plans/PLAN-TOKENS.md",

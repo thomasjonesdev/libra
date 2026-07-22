@@ -1,7 +1,8 @@
 //! ListItem — a pressable list row (§7.1, PLAN-CATALOG): title line, optional
-//! muted subtitle/meta lines, and a `selected`/hover wash (`surface_raised`).
-//! The whole row is the press target; `on_press_arg` carries the item-scoped
-//! payload exactly like Button (§6.2).
+//! muted subtitle/meta lines, and distinct token washes — `selection` when
+//! selected, `surface_raised` on hover (PLAN-NOTES-APP M8). The whole row is
+//! the press target; `on_press_arg` carries the item-scoped payload exactly
+//! like Button (§6.2).
 
 use crate::layout::BuildCx;
 use crate::node::*;
@@ -66,11 +67,18 @@ pub(crate) fn paint(
 ) {
     let theme = cx.theme;
     let hovered = cx.hover.is_some_and(|(hx, hy)| item.rect.contains(hx, hy));
-    if selected || hovered {
+    let wash = if selected {
+        Some(theme.selection)
+    } else if hovered {
+        Some(theme.surface_raised)
+    } else {
+        None
+    };
+    if let Some(color) = wash {
         cx.cmds.push(DrawCmd::RRect {
             rect: item.rect,
             radius: theme.radius_md,
-            color: theme.surface_raised,
+            color,
         });
     }
     let (tx, mut ty) = (item.rect.x + theme.btn_pad_x, item.rect.y + theme.btn_pad_y);

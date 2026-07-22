@@ -64,7 +64,7 @@ cargo test -p libra-markup             # one crate's unit tests
 LIBRA_VALIDATE=1 cargo test -p counter  # validate (re-record) snapshots after intentional visual changes
 ```
 
-**Theming invariant:** `Theme::dark()` values must stay byte-identical to `libra_draw::tokens` — every committed snapshot renders under it. New themes are additive; changing dark means re-validating every snapshot and updating README hashes. `Effect::SetTheme` is shell/harness-handled and never reaches workers; TOML theme tables load via `Options::theme_file` (hot-reloaded; sample at `themes/solarized.toml`) and the harness takes `.theme("libra-light")`.
+**Theming invariant:** `Theme::dark()` values are the Libra UI palette (Geist-inspired — PLAN-GEIST); every committed snapshot renders under it. Changing the built-in palette or bundled fonts means re-validating every snapshot and updating README hashes. `Effect::SetTheme` is shell/harness-handled and never reaches workers; TOML theme tables load via `Options::theme_file` (hot-reloaded; sample at `themes/solarized.toml`) and the harness takes `.theme("libra-light")`.
 
 Snapshot tests: missing PNG → recorded on first run; mismatch → writes `<name>.actual.png` next to the expected file and fails. Snapshots live in `examples/<app>/tests/snapshots/` and are committed; their SHA-256 hashes in README.md are the cross-machine determinism proof — update both together after a validate. `examples/gallery` is the Storybook-style **component workbench** (PLAN-GALLERY): a three-pane app (sidebar → isolated component canvas → controls), snapshot-covered **per component** (`workbench_<component>_<theme>`) — a component rendering change fails its own frame first.
 
@@ -104,7 +104,7 @@ Key invariants (Appendix A checklist — any change must keep these):
 
 - Reflection is hand-written in the oldest code paths (`ReflectState::field` / `ReflectAction::action_by_name`); `#[derive(LibraReflect)]` and `#[libra::state]`/`#[libra::actions]` are the two generated paths (the latter preferred for new apps). Keep them in sync with the Action enum when touching an app.
 - No reconciler: the laid tree rebuilds fully per dispatch (`key=` already carries identity data for the future one — PLAN-RECONCILER).
-- Text is fontdue advance-layout only (no shaping/kerning); fonts are bundled Liberation Sans via `include_bytes!` from `assets/fonts/`.
+- Text is fontdue advance-layout only (no shaping/kerning); sans is Work Sans (Medium + Bold) and Space Mono is bundled for future mono tokens via `include_bytes!` from `assets/fonts/`.
 - Dependency versions for the determinism-critical stack are **pinned exactly** (`=0.5.2` taffy, `=0.11.4` tiny-skia, `=0.8.0` fontdue) in the workspace `Cargo.toml` — bumping any of them can change rendered bytes and requires re-validating snapshots. Those crates plus the workspace paint path (`libra-raster` / `libra-draw` / `libra-data` / `libra-components` / `libra-platform`) compile at `opt-level = 2` under `[profile.dev.package.*]` so plain `cargo run` / `libra dev` stay interactive — pixel loops are unusable at opt-level 0.
 
 ## Crate layout rules
