@@ -99,6 +99,8 @@ now run on (completed rename/ergonomics plans live under
   — see its doc comment)
 - `cli/libra` — `libra check`: parse+validate every .lx in microseconds;
   `libra dev`: run an app crate in debug with view hot reload (§18.2)
+- `editors/vscode` — TextMate grammar for `.lx` (§18.6 Day 1); run
+  `./editors/vscode/install.sh` then reload Cursor/VS Code
 - `examples/counter` — the Phase 0 reference app; §5.8's "counter in
   ~10 lines" made real
 - `examples/fetcher` — the Phase 1 reference app: fetches (GitHub zen)

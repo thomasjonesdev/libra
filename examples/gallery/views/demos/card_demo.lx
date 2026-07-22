@@ -1,0 +1,11 @@
+<props noop: Action />
+
+<Text bold muted>Bordered, elevated surface</Text>
+<Card>
+  <Text bold>Card title</Text>
+  <Text size="sm" muted>Cards share the Dialog panel chrome — one surface language.</Text>
+  <Row gap={8}>
+    <Button variant="secondary" onPress={noop}>Action</Button>
+    <Button variant="ghost" onPress={noop}>Dismiss</Button>
+  </Row>
+</Card>

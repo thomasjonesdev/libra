@@ -6,6 +6,11 @@
 use gallery::{Action, Gallery, VIEW, WAVE};
 use libra_data::Sample;
 use libra_test::{by, fx, Harness};
+use std::path::PathBuf;
+
+fn view_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("views")
+}
 
 /// Deterministic wave, fed synchronously — no generator thread in tests.
 fn feed_wave(h: &Harness<Gallery>) {
@@ -17,7 +22,7 @@ fn feed_wave(h: &Harness<Gallery>) {
 }
 
 fn harness(theme: &str) -> Harness<Gallery> {
-    let mut h = Harness::<Gallery>::with_viewport(VIEW, 1200, 760).theme(theme);
+    let mut h = Harness::<Gallery>::with_view_dir(VIEW, &view_dir(), 1200, 760).theme(theme);
     let _ = h.expect_effect(fx::any()); // the IngestOpen — tests feed directly
     h
 }
@@ -126,7 +131,7 @@ fn snapshot_workbench_chart_light() {
 /// offsets it (the frame changes) and is deterministic + reversible.
 #[test]
 fn sidebar_scrolls_and_round_trips() {
-    let mut h = Harness::<Gallery>::with_viewport(VIEW, 900, 300).theme("libra-dark");
+    let mut h = Harness::<Gallery>::with_view_dir(VIEW, &view_dir(), 900, 300).theme("libra-dark");
     let _ = h.expect_effect(fx::any()); // IngestOpen
     let top = h.frame_png();
     h.scroll("sidebar", 120.0);
@@ -137,7 +142,7 @@ fn sidebar_scrolls_and_round_trips() {
 
 #[test]
 fn snapshot_sidebar_scrolled() {
-    let mut h = Harness::<Gallery>::with_viewport(VIEW, 900, 300).theme("libra-dark");
+    let mut h = Harness::<Gallery>::with_view_dir(VIEW, &view_dir(), 900, 300).theme("libra-dark");
     let _ = h.expect_effect(fx::any());
     h.scroll("sidebar", 150.0);
     h.assert_snapshot("workbench_sidebar_scrolled");

@@ -2,7 +2,8 @@
 //! grouped sidebar of every catalog component; select one to see it in
 //! isolation with its variants and (where it has a text prop) a live control.
 //! Built entirely on the closed grammar — each component's story is static
-//! markup gated by a `#[project]`-derived `is_*` bool; no dynamic dispatch.
+//! each component's story is a composed demo component (`views/demos/*_demo.lx`)
+//! gated by a `#[project]`-derived `is_*` bool; no dynamic dispatch.
 //!
 //! Module layout follows §5.9: `model.rs` (the component registry), `state.rs`
 //! (the `#[libra::state]` struct), `actions.rs` (the `#[libra::actions]` block

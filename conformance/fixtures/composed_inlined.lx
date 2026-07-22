@@ -1,0 +1,18 @@
+<Column gap={12} padding={16}>
+  <Card padding={12}>
+    <Text muted size="sm">Revenue</Text>
+    <Row gap={8} cross="center">
+      <Text size="xl">{name}</Text>
+      <Progress value={ratio} />
+    </Row>
+    <Button variant="ghost" onPress={increment}>details</Button>
+  </Card>
+  <Card padding={12}>
+    <Text muted size="sm">Status</Text>
+    <Row gap={8} cross="center">
+      <Text size="xl">{status}</Text>
+      <Progress value={ratio} />
+    </Row>
+    <Button variant="ghost" onPress={reset}>details</Button>
+  </Card>
+</Column>

@@ -215,6 +215,12 @@ where
     A::Msg: Send + 'static,
 {
     let ast = libra_markup::parse(lx_source).map_err(|e| format!("markup parse error: {e}"))?;
+    let registry = opts
+        .watch
+        .as_ref()
+        .and_then(|p| p.parent())
+        .map(|dir| libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default())
+        .unwrap_or_default();
     let (app, init_cmds) = A::init();
     let app = match rehydrated {
         Some(model) => {
@@ -268,6 +274,7 @@ where
         opts,
         app,
         ast,
+        registry,
         effects,
         renderer: Renderer::new(),
         laid: None,
@@ -331,6 +338,8 @@ struct Shell<A: App> {
     opts: Options,
     app: A,
     ast: Node,
+    /// §7.2 composed components discovered alongside the root view file.
+    registry: libra_markup::ComponentRegistry,
     effects: Effects<A::Msg>,
     renderer: Renderer,
     laid: Option<LaidTree>,
@@ -439,8 +448,9 @@ where
             collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
             has_instant_action: &has_instant_action,
+            binding_ctx: "State",
         };
-        match libra_interp::resolve(&self.ast, &scope) {
+        match libra_interp::resolve(&self.ast, &scope, &self.registry) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
@@ -1050,6 +1060,10 @@ where
         match libra_markup::parse(&source) {
             Ok(ast) => {
                 self.ast = ast;
+                if let Some(dir) = path.parent() {
+                    self.registry =
+                        libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default();
+                }
                 self.relayout(); // model state untouched — that's the point
                 eprintln!("[libra] hot-reloaded {}", path.display());
             }

@@ -1,0 +1,7 @@
+<props openDrawer: Action />
+
+<Text bold muted>Playground</Text>
+<Row gap={8}>
+  <Button variant="secondary" onPress={openDrawer} testId="pg-open-drawer">Open drawer</Button>
+</Row>
+<Text size="sm" muted>Edge-anchored modal on the Dialog machinery; side="bottom" is the Sheet.</Text>

@@ -1,0 +1,9 @@
+<props ctl_label: String />
+
+<Text bold muted>Tones</Text>
+<Alert tone="danger" title="Deploy failed">rollback started automatically</Alert>
+<Alert tone="warning" title="Disk almost full">82% of quota used</Alert>
+<Alert tone="success" title="All systems nominal">last check 2m ago</Alert>
+<Alert tone="info" title="Heads up">maintenance window Sunday</Alert>
+<Text bold muted>Playground</Text>
+<Alert tone="info" title={ctl_label} testId="pg-alert">bound title above</Alert>

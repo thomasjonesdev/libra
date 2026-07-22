@@ -1,0 +1,8 @@
+<props noop: Action />
+
+<Text bold muted>Hover the button (tooltips ride the hover input)</Text>
+<Row gap={8}>
+  <Tooltip text="Deterministic tooltip — hover is an explicit input">
+    <Button variant="secondary" onPress={noop} testId="pg-tip-btn">Hover me</Button>
+  </Tooltip>
+</Row>

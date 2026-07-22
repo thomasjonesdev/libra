@@ -50,8 +50,9 @@ fn check(paths: &[String]) -> ExitCode {
     let mut errors = 0usize;
     for file in &files {
         match std::fs::read_to_string(file) {
-            Ok(source) => match libra_markup::parse(&source) {
-                Ok(_) => println!("  ok   {}", file.display()),
+            Ok(source) => match libra_markup::parse_file(&source) {
+                Ok(libra_markup::LxFile::View(_)) => println!("  ok   {}", file.display()),
+                Ok(libra_markup::LxFile::Component(_)) => println!("  ok   {} (component)", file.display()),
                 Err(e) => {
                     errors += 1;
                     // The parser's spans are line:col; prefix the file for

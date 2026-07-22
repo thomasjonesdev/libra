@@ -109,6 +109,7 @@ pub enum TestAction {
 /// mismatch between markup and State/Action is a rustc error here —
 /// §6.5's compile-time promise, mechanically kept.
 pub mod generated {
+    include!(concat!(env!("OUT_DIR"), "/components.rs"));
     include!(concat!(env!("OUT_DIR"), "/kitchen_sink.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_loop.rs"));
     include!(concat!(env!("OUT_DIR"), "/for_actions.rs"));
@@ -129,4 +130,7 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/toggles.rs"));
     include!(concat!(env!("OUT_DIR"), "/slider_tooltip.rs"));
     include!(concat!(env!("OUT_DIR"), "/nav.rs"));
+    include!(concat!(env!("OUT_DIR"), "/composed.rs"));
+    include!(concat!(env!("OUT_DIR"), "/composed_inlined.rs"));
+    include!(concat!(env!("OUT_DIR"), "/slot_host.rs"));
 }

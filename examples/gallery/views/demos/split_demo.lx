@@ -1,0 +1,11 @@
+<props ctl_split: Num, splitChanged: Action(String) />
+
+<Text bold muted>Playground (drag the divider)</Text>
+<Split fraction={ctl_split} onResize={splitChanged} testId="pg-split">
+  <Column padding={10}>
+    <Text size="sm" muted>left pane</Text>
+  </Column>
+  <Column padding={10}>
+    <Text size="sm" muted>right pane — fraction is model-owned state</Text>
+  </Column>
+</Split>
