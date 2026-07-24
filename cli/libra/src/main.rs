@@ -11,6 +11,7 @@
 //!   managed `libra.toml` manifests are still open (§16, §18.4).
 
 mod dev;
+mod test;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -20,10 +21,12 @@ fn main() -> ExitCode {
     match args.split_first() {
         Some((cmd, rest)) if cmd == "check" => check(rest),
         Some((cmd, rest)) if cmd == "dev" => dev::dev(rest),
+        Some((cmd, rest)) if cmd == "test" => test::test(rest),
         _ => {
             eprintln!("usage:");
             eprintln!("  libra check [paths…]          validate .lx markup (default: .)");
             eprintln!("  libra dev [path] [-- args…]   run app in debug with view hot reload");
+            eprintln!("  libra test [filter…] [flags]  run the test suite (see --help in §18.1)");
             ExitCode::from(2)
         }
     }

@@ -1316,6 +1316,7 @@ name = "libra-cli"
 version = "0.0.1"
 dependencies = [
  "libra-markup",
+ "serde_json",
  "tempfile",
 ]
 

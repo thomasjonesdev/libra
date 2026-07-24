@@ -53,6 +53,29 @@ pub fn app(input: TokenStream) -> TokenStream {
     app::app(input)
 }
 
+/// `#[libra::verifies("REQ-…")]` (ARCHITECTURE.md §15.8): a **pass-through**
+/// attribute that marks a test as evidence for one or more requirement
+/// ids. It expands to the annotated item unchanged — the requirement
+/// string is read from *source* by `libra test --trace-matrix` (which
+/// builds the requirement → test → artifact matrix), not at runtime, so
+/// no registry plumbing is generated. Accepts one or more string
+/// literals: `#[libra::verifies("REQ-UI-042")]` /
+/// `#[libra::verifies("REQ-UI-042", "REQ-UI-043")]`.
+#[proc_macro_attribute]
+pub fn verifies(attr: TokenStream, item: TokenStream) -> TokenStream {
+    // Validate the shape (comma-separated string literals) so a malformed
+    // annotation is a clear compile error at the call site rather than a
+    // silent trace-matrix miss; then emit the item verbatim.
+    let attr2: proc_macro2::TokenStream = attr.into();
+    let parser = syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated;
+    if let Err(e) = syn::parse::Parser::parse2(parser, attr2) {
+        let mut out: proc_macro2::TokenStream = e.to_compile_error();
+        out.extend(proc_macro2::TokenStream::from(item));
+        return out.into();
+    }
+    item
+}
+
 fn has_skip(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|a| {
         if !a.path().is_ident("libra") {

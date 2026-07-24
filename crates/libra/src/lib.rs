@@ -10,4 +10,4 @@
 //! Architecture: ARCHITECTURE.md §21 (workspace & crate layout).
 
 pub use libra_core::*;
-pub use libra_reflect::{actions, app, state, LibraReflect};
+pub use libra_reflect::{actions, app, state, verifies, LibraReflect};

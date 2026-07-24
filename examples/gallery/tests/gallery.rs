@@ -35,6 +35,7 @@ fn select(theme: &str, id: &str) -> Harness<Gallery> {
 
 /// Default landing: Button selected, its variants + playground + label control.
 #[test]
+#[libra::verifies("REQ-UI-BUTTON-001")]
 fn snapshot_workbench_button_dark() {
     let h = harness("libra-dark");
     h.query(by::test_id("canvas-title")).assert_text("Button");
