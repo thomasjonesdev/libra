@@ -93,6 +93,7 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
   - [[12.3-execution-model|12.3 Execution model]]
   - [[12.4-effects-as-data|12.4 Why effects-as-data is the testing keystone]]
   - [[12.5-declarative-subscriptions|12.5 Declarative subscriptions — effects as mount-scoped data]]
+  - [[12.6-the-process-effect|12.6 The process effect]]
 - [[13-persistence|13. Persistence]]
   - [[13.1-kv-store|13.1 The KV store (localStorage, but honest)]]
   - [[13.2-state-snapshots|13.2 State snapshots]]
@@ -131,6 +132,8 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
 - [[24-non-goals|24. Non-Goals]]
 - [[25-risks|25. Risks & Mitigations]]
 - [[26-open-questions|26. Open Questions]]
+- [[27-first-party-applications|27. First-Party Applications]]
+  - [[27.1-aws-sso-session-manager|27.1 AWS SSO Session Manager]]
 
 ## Appendices
 

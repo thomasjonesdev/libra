@@ -1,0 +1,96 @@
+<Column gap={12} padding={16}>
+  <Interval every={60000} onTick={tick} />
+
+  <if test={is_preflight}>
+    <Column gap={8}>
+      <Text bold>AWS Session — setup check</Text>
+      <Text size="sm" muted testId="aws-status">{aws_status_line}</Text>
+      <Text size="sm" muted testId="claude-status">{claude_status_line}</Text>
+      <if test={aws_missing}>
+        <Alert tone="warning" title="AWS CLI v2 required" testId="aws-missing">
+          Install AWS CLI v2 from Company Portal or the AWS install docs, then restart this app.
+        </Alert>
+      </if>
+    </Column>
+  </if>
+
+  <if test={is_onboarding}>
+    <Column gap={8}>
+      <Text bold>AWS SSO setup</Text>
+      <Text size="sm" muted>Org defaults are pre-filled. Adjust if needed, then save.</Text>
+      <Input value={session_name} placeholder="session name" onChange={sessionNameChanged} testId="session-name" />
+      <Input value={start_url} placeholder="sso start url" onChange={startUrlChanged} testId="start-url" />
+      <if test={has_url_warning}>
+        <Alert tone="warning" title="URL fragment" testId="url-warning">{url_fragment_warning}</Alert>
+      </if>
+      <Input value={sso_region} placeholder="sso region" onChange={ssoRegionChanged} testId="sso-region" />
+      <Input value={aws_region} placeholder="aws region" onChange={awsRegionChanged} testId="aws-region" />
+      <Input value={registration_scopes} placeholder="registration scopes" onChange={registrationScopesChanged} testId="scopes" />
+      <Input value={account_id} placeholder="account id (12 digits)" onChange={accountIdChanged} testId="account-id" />
+      <Input value={role_name} placeholder="role name" onChange={roleNameChanged} testId="role-name" />
+      <Input value={profile_name} placeholder="profile name" onChange={profileNameChanged} testId="profile-name" />
+      <if test={has_onboarding_error}>
+        <Alert tone="danger" title="Setup error" testId="onboarding-error">{onboarding_error}</Alert>
+      </if>
+      <Row gap={8}>
+        <Button variant="ghost" onPress={copyConfigureSso} testId="copy-sso-cmd">Copy aws configure sso</Button>
+        <Spacer />
+        <Button variant="primary" onPress={submitOnboarding} testId="save-setup">Save &amp; sign in</Button>
+      </Row>
+    </Column>
+  </if>
+
+  <if test={is_steady}>
+    <Column gap={12}>
+      <Row gap={8} cross="center">
+        <Text bold grow>AWS Session</Text>
+        <if test={is_active}>
+          <Badge tone="success" testId="status">Active</Badge>
+          <else><Badge tone="danger" testId="status">Signed out</Badge></else>
+        </if>
+      </Row>
+
+      <if test={has_error}>
+        <Alert tone="danger" title="Login failed" testId="error">{error_message}</Alert>
+        <Text testId="error-detail">{error_message}</Text>
+      </if>
+
+      <Card>
+        <Text size="sm" muted testId="identity">{identity_line}</Text>
+        <Text size="sm" muted testId="verified">{verified_ago}</Text>
+        <Text size="sm" muted testId="next">{next_refresh}</Text>
+      </Card>
+
+      <Row gap={8}>
+        <if test={is_busy}>
+          <Button variant="secondary" onPress={cancel} testId="cancel">Cancel</Button>
+          <else>
+            <Button variant="primary" onPress={authenticate} testId="authenticate">Authenticate</Button>
+          </else>
+        </if>
+        <Spacer />
+        <Button variant="ghost" onPress={toggleConfig} testId="show-config">Show config</Button>
+      </Row>
+
+      <if test={show_config}>
+        <Card>
+          <for each={config_rows} as="c" key={c.key}>
+            <Row gap={8}>
+              <Text size="sm" muted grow>{c.key}</Text>
+              <Text size="sm">{c.value}</Text>
+            </Row>
+          </for>
+          <Row gap={8} cross="center">
+            <Switch checked={auto_refresh} onToggle={toggleAutoRefresh} testId="auto-refresh" />
+            <Text size="sm" muted>Refresh automatically every 6 hours</Text>
+          </Row>
+          <Row gap={8}>
+            <Button variant="ghost" onPress={copyExportLine} testId="copy-export">Copy AWS_PROFILE line</Button>
+            <Spacer />
+            <Button variant="ghost" onPress={restartOnboarding} testId="reconfigure">Re-run setup</Button>
+          </Row>
+        </Card>
+      </if>
+    </Column>
+  </if>
+</Column>

@@ -112,11 +112,20 @@ pub struct Options {
     pub watch: Option<PathBuf>,
     /// §11: load (and hot-reload) a TOML theme table from this path.
     pub theme_file: Option<PathBuf>,
+    /// §12.6: programs the effects runtime may spawn for this app.
+    pub process_allowlist: Vec<String>,
 }
 
 impl Options {
     pub fn new(title: &str, logical_size: (f32, f32)) -> Self {
-        Options { title: title.into(), logical_size, app_id: None, watch: None, theme_file: None }
+        Options {
+            title: title.into(),
+            logical_size,
+            app_id: None,
+            watch: None,
+            theme_file: None,
+            process_allowlist: vec![],
+        }
     }
     pub fn app_id(mut self, id: &str) -> Self {
         self.app_id = Some(id.into());
@@ -128,6 +137,10 @@ impl Options {
     }
     pub fn theme_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.theme_file = Some(path.into());
+        self
+    }
+    pub fn process_allowlist(mut self, programs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.process_allowlist = programs.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -241,7 +254,7 @@ where
         None => None,
     };
     let a11y_sink = Arc::clone(&sink);
-    let effects = Effects::new(sink, kv);
+    let effects = Effects::new(sink, kv).with_process_allowlist(opts.process_allowlist.clone());
     effects.execute_all(init_cmds);
 
     let watch_mtime = opts.watch.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());

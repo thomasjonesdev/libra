@@ -30,6 +30,7 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-COMPONENTS]] | in progress (C0–C3 done) | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[PLAN-UI-SURFACE]], [[PLAN-TOKENS]] |
 | [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
+| [[PLAN-AWS-LOGIN]] | in progress (P1 + A1–A7 shipped) | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NATIVE-INTEGRATIONS]] |
 | [[PLAN-NATIVE-INTEGRATIONS]] | planned | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | planned | [[23-roadmap|§23]] |
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |

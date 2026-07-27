@@ -7,7 +7,7 @@
 //! Architecture: ARCHITECTURE.md §15 (testing architecture).
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
-use libra_core::{App, Effect, FrameInfo, HttpResult, Instant, KvResult, ReflectAction, SeriesId};
+use libra_core::{App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult, ReflectAction, SeriesId};
 use libra_data::SeriesStore;
 use libra_interp::Scope;
 use libra_markup::Node;
@@ -96,6 +96,9 @@ pub mod fx {
         Random,
         SetTheme,
         ClipboardSet,
+        Process,
+        /// Match when `CommandSpec.program` equals this string.
+        ProcessProgram(Option<String>),
     }
 
     pub fn any() -> Matcher {
@@ -131,6 +134,15 @@ pub mod fx {
     pub fn clipboard_set() -> Matcher {
         Matcher::ClipboardSet
     }
+    pub fn process() -> Matcher {
+        Matcher::Process
+    }
+    pub fn process_program(program: &str) -> Matcher {
+        Matcher::ProcessProgram(Some(program.to_string()))
+    }
+    pub fn any_process() -> Matcher {
+        Matcher::ProcessProgram(None)
+    }
 }
 
 fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
@@ -149,6 +161,10 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::Random, Effect::Random { .. }) => true,
         (Matcher::SetTheme, Effect::SetTheme { .. }) => true,
         (Matcher::ClipboardSet, Effect::ClipboardSet { .. }) => true,
+        (Matcher::Process, Effect::Process { .. }) => true,
+        (Matcher::ProcessProgram(want), Effect::Process { command, .. }) => {
+            want.as_deref().map_or(true, |w| w == &command.program)
+        }
         _ => false,
     }
 }
@@ -544,6 +560,14 @@ impl<A: App> Harness<A> {
         match effect {
             Effect::Random { on_done, .. } => self.dispatch(on_done(bytes)),
             other => panic!("resolve_random: not a Random effect: {other:?}"),
+        }
+    }
+
+    /// Feed a process fixture into an intercepted `Effect::Process`.
+    pub fn resolve_process(&mut self, effect: Effect<A::Msg>, result: ProcessResult) {
+        match effect {
+            Effect::Process { on_done, .. } => self.dispatch(on_done(result)),
+            other => panic!("resolve_process: not a Process effect: {other:?}"),
         }
     }
 

@@ -35,6 +35,7 @@ libra/
 │  └─ libra-theme       tokens, TOML themes, resolution
 ├─ cli/libra            the CLI (dev/check/test/build/package/fmt/lsp)
 ├─ examples/           counter, dashboard (data-plane), inbox, kanban, log-explorer
+├─ applications/       first-party apps built for real use ([[27-first-party-applications|§27]])
 └─ conformance/        golden fixtures: interp≡codegen suite, snapshot corpus, hostile inputs
 ```
 

@@ -18,6 +18,9 @@ pub type ActionCtor<T, M> = fn(T) -> M;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TimerId(pub u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProcessId(pub u64);
+
 /// Identifies a data-plane series (§14.2). State never holds
 /// samples — it holds handles; samples live in ring buffers read at
 /// paint time.
@@ -168,6 +171,69 @@ pub enum KvResult {
     Err(String),
 }
 
+/// A program to run — data, not a `std::process::Command` (§12.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandSpec {
+    pub program: String,
+    pub args: Vec<String>,
+    pub env: Vec<(String, String)>,
+    pub cwd: Option<std::path::PathBuf>,
+    pub timeout_ms: Option<u64>,
+}
+
+impl CommandSpec {
+    pub fn new(program: impl Into<String>) -> Self {
+        CommandSpec {
+            program: program.into(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+            timeout_ms: None,
+        }
+    }
+
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    pub fn args(mut self, args: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.args.extend(args.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn cwd(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.cwd = Some(path.into());
+        self
+    }
+
+    pub fn timeout_ms(mut self, ms: u64) -> Self {
+        self.timeout_ms = Some(ms);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProcessStatus {
+    Exited(i32),
+    Signalled(i32),
+    TimedOut,
+    SpawnFailed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessResult {
+    pub status: ProcessStatus,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub finished_at_unix_ms: u64,
+}
+
 /// Effect descriptions (ARCHITECTURE.md §12.1, Phase-1 subset).
 /// Actions return these; the runtime executes them; tests intercept
 /// them and hand-feed results back. Closed and versioned — grows in
@@ -200,6 +266,10 @@ pub enum Effect<M> {
     /// handled (arboard), acked with a [`ClipboardResult`] when a ctor
     /// is given — "copy note" flows can report a typed outcome.
     ClipboardSet { text: String, on_done: Option<ActionCtor<ClipboardResult, M>> },
+
+    // Processes (§12.6): worker-pool subprocess, run-to-completion.
+    Process { id: Option<ProcessId>, command: CommandSpec, on_done: ActionCtor<ProcessResult, M> },
+    CancelProcess { id: ProcessId },
 }
 
 /// Outcome of [`Effect::ClipboardSet`] (PLAN-NATIVE-INTEGRATIONS).
@@ -240,6 +310,11 @@ impl<M: PartialEq> PartialEq for Effect<M> {
                 Effect::ClipboardSet { text: ta, on_done: da },
                 Effect::ClipboardSet { text: tb, on_done: db },
             ) => ta == tb && da.is_some() == db.is_some(),
+            (
+                Effect::Process { id: ia, command: ca, .. },
+                Effect::Process { id: ib, command: cb, .. },
+            ) => ia == ib && ca == cb,
+            (Effect::CancelProcess { id: a }, Effect::CancelProcess { id: b }) => a == b,
             _ => false,
         }
     }
@@ -274,6 +349,16 @@ impl<M> Effect<M> {
         on_done: ActionCtor<ClipboardResult, M>,
     ) -> Self {
         Effect::ClipboardSet { text: text.into(), on_done: Some(on_done) }
+    }
+    pub fn process(command: CommandSpec, on_done: ActionCtor<ProcessResult, M>) -> Self {
+        Effect::Process { id: None, command, on_done }
+    }
+    pub fn process_id(
+        id: ProcessId,
+        command: CommandSpec,
+        on_done: ActionCtor<ProcessResult, M>,
+    ) -> Self {
+        Effect::Process { id: Some(id), command, on_done }
     }
 }
 

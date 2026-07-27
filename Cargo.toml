@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "examples/todos", "cli/libra", "conformance"]
+members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "examples/todos", "applications/aws-login", "cli/libra", "conformance"]
 
 [workspace.package]
 version = "0.0.1"
