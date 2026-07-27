@@ -38,7 +38,7 @@ fixture; `cargo test --workspace` green.
 
 - Parses/lays out/queryable as `by::source("stream")`
 - `id`: string binding; `onEvent`: String-payload action (event body as text for v1)
-- Full Ws/Spawn delivery remains later (§12.1) — shell records mounted streams for the differ; event injection via harness `resolve` path when wired
+- Full Ws/Spawn delivery remains later (§12.1) — shell records mounted streams for the differ; event injection via harness `resolve` path when wired. **Now planned: [[PLAN-STREAM-DELIVERY]]** picks this up (process streams first; websockets ride the same rails afterwards)
 
 ## Acceptance
 

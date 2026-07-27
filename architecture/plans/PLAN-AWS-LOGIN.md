@@ -12,7 +12,8 @@ type: plan
 
 # AWS SSO session manager (and the process effect it needs)
 
-**Status: in progress (P1 shipped, A1–A7 shipped).** Builds `applications/aws-login` — a Libra app that replaces
+**Status: v1 shipped (P1, P2, A1–A7 — 2026-07-27); A8–A10 planned behind
+[[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] and [[PLAN-STREAM-DELIVERY]].** Builds `applications/aws-login` — a Libra app that replaces
 `applications/aws-login/refresh_aws_sso.sh`: onboarding once, one **Authenticate**
 button after that, and a session kept alive on a six-hour cadence against an
 eight-hour token.
@@ -48,8 +49,21 @@ sequence of process descriptions.
 | **A5** | Steady state + scheduler: `<Interval every={60000} onTick={tick}/>`, startup probe, probe cadence, the six-hour nudge, auto-refresh `Switch` (default on), "needs attention" state | none |
 | **A6** | Config surface: `aws configure get` read-back + `list-profiles` → `config_rows` projection, **Show config**, **Re-run setup**, `export AWS_PROFILE=` to clipboard (script `--export` parity) | none |
 | **A7** | Full ladder per [[27.1-aws-sso-session-manager|§27.1]] *Testing* + all seven snapshots + README with hashes; the bash script is marked superseded | none |
-| **P2** *(optional)* | Wall-clock stamp on effect results (`ProcessResult.finished_at_unix_ms`), making [[05.3-purity-rules|§5.3]]'s `received_at` real. Enables an honest "session data is N hours old" after a sleep instead of waiting one probe interval. **Not** a correctness dependency — the probe already covers it | libra-core + libra-effects + harness |
-| **A8** *(later)* | Tray/menubar residency + launch-at-login + `Effect::Notify` on "needs attention" — depends on [[PLAN-NATIVE-INTEGRATIONS]] N3 and §19/§20 | yes, elsewhere |
+| **P2** *(shipped with P1)* | Wall-clock stamp on effect results (`ProcessResult.finished_at_unix_ms`), making [[05.3-purity-rules|§5.3]]'s `received_at` real. Enables an honest "session data is N hours old" after a sleep instead of waiting one probe interval. **Not** a correctness dependency — the probe already covers it | libra-core + libra-effects + harness |
+
+### Beyond v1
+
+Each of the three v1 holes is a *framework* gap with its own plan; the stage
+below is only this app's consumption of it. Do not build any of the capabilities
+inside `applications/aws-login` — the whole point of `applications/`
+([[27-first-party-applications|§27]]) is that a real app's needs pull the
+framework forward in a reusable shape.
+
+| Stage | Deliverable | Blocked on |
+|---|---|---|
+| **A8** | Notify on "needs attention": one `Effect::Notify` when the probe finds a dead session or the six-hour nudge fires, `tag: "aws-session"` so an unattended overnight run produces **one** banner rather than a dozen, `on_activate` raising the window. The banner text names no profile, account, or ARN ([[PLAN-NOTIFY]] rule 4) | [[PLAN-NOTIFY]] NT1–NT4 |
+| **A9** | Residency, which is what actually closes the "app must stay running" hole: tray status icon (`Ok` / `Warn` / `Error` from `AuthStatus`), menu of Authenticate / Show window / Quit, `CloseToTray`, single instance, and a launch-at-login `Switch` in the config panel reading real on-disk state via `LoginItemQuery` | [[PLAN-RESIDENCY]] R1–R5 |
+| **A10** | Device-code login in-app, replacing the clipboard hand-off: `Effect::Spawn` of `aws sso login --use-device-code --no-browser`, `<Stream>` mounted in the same commit, the verification URL and user code parsed out of the streamed lines and shown as selectable text + **Copy code**; Cancel closes the stream and kills the child. **Verify the CLI streams over a pipe before designing the screen** — if it gates output on a TTY, cut the stage rather than reaching for a PTY | [[PLAN-STREAM-DELIVERY]] D1–D5 |
 
 ## Execution notes
 
@@ -90,19 +104,24 @@ sequence of process descriptions.
 
 ## Out of scope
 
-- Everything in [[27.1-aws-sso-session-manager|§27.1]] *Out of scope (v1)*
-- Streaming process output / `Effect::Spawn` / PTY flows ([[PLAN-SOURCES]])
+- PTY allocation and interactive prompt-answering — still
+  [[12.6-the-process-effect|§12.6]]'s non-goal, and the risk A10 must retire
+  before it starts
 - Generalising this into a credential broker for other services
-- Replacing the bash script's `--use-device-code` path in-app (clipboard
-  hand-off in A6 instead)
+- Assuming an OS can wake or schedule the app while it is not running. A9's
+  answer is "be resident", not "be scheduled" ([[PLAN-NOTIFY]] *Out of scope*)
+- Anything in [[27.1-aws-sso-session-manager|§27.1]] *Out of scope (v1)* that
+  A8–A10 do not name
 
 ## In code
 
-- *(planned)* `crates/libra-core/src/lib.rs`, `crates/libra-effects/src/lib.rs`,
-  `crates/libra-test/src/lib.rs` — P1
-- *(planned)* `applications/aws-login/` — A1–A7
+- `crates/libra-core/src/lib.rs`, `crates/libra-effects/src/lib.rs`,
+  `crates/libra-test/src/lib.rs` — P1 + P2, shipped
+- `applications/aws-login/` — A1–A7, shipped
 - `applications/aws-login/refresh_aws_sso.sh` — behavioral reference
+- *(planned)* A8 → [[PLAN-NOTIFY]] · A9 → [[PLAN-RESIDENCY]] ·
+  A10 → [[PLAN-STREAM-DELIVERY]]
 
 ---
 
-← [[Plans Index]] · [[27.1-aws-sso-session-manager|§27.1]] · [[12.6-the-process-effect|§12.6]] · [[PLAN-NATIVE-INTEGRATIONS]]
+← [[Plans Index]] · [[27.1-aws-sso-session-manager|§27.1]] · [[12.6-the-process-effect|§12.6]] · [[PLAN-NOTIFY]] · [[PLAN-RESIDENCY]] · [[PLAN-STREAM-DELIVERY]]

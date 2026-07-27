@@ -43,7 +43,7 @@ intercept:
 |---|---|---|
 | `Clipboard` | `arboard` (text) | **shipped** — editing-core copy/paste (shell) **and** `Effect::ClipboardSet` with typed `ClipboardResult` ack + `fx::clipboard_set()`/`resolve_clipboard` harness parity (2026-07-19) |
 | `Dialog` | `rfd` / OS alert | `expect_effect` + `resolve_dialog` |
-| `Notify` | `notify-rust` | resolve as ack / ignore in tests |
+| `Notify` | `notify-rust` — **staged in [[PLAN-NOTIFY]]** (tag/replace, activation routing, bundle identity) | `fx::notify()` + `resolve_notify` / `activate_notification` |
 | `OpenUrl` | OS open | `expect_effect(fx::open_url(…))` |
 | `SetTheme` | theme table | **shipped** (shell/harness) |
 | `WindowOp` | winit | title/fullscreen/resize |
@@ -59,7 +59,7 @@ Not always Effects — sometimes layout/input plumbing:
 | Keyboard type / secure entry | `TextInput.keyboardType`, `secureTextEntry` | Input/Textarea attrs → IME hints ([[PLAN-TEXTAREA]]) |
 | Modal presentation | `Modal` | In-tree overlay (deterministic) **vs** OS dialog (effect) — both allowed; document when to use which |
 | Long-press | `Pressable.longPress` | Pointer + [[19.1-touch|§19.1]] |
-| Menus / tray / hotkeys | — | §19 table (`muda`, `tray-icon`, `global-hotkey`) — separate small plans when needed |
+| Menus / tray / hotkeys | — | §19 table (`muda`, `tray-icon`, `global-hotkey`) — separate small plans when needed. Tray + window policy + launch-at-login: **[[PLAN-RESIDENCY]]**; global hotkeys still unclaimed |
 | File pickers | — | Fold into `Dialog` / dedicated `Effect::PickFile` when an app needs it |
 
 ## Stages
@@ -68,11 +68,11 @@ Not always Effects — sometimes layout/input plumbing:
 |---|---|
 | **N1** | `OpenUrl` end-to-end (effect → shell → harness) |
 | **N2** | `Dialog` (alert + confirm) with `DialogResult` continuation |
-| **N3** | `Notify` |
+| **N3** | `Notify` — split out to [[PLAN-NOTIFY]] (NT1–NT4) |
 | **N4** | `Share` + document clipboard relationship |
 | **N5** | Safe-area insets plumbing + `<SafeArea>` |
-| **N6** | `WindowOp` subset used by real apps |
-| **N7** | Menubar / context menu via `muda` when chrome catalog needs it |
+| **N6** | `WindowOp` subset used by real apps — [[PLAN-RESIDENCY]] R3 needs `Show`/`Hide`/`Raise`/`Quit`; build the variant **once**, in whichever lands first |
+| **N7** | Menubar / context menu via `muda` when chrome catalog needs it — reuses [[PLAN-RESIDENCY]] R1's `muda` dependency and action-name validation |
 
 ## Design rules
 

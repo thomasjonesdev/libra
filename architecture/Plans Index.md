@@ -30,9 +30,12 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-COMPONENTS]] | in progress (C0–C3 done) | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[PLAN-UI-SURFACE]], [[PLAN-TOKENS]] |
 | [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
-| [[PLAN-AWS-LOGIN]] | in progress (P1 + A1–A7 shipped) | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NATIVE-INTEGRATIONS]] |
+| [[PLAN-AWS-LOGIN]] | v1 shipped (P1, P2, A1–A7); A8–A10 planned | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]], [[PLAN-STREAM-DELIVERY]] |
+| [[PLAN-STREAM-DELIVERY]] | planned (D1–D6) | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
+| [[PLAN-NOTIFY]] | planned (NT1–NT4) | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
+| [[PLAN-RESIDENCY]] | planned (R1–R6) | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
 | [[PLAN-NATIVE-INTEGRATIONS]] | planned | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[PLAN-UI-SURFACE]] |
-| [[PLAN-PACKAGE]] | planned | [[23-roadmap|§23]] |
+| [[PLAN-PACKAGE]] | planned | [[23-roadmap|§23]], [[20-packaging\|§20]] |
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |
 | [[PLAN-RECONCILER]] | planned | [[06.2-closed-grammar|§6.2]] |
