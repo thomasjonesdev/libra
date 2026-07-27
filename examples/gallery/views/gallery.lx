@@ -40,202 +40,64 @@
       <Separator />
 
       <if test={is_button}>
-        <Text bold muted>Variants</Text>
-        <Row gap={8} cross="center">
-          <Button variant="primary" onPress={noop}>Primary</Button>
-          <Button variant="secondary" onPress={noop}>Secondary</Button>
-          <Button variant="ghost" onPress={noop}>Ghost</Button>
-        </Row>
-        <Text bold muted>Playground</Text>
-        <Row gap={8}>
-          <Button variant="secondary" onPress={noop} testId="pg-button">{ctl_label}</Button>
-        </Row>
+        <ButtonDemo ctl_label={ctl_label} noop={noop} />
       </if>
-
       <if test={is_badge}>
-        <Text bold muted>Variants</Text>
-        <Row gap={8} cross="center">
-          <Badge>neutral</Badge>
-          <Badge tone="success">success</Badge>
-          <Badge tone="danger">danger</Badge>
-          <Badge tone="warning">warning</Badge>
-          <Badge tone="info">info</Badge>
-        </Row>
-        <Text bold muted>Playground</Text>
-        <Row gap={8}>
-          <Badge tone="info">{ctl_label}</Badge>
-        </Row>
+        <BadgeDemo ctl_label={ctl_label} />
       </if>
-
       <if test={is_heading}>
-        <Text bold muted>Levels</Text>
-        <Heading level={1}>Heading 1</Heading>
-        <Heading level={2}>Heading 2</Heading>
-        <Heading level={3}>Heading 3</Heading>
-        <Heading level={4}>Heading 4</Heading>
-        <Text bold muted>Playground</Text>
-        <Heading level={2}>{ctl_label}</Heading>
+        <HeadingDemo ctl_label={ctl_label} />
       </if>
-
       <if test={is_progress}>
-        <Text bold muted>Variants</Text>
-        <Row><Progress value={0.0} /></Row>
-        <Row><Progress value={0.25} /></Row>
-        <Row><Progress value={0.6} testId="pg-progress" /></Row>
-        <Row><Progress value={1.0} /></Row>
-        <Text bold muted>Playground (bound to state)</Text>
-        <Row><Progress value={ctl_progress} testId="pg-progress-bound" /></Row>
+        <ProgressDemo ctl_progress={ctl_progress} />
       </if>
-
       <if test={is_text}>
-        <Text bold muted>Sizes</Text>
-        <Row gap={12} cross="center">
-          <Text size="sm">sm text</Text>
-          <Text size="md">md text</Text>
-          <Text size="xl">xl text</Text>
-        </Row>
-        <Text bold muted>Emphasis</Text>
-        <Row gap={12} cross="center">
-          <Text bold>bold</Text>
-          <Text muted>muted</Text>
-        </Row>
-        <Text bold muted>Playground</Text>
-        <Text size="xl">{ctl_label}</Text>
+        <TextDemo ctl_label={ctl_label} />
       </if>
-
       <if test={is_input}>
-        <Text bold muted>Playground (type to edit)</Text>
-        <Row>
-          <Input value={ctl_input} placeholder="empty input (placeholder)" onChange={inputChanged} testId="pg-input" />
-        </Row>
-        <Spacer />
+        <InputDemo ctl_input={ctl_input} inputChanged={inputChanged} />
       </if>
-
       <if test={is_textarea}>
-        <Text bold muted>Playground (multi-line)</Text>
-        <Textarea value={ctl_body} placeholder="write something…" onChange={bodyChanged} testId="pg-textarea" />
+        <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>
-
       <if test={is_list_item}>
-        <Text bold muted>Variants (right-click the plain row for a menu)</Text>
-        <Column gap={2}>
-          <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="pg-row-selected" />
-          <ListItem title="Plain row (right-click me)" subtitle="subtitle line" onPress={noop} onMenu={openMenu} testId="pg-row-menu" />
-          <ListItem title="Title only" onPress={noop} />
-        </Column>
+        <ListItemDemo noop={noop} openMenu={openMenu} />
       </if>
-
       <if test={is_split}>
-        <Text bold muted>Playground (drag the divider)</Text>
-        <Split fraction={ctl_split} onResize={splitChanged} testId="pg-split">
-          <Column padding={10}>
-            <Text size="sm" muted>left pane</Text>
-          </Column>
-          <Column padding={10}>
-            <Text size="sm" muted>right pane — fraction is model-owned state</Text>
-          </Column>
-        </Split>
+        <SplitDemo ctl_split={ctl_split} splitChanged={splitChanged} />
       </if>
-
       <if test={is_alert}>
-        <Text bold muted>Tones</Text>
-        <Alert tone="danger" title="Deploy failed">rollback started automatically</Alert>
-        <Alert tone="warning" title="Disk almost full">82% of quota used</Alert>
-        <Alert tone="success" title="All systems nominal">last check 2m ago</Alert>
-        <Alert tone="info" title="Heads up">maintenance window Sunday</Alert>
-        <Text bold muted>Playground</Text>
-        <Alert tone="info" title={ctl_label} testId="pg-alert">bound title above</Alert>
+        <AlertDemo ctl_label={ctl_label} />
       </if>
-
       <if test={is_card}>
-        <Text bold muted>Bordered, elevated surface</Text>
-        <Card>
-          <Text bold>Card title</Text>
-          <Text size="sm" muted>Cards share the Dialog panel chrome — one surface language.</Text>
-          <Row gap={8}>
-            <Button variant="secondary" onPress={noop}>Action</Button>
-            <Button variant="ghost" onPress={noop}>Dismiss</Button>
-          </Row>
-        </Card>
+        <CardDemo noop={noop} />
       </if>
-
       <if test={is_panel}>
-        <Text bold muted>Plain surface</Text>
-        <Panel>
-          <Text size="sm">Panels are the unframed sibling of Card.</Text>
-        </Panel>
+        <PanelDemo />
       </if>
-
       <if test={is_skeleton}>
-        <Text bold muted>Static placeholders (shimmer waits on §9.6)</Text>
-        <Skeleton width={220} height={24} />
-        <Skeleton />
-        <Skeleton width={320} />
-        <Skeleton width={180} />
+        <SkeletonDemo />
       </if>
-
       <if test={is_avatar}>
-        <Text bold muted>Initials</Text>
-        <Row gap={8} cross="center">
-          <Avatar name="Ada Lovelace" testId="pg-avatar" />
-          <Avatar name="Grace Hopper" size={48} />
-          <Avatar name="Turing" size={24} />
-        </Row>
-        <Text bold muted>Playground (bound name)</Text>
-        <Avatar name={ctl_label} size={40} />
+        <AvatarDemo ctl_label={ctl_label} />
       </if>
-
       <if test={is_switch}>
-        <Text bold muted>Playground (model-owned — click it)</Text>
-        <Row gap={8} cross="center">
-          <Switch checked={switch_on} onToggle={toggleSwitch} testId="pg-switch" />
-          <Text size="sm" muted>bound to state</Text>
-        </Row>
-        <Text bold muted>States</Text>
-        <Row gap={8} cross="center">
-          <Switch checked onToggle={noop} />
-          <Switch onToggle={noop} />
-        </Row>
+        <SwitchDemo switch_on={switch_on} toggleSwitch={toggleSwitch} noop={noop} />
       </if>
-
       <if test={is_checkbox}>
-        <Text bold muted>Playground (model-owned — click it)</Text>
-        <Checkbox checked={check_on} onToggle={toggleCheck} testId="pg-checkbox">Stay signed in</Checkbox>
-        <Text bold muted>States</Text>
-        <Checkbox checked onToggle={noop}>Checked</Checkbox>
-        <Checkbox onToggle={noop}>Unchecked</Checkbox>
+        <CheckboxDemo check_on={check_on} toggleCheck={toggleCheck} noop={noop} />
       </if>
-
       <if test={is_radio}>
-        <Text bold muted>Playground (pick one)</Text>
-        <Radio selected={radio_a} onSelect={pickRadioA} testId="pg-radio-a">Option A</Radio>
-        <Radio selected={radio_b} onSelect={pickRadioB} testId="pg-radio-b">Option B</Radio>
+        <RadioDemo radio_a={radio_a} radio_b={radio_b} pickRadioA={pickRadioA} pickRadioB={pickRadioB} />
       </if>
-
       <if test={is_slider}>
-        <Text bold muted>Playground (model-owned — click or drag the track)</Text>
-        <Row gap={8} cross="center">
-          <Slider value={ctl_slider} onChange={sliderChanged} testId="pg-slider" />
-        </Row>
-        <Text bold muted>Bound elsewhere: the same value drives a Progress</Text>
-        <Row><Progress value={ctl_slider} /></Row>
+        <SliderDemo ctl_slider={ctl_slider} sliderChanged={sliderChanged} />
       </if>
-
       <if test={is_tooltip}>
-        <Text bold muted>Hover the button (tooltips ride the hover input)</Text>
-        <Row gap={8}>
-          <Tooltip text="Deterministic tooltip — hover is an explicit input">
-            <Button variant="secondary" onPress={noop} testId="pg-tip-btn">Hover me</Button>
-          </Tooltip>
-        </Row>
+        <TooltipDemo noop={noop} />
       </if>
-
       <if test={is_drawer}>
-        <Text bold muted>Playground</Text>
-        <Row gap={8}>
-          <Button variant="secondary" onPress={openDrawer} testId="pg-open-drawer">Open drawer</Button>
-        </Row>
-        <Text size="sm" muted>Edge-anchored modal on the Dialog machinery; side="bottom" is the Sheet.</Text>
+        <DrawerDemo openDrawer={openDrawer} />
       </if>
       <if test={drawer_open}>
         <Drawer side="right" onDismiss={closeDrawer} testId="pg-drawer">
@@ -244,46 +106,31 @@
           <Button variant="ghost" onPress={closeDrawer} testId="pg-drawer-close">Close</Button>
         </Drawer>
       </if>
-
       <if test={is_breadcrumb}>
-        <Text bold muted>Trail (last crumb is current, non-pressable)</Text>
-        <Breadcrumb>
-          <BreadcrumbItem label="Home" onPress={noop} />
-          <BreadcrumbItem label="Settings" onPress={noop} testId="pg-crumb-mid" />
-          <BreadcrumbItem label="Profile" current testId="pg-crumb-current" />
-        </Breadcrumb>
+        <BreadcrumbDemo noop={noop} />
       </if>
-
       <if test={is_pagination}>
-        <Text bold muted>Playground (click a page)</Text>
-        <Pagination current={ctl_page} total={12} onPage={pageChanged} testId="pg-pagination" />
-        <Text size="sm" muted testId="pg-page-label">page {ctl_page}</Text>
+        <PaginationDemo ctl_page={ctl_page} pageChanged={pageChanged} />
       </if>
-
       <if test={is_stepper}>
-        <Text bold muted>Playground (status follows the shared page index)</Text>
-        <Stepper current={ctl_page}>
-          <StepperItem label="Cart" testId="pg-step-0" />
-          <StepperItem label="Shipping" testId="pg-step-1" />
-          <StepperItem label="Payment" testId="pg-step-2" />
-        </Stepper>
+        <StepperDemo ctl_page={ctl_page} />
       </if>
-
       <if test={is_timeline}>
-        <Text bold muted>Ledger (done fills the indicator)</Text>
-        <Timeline>
-          <TimelineItem title="Order placed" meta="2m ago" done testId="pg-tl-0" />
-          <TimelineItem title="Shipped" meta="1m ago" done testId="pg-tl-1" />
-          <TimelineItem title="Out for delivery" meta="pending" testId="pg-tl-2" />
-        </Timeline>
+        <TimelineDemo />
       </if>
-
-      <if test={is_dialog}>
-        <Text bold muted>Playground</Text>
-        <Row gap={8}>
-          <Button variant="secondary" onPress={openDialog} testId="pg-open-dialog">Open dialog</Button>
+      <if test={is_chart}>
+        <Text bold muted>Live (data plane)</Text>
+        <Chart series={wave} height={220} testId="pg-chart" />
+      </if>
+      <if test={is_sparkline}>
+        <Text bold muted>Live (data plane)</Text>
+        <Row gap={8} cross="center">
+          <Sparkline series={wave} width={180} height={44} testId="pg-spark" />
+          <Text size="sm" muted>inline mini-chart</Text>
         </Row>
-        <Text size="sm" muted>In-tree modal: scrim + centered panel, deterministic and snapshot-covered. Click the scrim to dismiss.</Text>
+      </if>
+      <if test={is_dialog}>
+        <DialogDemo openDialog={openDialog} />
       </if>
       <if test={menu_open}>
         <ContextMenu onDismiss={menuClose} testId="pg-menu">
@@ -301,62 +148,17 @@
           </Row>
         </Dialog>
       </if>
-
-      <if test={is_chart}>
-        <Text bold muted>Live (data plane)</Text>
-        <Chart series={wave} height={220} testId="pg-chart" />
-      </if>
-
-      <if test={is_sparkline}>
-        <Text bold muted>Live (data plane)</Text>
-        <Row gap={8} cross="center">
-          <Sparkline series={wave} width={180} height={44} testId="pg-spark" />
-          <Text size="sm" muted>inline mini-chart</Text>
-        </Row>
-      </if>
-
       <if test={is_separator}>
-        <Text bold muted>Horizontal</Text>
-        <Separator />
-        <Text bold muted>Vertical (pane seam)</Text>
-        <Row gap={8} cross="center">
-          <Text muted>left</Text>
-          <Separator vertical />
-          <Text muted>right</Text>
-        </Row>
+        <SeparatorDemo />
       </if>
-
       <if test={is_spacer}>
-        <Text bold muted>Spring (bare — pushes siblings apart)</Text>
-        <Row gap={8} cross="center">
-          <Text muted>left</Text>
-          <Spacer />
-          <Text muted>right</Text>
-        </Row>
-        <Text bold muted>Fixed (size=48)</Text>
-        <Row gap={8} cross="center">
-          <Text muted>a</Text>
-          <Spacer size={48} />
-          <Text muted>b</Text>
-        </Row>
+        <SpacerDemo />
       </if>
-
       <if test={is_column}>
-        <Text bold muted>Column — vertical flex</Text>
-        <Column gap={6}>
-          <Text>one</Text>
-          <Text>two</Text>
-          <Text>three</Text>
-        </Column>
+        <ColumnDemo />
       </if>
-
       <if test={is_row}>
-        <Text bold muted>Row — horizontal flex</Text>
-        <Row gap={6} cross="center">
-          <Text>one</Text>
-          <Text>two</Text>
-          <Text>three</Text>
-        </Row>
+        <RowDemo />
       </if>
     </Column>
 

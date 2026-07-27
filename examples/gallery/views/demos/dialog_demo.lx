@@ -1,0 +1,7 @@
+<props openDialog: Action />
+
+<Text bold muted>Playground</Text>
+<Row gap={8}>
+  <Button variant="secondary" onPress={openDialog} testId="pg-open-dialog">Open dialog</Button>
+</Row>
+<Text size="sm" muted>In-tree modal: scrim + centered panel, deterministic and snapshot-covered. Click the scrim to dismiss.</Text>

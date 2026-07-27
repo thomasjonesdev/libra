@@ -1,0 +1,4 @@
+<Column gap={12} padding={16}>
+  <MetricCard label="Revenue" value={name} ratio={ratio} onPick={increment} />
+  <MetricCard label="Status" value={status} ratio={ratio} onPick={reset} />
+</Column>

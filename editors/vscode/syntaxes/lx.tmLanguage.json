@@ -1,0 +1,187 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Libra Markup",
+  "scopeName": "source.lx",
+  "fileTypes": ["lx"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tag" },
+    { "include": "#text-binding" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.double-slash.lx",
+      "begin": "//",
+      "end": "$"
+    },
+    "tag": {
+      "patterns": [
+        { "include": "#closing-tag" },
+        { "include": "#self-closing-tag" },
+        { "include": "#opening-tag" }
+      ]
+    },
+    "closing-tag": {
+      "name": "meta.tag.lx",
+      "begin": "(</)\\s*",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.lx" }
+      },
+      "end": "(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.lx" }
+      },
+      "patterns": [
+        { "include": "#tag-name" }
+      ]
+    },
+    "self-closing-tag": {
+      "name": "meta.tag.lx",
+      "begin": "(<)\\s*(?=[A-Za-z_][\\w-]*\\b[^>]*/>)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.lx" }
+      },
+      "end": "(/>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.lx" }
+      },
+      "patterns": [
+        { "include": "#tag-name" },
+        { "include": "#attribute" }
+      ]
+    },
+    "opening-tag": {
+      "name": "meta.tag.lx",
+      "begin": "(<)\\s*(?=[A-Za-z_])",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.lx" }
+      },
+      "end": "(>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.lx" }
+      },
+      "patterns": [
+        { "include": "#tag-name" },
+        { "include": "#attribute" }
+      ]
+    },
+    "tag-name": {
+      "patterns": [
+        {
+          "name": "keyword.control.lx",
+          "match": "\\b(for|if|else)\\b"
+        },
+        {
+          "name": "support.type.source.lx",
+          "match": "\\b(Frames|Interval|Stream)\\b"
+        },
+        {
+          "name": "entity.name.tag.lx",
+          "match": "\\b(Column|Row|Card|Panel|Scroll|Split|Dialog|Drawer|ContextMenu|Alert|Skeleton|Avatar|Switch|Checkbox|Radio|Slider|Tooltip|Breadcrumb|BreadcrumbItem|Pagination|Stepper|StepperItem|Timeline|TimelineItem|Text|Button|Badge|Heading|Progress|Chart|Sparkline|Input|Textarea|ListItem|Spacer|Separator)\\b"
+        },
+        {
+          "name": "entity.name.tag.custom.lx",
+          "match": "[A-Za-z_][\\w-]*"
+        }
+      ]
+    },
+    "attribute": {
+      "patterns": [
+        { "include": "#handler-attribute" },
+        { "include": "#string-attribute" },
+        { "include": "#braced-attribute" },
+        { "include": "#flag-attribute" }
+      ]
+    },
+    "handler-attribute": {
+      "name": "meta.attribute.handler.lx",
+      "begin": "\\b(on[A-Z][A-Za-z]*)\\s*(=)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.handler.lx" },
+        "2": { "name": "punctuation.separator.key-value.lx" },
+        "3": { "name": "punctuation.definition.brace.begin.lx" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.brace.end.lx" }
+      },
+      "patterns": [
+        { "include": "#action-call" },
+        { "include": "#binding-path" }
+      ]
+    },
+    "string-attribute": {
+      "name": "meta.attribute.string.lx",
+      "begin": "\\b([A-Za-z_][\\w-]*)\\s*(=)\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.lx" },
+        "2": { "name": "punctuation.separator.key-value.lx" },
+        "3": { "name": "punctuation.definition.string.begin.lx" }
+      },
+      "end": "(\")",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.string.end.lx" }
+      },
+      "contentName": "string.quoted.double.lx"
+    },
+    "braced-attribute": {
+      "name": "meta.attribute.braced.lx",
+      "begin": "\\b([A-Za-z_][\\w-]*)\\s*(=)\\s*(\\{)",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.lx" },
+        "2": { "name": "punctuation.separator.key-value.lx" },
+        "3": { "name": "punctuation.definition.brace.begin.lx" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.brace.end.lx" }
+      },
+      "patterns": [
+        { "include": "#number" },
+        { "include": "#action-call" },
+        { "include": "#binding-path" }
+      ]
+    },
+    "flag-attribute": {
+      "name": "entity.other.attribute-name.flag.lx",
+      "match": "\\b([A-Za-z_][\\w-]*)\\b(?!\\s*=)"
+    },
+    "action-call": {
+      "name": "meta.action.call.lx",
+      "begin": "([A-Za-z_][\\w.]*)\\s*(\\()\\s*",
+      "beginCaptures": {
+        "1": { "name": "entity.name.function.lx" },
+        "2": { "name": "punctuation.definition.parameters.begin.lx" }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.parameters.end.lx" }
+      },
+      "patterns": [
+        { "include": "#binding-path" }
+      ]
+    },
+    "binding-path": {
+      "name": "variable.other.binding.lx",
+      "match": "[A-Za-z_][\\w.]*(?:\\(\\s*\\))?"
+    },
+    "number": {
+      "name": "constant.numeric.lx",
+      "match": "-?\\d+(?:\\.\\d+)?"
+    },
+    "text-binding": {
+      "name": "meta.interpolation.lx",
+      "begin": "(\\{)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.interpolation.begin.lx" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.interpolation.end.lx" }
+      },
+      "patterns": [
+        { "include": "#binding-path" }
+      ]
+    }
+  }
+}

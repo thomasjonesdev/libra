@@ -1,0 +1,4 @@
+<props ctl_body: String, bodyChanged: Action(String) />
+
+<Text bold muted>Playground (multi-line)</Text>
+<Textarea value={ctl_body} placeholder="write something…" onChange={bodyChanged} testId="pg-textarea" />

@@ -62,8 +62,10 @@ fn bench() {
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        binding_ctx: "State",
     };
 
+    let registry = libra_markup::ComponentRegistry::new();
     let mut cache = None;
     let mut layout_ms = Vec::with_capacity(frames);
     let mut paint_ms = Vec::with_capacity(frames);
@@ -87,7 +89,7 @@ fn bench() {
         }
 
         let t0 = Instant::now();
-        let view = libra_interp::resolve(&ast, &scope).expect("resolves");
+        let view = libra_interp::resolve(&ast, &scope, &registry).expect("resolves");
         let laid = libra_components::layout(&view, (w as f32, h as f32), &renderer, &theme).expect("lays out");
         let t1 = Instant::now();
         let cmds = laid.paint(&renderer, &store, None, &theme);

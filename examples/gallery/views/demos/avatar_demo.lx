@@ -1,0 +1,10 @@
+<props ctl_label: String />
+
+<Text bold muted>Initials</Text>
+<Row gap={8} cross="center">
+  <Avatar name="Ada Lovelace" testId="pg-avatar" />
+  <Avatar name="Grace Hopper" size={48} />
+  <Avatar name="Turing" size={24} />
+</Row>
+<Text bold muted>Playground (bound name)</Text>
+<Avatar name={ctl_label} size={40} />

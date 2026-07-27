@@ -1,0 +1,5 @@
+<props ctl_page: Num, pageChanged: Action(String) />
+
+<Text bold muted>Playground (click a page)</Text>
+<Pagination current={ctl_page} total={12} onPage={pageChanged} testId="pg-pagination" />
+<Text size="sm" muted testId="pg-page-label">page {ctl_page}</Text>

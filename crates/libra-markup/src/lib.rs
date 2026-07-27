@@ -2,7 +2,16 @@
 //! AST with spans on every node; errors carry line:col + a suggestion where
 //! possible. Consumed by both view engines (libra-interp, libra-codegen).
 //!
-//! Architecture: ARCHITECTURE.md §6.6 (parser), §6.2 (the closed grammar).
+//! Architecture: ARCHITECTURE.md §6.6 (parser), §6.2 (the closed grammar),
+//! §7.2 (composed components — PLAN-COMPOSE).
+
+mod compose;
+
+pub use compose::{
+    component_name_to_snake, component_refs_in_node, filename_to_component_name,
+    is_catalog_element, ComponentDef, ComponentFile, ComponentRegistry, LxFile, PropParam,
+    PropType, RegistryError,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -74,6 +83,7 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Parse a root view `.lx` file (single element tree).
 pub fn parse(src: &str) -> Result<Node, ParseError> {
     let mut p = Parser::new(src);
     p.skip_ws();
@@ -83,6 +93,33 @@ pub fn parse(src: &str) -> Result<Node, ParseError> {
         return Err(p.err("unexpected content after the root element"));
     }
     Ok(root)
+}
+
+/// Parse a component `.lx` file: `<props …/>` then one or more root elements.
+pub fn parse_component_file(src: &str) -> Result<ComponentFile, ParseError> {
+    let mut p = Parser::new(src);
+    p.skip_ws();
+    let (props, props_span) = p.props_decl()?;
+    let body = p.component_body()?;
+    Ok(ComponentFile { props, props_span, body })
+}
+
+/// Auto-detect view vs component file by its first element.
+pub fn parse_file(src: &str) -> Result<LxFile, ParseError> {
+    let mut p = Parser::new(src);
+    p.skip_ws();
+    if p.peek_first_element_name()? == "props" {
+        let (props, props_span) = p.props_decl()?;
+        let body = p.component_body()?;
+        Ok(LxFile::Component(ComponentFile { props, props_span, body }))
+    } else {
+        let root = p.element()?;
+        p.skip_ws();
+        if !p.eof() {
+            return Err(p.err("unexpected content after the root element"));
+        }
+        Ok(LxFile::View(root))
+    }
 }
 
 struct Parser<'a> {
@@ -198,10 +235,111 @@ impl<'a> Parser<'a> {
         Ok(s)
     }
 
+    fn peek_first_element_name(&mut self) -> Result<String, ParseError> {
+        let saved_pos = self.pos;
+        let saved_line = self.line;
+        let saved_col = self.col;
+        self.skip_ws();
+        if !self.eat('<') {
+            self.pos = saved_pos;
+            self.line = saved_line;
+            self.col = saved_col;
+            return Err(self.err("expected '<' to open an element"));
+        }
+        let name = self.ident("an element name after '<'")?;
+        self.pos = saved_pos;
+        self.line = saved_line;
+        self.col = saved_col;
+        Ok(name)
+    }
+
+    /// `<props label: String, onPick: Action />` (§7.2).
+    fn props_decl(&mut self) -> Result<(Vec<PropParam>, Span), ParseError> {
+        let span = self.span();
+        self.expect('<', "to open <props>")?;
+        let tag = self.ident("an element name after '<'")?;
+        if tag != "props" {
+            return Err(self.err(format!(
+                "expected <props …/> as the first element of a component file, found <{tag}>"
+            )));
+        }
+        let mut params = Vec::new();
+        loop {
+            self.skip_ws();
+            if self.peek() == Some('/') {
+                self.bump();
+                self.expect('>', "after '/' in <props/>")?;
+                return Ok((params, span));
+            }
+            params.push(self.prop_param()?);
+            self.skip_ws();
+            if self.peek() == Some(',') {
+                self.bump();
+            } else if self.peek() != Some('/') {
+                return Err(self.err("expected ',' or '/>' in <props> parameter list"));
+            }
+        }
+    }
+
+    /// One or more sibling roots after `<props>` (spliced at call sites — §7.2).
+    fn component_body(&mut self) -> Result<Vec<Node>, ParseError> {
+        let mut nodes = Vec::new();
+        self.skip_ws();
+        while !self.eof() {
+            nodes.push(self.element()?);
+            self.skip_ws();
+        }
+        if nodes.is_empty() {
+            return Err(self.err("component file requires at least one element after <props>"));
+        }
+        Ok(nodes)
+    }
+
+    fn prop_param(&mut self) -> Result<PropParam, ParseError> {
+        let span = self.span();
+        let name = self.ident("a prop name")?;
+        self.expect(':', "after the prop name in <props>")?;
+        self.skip_ws();
+        let ty = self.prop_type()?;
+        Ok(PropParam { name, ty, span })
+    }
+
+    fn prop_type(&mut self) -> Result<PropType, ParseError> {
+        let head = self.ident("a prop type")?;
+        if head == "Action" && self.peek() == Some('(') {
+            self.bump();
+            self.skip_ws();
+            let inner = self.ident("Action payload type")?;
+            self.skip_ws();
+            self.expect(')', "to close Action(…) type")?;
+            if inner != "String" {
+                return Err(self.err(format!(
+                    "Action(…) prop type only supports String payload, not Action({inner})"
+                )));
+            }
+            return Ok(PropType::ActionString);
+        }
+        match head.as_str() {
+            "String" => Ok(PropType::String),
+            "Num" => Ok(PropType::Num),
+            "Bool" => Ok(PropType::Bool),
+            "Action" => Ok(PropType::Action),
+            "slot" => Ok(PropType::Slot),
+            other => Err(self.err(format!(
+                "unknown prop type '{other}' — expected String, Num, Bool, Action, Action(String), or slot"
+            ))),
+        }
+    }
+
     fn element(&mut self) -> Result<Node, ParseError> {
         let span = self.span();
         self.expect('<', "to open an element")?;
         let name = self.ident("an element name after '<'")?;
+        if name == "props" {
+            return Err(self.err(
+                "<props> is only allowed as the first element of a component file, not inside a view",
+            ));
+        }
         let mut attrs = Vec::new();
         loop {
             self.skip_ws();
@@ -465,6 +603,60 @@ mod tests {
         // '// header row' is inside children text scanning, so it is text content —
         // documented Phase 0 limitation; codegen phase will formalize comment syntax.
         assert!(children.len() >= 1);
+    }
+
+    #[test]
+    fn parses_props_decl_on_component_file() {
+        let src = r#"
+            <props label: String, value: String, ratio: Num, onPick: Action />
+
+            <Card padding={12}>
+              <Text muted size="sm">{label}</Text>
+              <Progress value={ratio} />
+            </Card>
+        "#;
+        let cf = parse_component_file(src).expect("parses component");
+        assert_eq!(cf.props.len(), 4);
+        assert_eq!(cf.props[0].name, "label");
+        assert_eq!(cf.props[0].ty, PropType::String);
+        assert_eq!(cf.props[3].name, "onPick");
+        assert_eq!(cf.props[3].ty, PropType::Action);
+        let Node::Element { name, .. } = &cf.body[0] else { panic!() };
+        assert_eq!(name, "Card");
+    }
+
+    #[test]
+    fn parses_multi_root_component_body() {
+        let src = r#"
+            <props label: String />
+
+            <Text muted>{label}</Text>
+            <Button variant="ghost" onPress={noop}>ok</Button>
+        "#;
+        let cf = parse_component_file(src).expect("parses component");
+        assert_eq!(cf.body.len(), 2);
+    }
+
+    #[test]
+    fn parses_empty_props_decl() {
+        let src = "<props />\n\n<Text>ok</Text>";
+        let cf = parse_component_file(src).expect("parses component");
+        assert!(cf.props.is_empty());
+    }
+
+    #[test]
+    fn props_in_view_file_is_an_error() {
+        let err = parse("<props label: String /><Column></Column>").unwrap_err();
+        assert!(err.message.contains("component file"), "{}", err.message);
+    }
+
+    #[test]
+    fn parse_file_detects_component_vs_view() {
+        let view = parse_file("<Column></Column>").unwrap();
+        assert!(matches!(view, LxFile::View(_)));
+
+        let comp = parse_file("<props x: String /><Text>{x}</Text>").unwrap();
+        assert!(matches!(comp, LxFile::Component(_)));
     }
 
     #[test]

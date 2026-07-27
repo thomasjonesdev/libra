@@ -1,0 +1,5 @@
+<Column>
+  <CardShell>
+    <Text testId="inner">hello</Text>
+  </CardShell>
+</Column>

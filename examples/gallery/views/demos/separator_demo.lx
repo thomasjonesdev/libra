@@ -1,0 +1,10 @@
+<props />
+
+<Text bold muted>Horizontal</Text>
+<Separator />
+<Text bold muted>Vertical (pane seam)</Text>
+<Row gap={8} cross="center">
+  <Text muted>left</Text>
+  <Separator vertical />
+  <Text muted>right</Text>
+</Row>

@@ -1,0 +1,15 @@
+<props ctl_label: String />
+
+<Text bold muted>Sizes</Text>
+<Row gap={12} cross="center">
+  <Text size="sm">sm text</Text>
+  <Text size="md">md text</Text>
+  <Text size="xl">xl text</Text>
+</Row>
+<Text bold muted>Emphasis</Text>
+<Row gap={12} cross="center">
+  <Text bold>bold</Text>
+  <Text muted>muted</Text>
+</Row>
+<Text bold muted>Playground</Text>
+<Text size="xl">{ctl_label}</Text>

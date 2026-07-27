@@ -26,7 +26,7 @@ const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
 
-fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
+fn interp_tree_src(src: &str, state: &TestState, registry: &libra_markup::ComponentRegistry) -> libra_components::ViewNode {
     let ast = libra_markup::parse(src).expect("fixture parses");
     let field = |p: &str| state.field(p);
     let has_action = |m: &str| TestAction::action_by_name(m).is_some();
@@ -43,8 +43,23 @@ fn interp_tree_src(src: &str, state: &TestState) -> libra_components::ViewNode {
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        binding_ctx: "State",
     };
-    libra_interp::resolve(&ast, &scope).expect("fixture resolves")
+    libra_interp::resolve(&ast, &scope, registry).expect("fixture resolves")
+}
+
+fn fixture_registry() -> libra_markup::ComponentRegistry {
+    libra_markup::ComponentRegistry::load_from_sources(&[
+        (
+            "metric_card.lx".into(),
+            include_str!("../fixtures/metric_card.lx").into(),
+        ),
+        (
+            "card_shell.lx".into(),
+            include_str!("../fixtures/card_shell.lx").into(),
+        ),
+    ])
+    .expect("fixture registry")
 }
 
 fn state_variants() -> Vec<TestState> {
@@ -66,7 +81,7 @@ fn state_variants() -> Vec<TestState> {
 #[test]
 fn interp_and_codegen_produce_identical_trees() {
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(KITCHEN_SINK, &state);
+        let interp = interp_tree_src(KITCHEN_SINK, &state, &fixture_registry());
         let compiled = generated::build_kitchen_sink(&state);
         assert_eq!(
             interp, compiled,
@@ -100,8 +115,9 @@ fn pascalcase_handler_name_is_rejected_identically_by_both_engines() {
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        binding_ctx: "State",
     };
-    let interp_err = libra_interp::resolve(&ast, &scope).unwrap_err();
+    let interp_err = libra_interp::resolve(&ast, &scope, &libra_markup::ComponentRegistry::new()).unwrap_err();
     assert!(interp_err.message.contains("must be camelCase"), "{}", interp_err.message);
     assert!(interp_err.message.contains("did you mean 'reset'"), "{}", interp_err.message);
 
@@ -145,7 +161,7 @@ fn for_loop_produces_identical_trees_across_series_counts() {
     ];
     for (i, series) in variants.into_iter().enumerate() {
         let state = TestState { series, ..TestState::default() };
-        let interp = interp_tree_src(FOR_LOOP, &state);
+        let interp = interp_tree_src(FOR_LOOP, &state, &fixture_registry());
         let compiled = generated::build_for_loop(&state);
         assert_eq!(
             interp, compiled,
@@ -173,7 +189,7 @@ fn for_actions_item_scoped_handlers_produce_identical_trees() {
     ];
     for (i, series) in variants.into_iter().enumerate() {
         let state = TestState { series, ..TestState::default() };
-        let interp = interp_tree_src(FOR_ACTIONS, &state);
+        let interp = interp_tree_src(FOR_ACTIONS, &state, &fixture_registry());
         let compiled = generated::build_for_actions(&state);
         assert_eq!(
             interp, compiled,
@@ -200,7 +216,7 @@ fn for_item_fields_produce_identical_trees() {
     ];
     for (i, items) in variants.into_iter().enumerate() {
         let state = TestState { items, ..TestState::default() };
-        let interp = interp_tree_src(FOR_ITEM_FIELDS, &state);
+        let interp = interp_tree_src(FOR_ITEM_FIELDS, &state, &fixture_registry());
         let compiled = generated::build_for_item_fields(&state);
         assert_eq!(
             interp, compiled,
@@ -217,7 +233,7 @@ fn if_else_produces_identical_trees_for_both_branches() {
     use libra_components::ViewNode;
     for running in [true, false] {
         let state = TestState { running, ..TestState::default() };
-        let interp = interp_tree_src(IF_ELSE, &state);
+        let interp = interp_tree_src(IF_ELSE, &state, &fixture_registry());
         let compiled = generated::build_if_else(&state);
         assert_eq!(
             interp, compiled,
@@ -245,7 +261,7 @@ fn if_else_produces_identical_trees_for_both_branches() {
 #[test]
 fn frames_source_element_produces_identical_trees() {
     let state = TestState::default();
-    let interp = interp_tree_src(FRAMES, &state);
+    let interp = interp_tree_src(FRAMES, &state, &fixture_registry());
     let compiled = generated::build_frames(&state);
     assert_eq!(interp, compiled, "engine drift on frames fixture — one grammar, two engines (§6.4)");
     assert!(
@@ -261,7 +277,7 @@ fn frames_source_element_produces_identical_trees() {
 fn interval_and_stream_produce_identical_trees() {
     use libra_components::ViewNode;
     let state = TestState::default();
-    let interp = interp_tree_src(INTERVAL_STREAM, &state);
+    let interp = interp_tree_src(INTERVAL_STREAM, &state, &fixture_registry());
     let compiled = generated::build_interval_stream(&state);
     assert_eq!(
         interp, compiled,
@@ -313,7 +329,7 @@ fn accessors_produce_identical_trees() {
         },
     ];
     for (i, state) in variants.iter().enumerate() {
-        let interp = interp_tree_src(ACCESSORS, state);
+        let interp = interp_tree_src(ACCESSORS, state, &fixture_registry());
         let compiled = generated::build_accessors(state);
         assert_eq!(
             interp, compiled,
@@ -348,7 +364,7 @@ fn chrome_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(CHROME, &state);
+        let interp = interp_tree_src(CHROME, &state, &fixture_registry());
         let compiled = generated::build_chrome(&state);
         assert_eq!(interp, compiled, "engine drift on chrome fixture (variant #{i})");
     }
@@ -356,7 +372,7 @@ fn chrome_produces_identical_trees() {
     // Shape assertions on the resolved tree: the spring spacer, the
     // fixed-width sidebar, and both separator orientations survive
     // resolution as data.
-    let interp = interp_tree_src(CHROME, &TestState::default());
+    let interp = interp_tree_src(CHROME, &TestState::default(), &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     assert!(
         matches!(&children[1], ViewNode::Separator { vertical: false }),
@@ -385,12 +401,12 @@ fn badge_produces_identical_trees() {
     use libra_components::{Tone, ViewNode};
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(BADGE, &state);
+        let interp = interp_tree_src(BADGE, &state, &fixture_registry());
         let compiled = generated::build_badge(&state);
         assert_eq!(interp, compiled, "engine drift on badge fixture (variant #{i})");
     }
 
-    let interp = interp_tree_src(BADGE, &TestState::default());
+    let interp = interp_tree_src(BADGE, &TestState::default(), &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     // Default tone, then an explicit success badge carrying a testId.
     assert!(
@@ -413,13 +429,13 @@ fn heading_progress_produce_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(HEADING_PROGRESS, &state);
+        let interp = interp_tree_src(HEADING_PROGRESS, &state, &fixture_registry());
         let compiled = generated::build_heading_progress(&state);
         assert_eq!(interp, compiled, "engine drift on heading_progress fixture (variant #{i})");
     }
 
     let state = TestState { ratio: 0.42, ..TestState::default() };
-    let interp = interp_tree_src(HEADING_PROGRESS, &state);
+    let interp = interp_tree_src(HEADING_PROGRESS, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     assert!(
         matches!(&children[1], ViewNode::Heading { level: 2, test_id: Some(id), content }
@@ -452,12 +468,12 @@ fn scroll_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(SCROLL, &state);
+        let interp = interp_tree_src(SCROLL, &state, &fixture_registry());
         let compiled = generated::build_scroll(&state);
         assert_eq!(interp, compiled, "engine drift on scroll fixture (variant #{i})");
     }
 
-    let interp = interp_tree_src(SCROLL, &TestState::default());
+    let interp = interp_tree_src(SCROLL, &TestState::default(), &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     assert!(
         matches!(&children[0], ViewNode::Scroll { height: Some(h), test_id, children }
@@ -480,13 +496,13 @@ fn list_textarea_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(LIST_TEXTAREA, &state);
+        let interp = interp_tree_src(LIST_TEXTAREA, &state, &fixture_registry());
         let compiled = generated::build_list_textarea(&state);
         assert_eq!(interp, compiled, "engine drift on list_textarea fixture (variant #{i})");
     }
 
     let state = TestState::default();
-    let interp = interp_tree_src(LIST_TEXTAREA, &state);
+    let interp = interp_tree_src(LIST_TEXTAREA, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     // Two loop rows: `selected` mirrors each item's `active` bool, the
     // payload carries that row's id.
@@ -518,14 +534,14 @@ fn dialog_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(DIALOG, &state);
+        let interp = interp_tree_src(DIALOG, &state, &fixture_registry());
         let compiled = generated::build_dialog(&state);
         assert_eq!(interp, compiled, "engine drift on dialog fixture (variant #{i})");
     }
 
     // running=true mounts the bound-title dialog; the static one is
     // always there. running=false drops the first (the `<if>` rule).
-    let on = interp_tree_src(DIALOG, &TestState::default());
+    let on = interp_tree_src(DIALOG, &TestState::default(), &fixture_registry());
     let ViewNode::Column { children, .. } = &on else { panic!("{on:?}") };
     let dialogs: Vec<_> =
         children.iter().filter(|c| matches!(c, ViewNode::Dialog { .. })).collect();
@@ -540,7 +556,7 @@ fn dialog_produces_identical_trees() {
     let ViewNode::Dialog { title, on_dismiss, .. } = dialogs[1] else { unreachable!() };
     assert_eq!((title.as_str(), on_dismiss.is_none()), ("static title", true));
 
-    let off = interp_tree_src(DIALOG, &TestState { running: false, ..TestState::default() });
+    let off = interp_tree_src(DIALOG, &TestState { running: false, ..TestState::default() }, &fixture_registry());
     let ViewNode::Column { children, .. } = &off else { panic!("{off:?}") };
     assert_eq!(
         children.iter().filter(|c| matches!(c, ViewNode::Dialog { .. })).count(),
@@ -556,13 +572,13 @@ fn split_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(SPLIT, &state);
+        let interp = interp_tree_src(SPLIT, &state, &fixture_registry());
         let compiled = generated::build_split(&state);
         assert_eq!(interp, compiled, "engine drift on split fixture (variant #{i})");
     }
 
     let state = TestState { ratio: 0.42, ..TestState::default() };
-    let interp = interp_tree_src(SPLIT, &state);
+    let interp = interp_tree_src(SPLIT, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     let ViewNode::Split { fraction, on_resize, test_id, children: panes } = &children[0] else {
         panic!("{:?}", children[0])
@@ -582,12 +598,12 @@ fn menu_produces_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(MENU, &state);
+        let interp = interp_tree_src(MENU, &state, &fixture_registry());
         let compiled = generated::build_menu(&state);
         assert_eq!(interp, compiled, "engine drift on menu fixture (variant #{i})");
     }
 
-    let interp = interp_tree_src(MENU, &TestState::default());
+    let interp = interp_tree_src(MENU, &TestState::default(), &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     let ViewNode::ListItem { on_menu, on_menu_arg, .. } = &children[0] else {
         panic!("{:?}", children[0])
@@ -610,13 +626,13 @@ fn surfaces_produce_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(SURFACES, &state);
+        let interp = interp_tree_src(SURFACES, &state, &fixture_registry());
         let compiled = generated::build_surfaces(&state);
         assert_eq!(interp, compiled, "engine drift on surfaces fixture (variant #{i})");
     }
 
     let state = TestState::default();
-    let interp = interp_tree_src(SURFACES, &state);
+    let interp = interp_tree_src(SURFACES, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     let ViewNode::Alert { title, body, .. } = &children[0] else { panic!("{:?}", children[0]) };
     assert_eq!((title.as_str(), body.as_str()), ("", "something broke"));
@@ -638,13 +654,13 @@ fn toggles_produce_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(TOGGLES, &state);
+        let interp = interp_tree_src(TOGGLES, &state, &fixture_registry());
         let compiled = generated::build_toggles(&state);
         assert_eq!(interp, compiled, "engine drift on toggles fixture (variant #{i})");
     }
 
     let state = TestState::default();
-    let interp = interp_tree_src(TOGGLES, &state);
+    let interp = interp_tree_src(TOGGLES, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     assert!(matches!(&children[0], ViewNode::Switch { checked: true, .. }), "running=true binds");
     assert!(matches!(&children[2], ViewNode::Checkbox { checked: true, .. }), "user.active binds");
@@ -665,13 +681,13 @@ fn slider_tooltip_produce_identical_trees() {
     use libra_components::ViewNode;
 
     for (i, state) in state_variants().into_iter().enumerate() {
-        let interp = interp_tree_src(SLIDER_TOOLTIP, &state);
+        let interp = interp_tree_src(SLIDER_TOOLTIP, &state, &fixture_registry());
         let compiled = generated::build_slider_tooltip(&state);
         assert_eq!(interp, compiled, "engine drift on slider_tooltip fixture (variant #{i})");
     }
 
     let state = TestState { ratio: 0.7, ..TestState::default() };
-    let interp = interp_tree_src(SLIDER_TOOLTIP, &state);
+    let interp = interp_tree_src(SLIDER_TOOLTIP, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
     let ViewNode::Slider { value, test_id, .. } = &children[0] else { panic!("{:?}", children[0]) };
     assert!((value - 0.7).abs() < 1e-6);
@@ -696,13 +712,13 @@ fn nav_produces_identical_trees() {
         TestState { page: 2, name: "Grace".into(), status: "Delivered".into(), ..TestState::default() },
     ];
     for (i, state) in variants.iter().enumerate() {
-        let interp = interp_tree_src(NAV, state);
+        let interp = interp_tree_src(NAV, state, &fixture_registry());
         let compiled = generated::build_nav(state);
         assert_eq!(interp, compiled, "engine drift on nav fixture (variant #{i})");
     }
 
     let state = TestState { page: 1, name: "Ada".into(), ..TestState::default() };
-    let interp = interp_tree_src(NAV, &state);
+    let interp = interp_tree_src(NAV, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
 
     let ViewNode::Breadcrumb { children: crumbs } = &children[0] else { panic!("{:?}", children[0]) };
@@ -726,4 +742,32 @@ fn nav_produces_identical_trees() {
     assert_eq!((title.as_str(), *done), ("Order placed", true));
     let ViewNode::TimelineItem { title, done, .. } = &entries[1] else { panic!("{:?}", entries[1]) };
     assert_eq!((title.as_str(), *done), ("ok", false));
+}
+
+const COMPOSED: &str = include_str!("../fixtures/composed.lx");
+const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
+const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
+
+#[test]
+fn composed_produces_identical_trees() {
+    let state = TestState::default();
+    let interp = interp_tree_src(COMPOSED, &state, &fixture_registry());
+    let compiled = generated::build_composed(&state);
+    assert_eq!(interp, compiled, "composed fixture drift (§6.4 / §7.2)");
+}
+
+#[test]
+fn composed_tree_equals_inlined() {
+    let state = TestState::default();
+    let composed = interp_tree_src(COMPOSED, &state, &fixture_registry());
+    let inlined = interp_tree_src(COMPOSED_INLINED, &state, &fixture_registry());
+    assert_eq!(composed, inlined, "composition must equal hand-inlined twin (PLAN-COMPOSE tenet 1)");
+}
+
+#[test]
+fn slot_host_produces_identical_trees() {
+    let state = TestState::default();
+    let interp = interp_tree_src(SLOT_HOST, &state, &fixture_registry());
+    let compiled = generated::build_slot_host(&state);
+    assert_eq!(interp, compiled, "slot fixture drift (§7.2 C6)");
 }

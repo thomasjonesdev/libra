@@ -345,6 +345,41 @@ pub struct Semantics {
 }
 
 // ---------------------------------------------------------------------------
+// Pointer affordance — the derived `cursor:` analog (§19)
+// ---------------------------------------------------------------------------
+
+/// What the pointer should look like over a point in the laid tree
+/// (§19) — Libra's answer to CSS `cursor:`.
+///
+/// It is **derived, never authored**: the shape follows from what an
+/// item *is* (pressable, text-editable, draggable), so it cannot drift
+/// from the item's behavior the way a hand-written `cursor:` declaration
+/// can, and it stays out of the closed grammar (§6.2 — markup gains no
+/// decorative attribute for it). `LaidTree::cursor_at` is the one
+/// mapping; the windowed shell translates this closed set to the OS
+/// icon vocabulary, and the harness asserts it as ordinary semantics.
+///
+/// The OS draws the pointer, so this never enters the display list —
+/// it is off the determinism contract (Appendix A) by construction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Cursor {
+    /// Nothing interactive under the pointer.
+    #[default]
+    Default,
+    /// Anything pressable: Button, ListItem, Switch/Checkbox/Radio,
+    /// Slider, a crumb, a page button, a dismissible scrim.
+    Pointer,
+    /// I-beam — an `Input`/`Textarea` (`Role::TextInput`), where a press
+    /// places a caret instead of dispatching (§10.1).
+    Text,
+    /// Horizontal resize — a `<Split>` divider gutter, whose press
+    /// starts a drag rather than a click.
+    ColResize,
+    /// A present-but-inert control (a disabled Pagination arrow).
+    NotAllowed,
+}
+
+// ---------------------------------------------------------------------------
 // Text measurement contract — implemented by libra-raster
 // ---------------------------------------------------------------------------
 

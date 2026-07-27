@@ -1,0 +1,10 @@
+<props label: String, value: String, ratio: Num, onPick: Action />
+
+<Card padding={12}>
+  <Text muted size="sm">{label}</Text>
+  <Row gap={8} cross="center">
+    <Text size="xl">{value}</Text>
+    <Progress value={ratio} />
+  </Row>
+  <Button variant="ghost" onPress={onPick}>details</Button>
+</Card>

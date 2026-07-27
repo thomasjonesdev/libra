@@ -29,13 +29,13 @@ use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::{Damage, Renderer};
 use tiny_skia::Pixmap;
-use libra_components::{InputFocus, ItemKind, LaidTree, Role, SourceDecl};
+use libra_components::{Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, Window, WindowId};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -228,6 +228,12 @@ where
     A::Msg: Send + 'static,
 {
     let ast = libra_markup::parse(lx_source).map_err(|e| format!("markup parse error: {e}"))?;
+    let registry = opts
+        .watch
+        .as_ref()
+        .and_then(|p| p.parent())
+        .map(|dir| libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default())
+        .unwrap_or_default();
     let (app, init_cmds) = A::init();
     let app = match rehydrated {
         Some(model) => {
@@ -281,11 +287,13 @@ where
         opts,
         app,
         ast,
+        registry,
         effects,
         renderer: Renderer::new(),
         laid: None,
         overlay: None,
         cursor: (0.0, 0.0),
+        cursor_icon: Cursor::Default,
         scroll_state: libra_components::ScrollState::new(),
         shortcut_table,
         drag: None,
@@ -340,10 +348,26 @@ enum DragTarget {
     Slider(String),
 }
 
+/// §19: Libra's closed `Cursor` set → winit's icon vocabulary. The
+/// translation lives in the shell so `libra-components` can derive the
+/// affordance (`LaidTree::cursor_at`) without knowing about winit — the
+/// same split the rest of the presentation layer keeps.
+fn cursor_icon(cursor: Cursor) -> CursorIcon {
+    match cursor {
+        Cursor::Default => CursorIcon::Default,
+        Cursor::Pointer => CursorIcon::Pointer,
+        Cursor::Text => CursorIcon::Text,
+        Cursor::ColResize => CursorIcon::ColResize,
+        Cursor::NotAllowed => CursorIcon::NotAllowed,
+    }
+}
+
 struct Shell<A: App> {
     opts: Options,
     app: A,
     ast: Node,
+    /// §7.2 composed components discovered alongside the root view file.
+    registry: libra_markup::ComponentRegistry,
     effects: Effects<A::Msg>,
     renderer: Renderer,
     laid: Option<LaidTree>,
@@ -351,6 +375,10 @@ struct Shell<A: App> {
     overlay: Option<String>,
     /// Last cursor position, physical pixels.
     cursor: (f64, f64),
+    /// §19: the pointer shape currently set on the window. Cached so a
+    /// pointer sweep only calls into the platform when the affordance
+    /// under it actually changes.
+    cursor_icon: Cursor,
     /// PLAN-SCROLL: scroll positions by `<Scroll>` test_id, driven by the
     /// wheel. Applied to the laid tree in `relayout` (like the harness's
     /// `scroll()`); empty = every viewport at the top.
@@ -452,8 +480,9 @@ where
             collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
             has_instant_action: &has_instant_action,
+            binding_ctx: "State",
         };
-        match libra_interp::resolve(&self.ast, &scope) {
+        match libra_interp::resolve(&self.ast, &scope, &self.registry) {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
@@ -504,6 +533,11 @@ where
                     // After markup sources are known — never before.
                     // (A prior sync on empty handlers left frames idle forever.)
                     self.sync_subscriptions();
+                    // §19: the tree moved under a possibly-still pointer —
+                    // a dispatch that opens a dialog, deletes the hovered
+                    // row, or disables a control changes the affordance
+                    // without any pointer motion to notice it.
+                    self.sync_cursor();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
             },
@@ -772,6 +806,33 @@ where
     fn request_redraw(&self) {
         if let Some(gfx) = &self.gfx {
             gfx.window.request_redraw();
+        }
+    }
+
+    /// §19: point the OS pointer at the affordance under it. Called after
+    /// anything that can change either term — the pointer moved, or the
+    /// tree under a still pointer was rebuilt.
+    ///
+    /// A live drag pins its shape: the pointer routinely leaves the divider
+    /// gutter mid-resize, and a cursor that flickers back to an arrow there
+    /// reads as a dropped grab. Purely presentational — the OS draws the
+    /// pointer, so nothing here touches the display list (§21).
+    fn sync_cursor(&mut self) {
+        let want = match &self.drag {
+            Some(DragTarget::Split(_)) => Cursor::ColResize,
+            Some(DragTarget::Slider(_)) => Cursor::Pointer,
+            None => {
+                let scale = self.scale();
+                let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+                self.laid.as_ref().map_or(Cursor::Default, |laid| laid.cursor_at(lx, ly))
+            }
+        };
+        if want == self.cursor_icon {
+            return;
+        }
+        self.cursor_icon = want;
+        if let Some(gfx) = &self.gfx {
+            gfx.window.set_cursor(cursor_icon(want));
         }
     }
 
@@ -1063,6 +1124,10 @@ where
         match libra_markup::parse(&source) {
             Ok(ast) => {
                 self.ast = ast;
+                if let Some(dir) = path.parent() {
+                    self.registry =
+                        libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default();
+                }
                 self.relayout(); // model state untouched — that's the point
                 eprintln!("[libra] hot-reloaded {}", path.display());
             }
@@ -1296,6 +1361,8 @@ where
                 if self.drag.is_some() {
                     self.drag_move();
                 }
+                // §19: the pointer shape follows what's under it.
+                self.sync_cursor();
                 // Hover is a paint input (ListItem washes); damage
                 // tracking absorbs the repaint cost when nothing under
                 // the pointer actually changes.
@@ -1313,7 +1380,11 @@ where
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } => self.drag = None,
+            } => {
+                self.drag = None;
+                // Releasing a drag un-pins the shape (§19).
+                self.sync_cursor();
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Right,

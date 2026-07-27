@@ -1,0 +1,5 @@
+<props radio_a: Bool, radio_b: Bool, pickRadioA: Action, pickRadioB: Action />
+
+<Text bold muted>Playground (pick one)</Text>
+<Radio selected={radio_a} onSelect={pickRadioA} testId="pg-radio-a">Option A</Radio>
+<Radio selected={radio_b} onSelect={pickRadioB} testId="pg-radio-b">Option B</Radio>

@@ -1,0 +1,7 @@
+<props ctl_input: String, inputChanged: Action(String) />
+
+<Text bold muted>Playground (type to edit)</Text>
+<Row>
+  <Input value={ctl_input} placeholder="empty input (placeholder)" onChange={inputChanged} testId="pg-input" />
+</Row>
+<Spacer />

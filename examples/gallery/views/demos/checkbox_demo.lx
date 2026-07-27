@@ -1,0 +1,7 @@
+<props check_on: Bool, toggleCheck: Action, noop: Action />
+
+<Text bold muted>Playground (model-owned — click it)</Text>
+<Checkbox checked={check_on} onToggle={toggleCheck} testId="pg-checkbox">Stay signed in</Checkbox>
+<Text bold muted>States</Text>
+<Checkbox checked onToggle={noop}>Checked</Checkbox>
+<Checkbox onToggle={noop}>Unchecked</Checkbox>

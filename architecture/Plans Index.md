@@ -36,5 +36,7 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |
 | [[PLAN-RECONCILER]] | planned | [[06.2-closed-grammar|§6.2]] |
+| [[PLAN-COMPOSE]] | done | [[07.2-composed-components|§7.2]], [[06.4-one-grammar-two-engines|§6.4]], [[06.5-compile-time-validation|§6.5]], [[26-open-questions|§26]] |
+| [[PLAN-TEST-CLI]] | in progress (v1) | [[18.1-cli|§18.1]], [[15-testing|§15]], [[15.8-ci-shape|§15.8]] |
 
 ← [[Architecture Home]] · [[Map of Content]]

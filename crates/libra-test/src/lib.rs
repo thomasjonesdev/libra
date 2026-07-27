@@ -14,7 +14,7 @@ use libra_markup::Node;
 use libra_raster::Renderer;
 use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_components::{InputFocus, LaidTree, Role, ScrollState};
+use libra_components::{Cursor, InputFocus, LaidTree, Role, ScrollState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,6 +22,7 @@ use std::sync::Arc;
 pub struct Harness<A: App> {
     app: A,
     ast: Node,
+    registry: libra_markup::ComponentRegistry,
     renderer: Renderer,
     laid: LaidTree,
     viewport: (u32, u32),
@@ -181,15 +182,32 @@ impl<A: App> Harness<A> {
     }
 
     pub fn with_viewport(lx_source: &str, w: u32, h: u32) -> Self {
+        Self::with_viewport_and_registry(lx_source, libra_markup::ComponentRegistry::new(), w, h)
+    }
+
+    /// Load composed components from a view directory (§7.2).
+    pub fn with_view_dir(lx_source: &str, view_dir: &std::path::Path, w: u32, h: u32) -> Self {
+        let registry = libra_markup::ComponentRegistry::load_from_dir(view_dir)
+            .unwrap_or_else(|e| panic!("component registry: {e}"));
+        Self::with_viewport_and_registry(lx_source, registry, w, h)
+    }
+
+    pub fn with_viewport_and_registry(
+        lx_source: &str,
+        registry: libra_markup::ComponentRegistry,
+        w: u32,
+        h: u32,
+    ) -> Self {
         let ast = libra_markup::parse(lx_source)
             .unwrap_or_else(|e| panic!("markup parse error: {e}"));
         let (app, init_effects) = A::init();
         let renderer = Renderer::new();
         let theme = Theme::dark();
-        let laid = rebuild(&app, &ast, &renderer, (w, h), &theme);
+        let laid = rebuild(&app, &ast, &registry, &renderer, (w, h), &theme);
         Harness {
             app,
             ast,
+            registry,
             renderer,
             laid,
             viewport: (w, h),
@@ -231,7 +249,7 @@ impl<A: App> Harness<A> {
     pub fn scroll(&mut self, test_id: &str, dy: f32) {
         let pos = self.scroll_state.entry(test_id.to_string()).or_insert(0.0);
         *pos = (*pos + dy).max(0.0);
-        self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
         self.laid.apply_scroll(&self.scroll_state);
         self.laid.apply_menu_anchor(self.menu_anchor);
     }
@@ -246,6 +264,25 @@ impl<A: App> Harness<A> {
 
     pub fn blur_hover(&mut self) {
         self.hover = None;
+    }
+
+    /// The pointer affordance over the selected item's center (§19) — what
+    /// the OS cursor becomes there in a real window. Derived from the tree,
+    /// so it is a component-level assertion (§15.3): the cursor is an OS
+    /// resource and never reaches a pixel, which is why snapshots can't
+    /// cover it and this verb exists.
+    pub fn cursor_over(&self, sel: Selector) -> Cursor {
+        let item =
+            self.find(&sel).unwrap_or_else(|| panic!("cursor_over: no item matches {sel:?}"));
+        let (x, y) = item.rect.center();
+        self.laid.cursor_at(x, y)
+    }
+
+    /// `cursor_over` at an explicit logical point — for affordances with no
+    /// queryable identity of their own (a `<Split>` divider gutter) and for
+    /// asserting empty space stays a plain arrow.
+    pub fn cursor_at(&self, x: f32, y: f32) -> Cursor {
+        self.laid.cursor_at(x, y)
     }
 
     /// M5 `<Split>`: set a split's fraction through its `onResize`
@@ -329,7 +366,7 @@ impl<A: App> Harness<A> {
     pub fn theme(mut self, name: &str) -> Self {
         self.theme = Theme::by_name(name)
             .unwrap_or_else(|| panic!("unknown theme '{name}' — built in: libra-dark, libra-light"));
-        self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
         self
     }
 
@@ -343,7 +380,7 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|e| panic!("feed_tape: {e}"));
         // Data changed: rebuild so paint sees it (widgets read at paint,
         // but a rebuild keeps laid geometry current too).
-        self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
         n
     }
 
@@ -370,7 +407,7 @@ impl<A: App> Harness<A> {
             }
         }
         self.pending.extend(effects);
-        self.laid = rebuild(&self.app, &self.ast, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
         // Deterministic layout inputs survive the rebuild (PLAN-SCROLL / M7).
         self.laid.apply_scroll(&self.scroll_state);
         self.laid.apply_menu_anchor(self.menu_anchor);
@@ -705,6 +742,7 @@ impl<'a> NodeRef<'a> {
 fn rebuild<A: App>(
     app: &A,
     ast: &Node,
+    registry: &libra_markup::ComponentRegistry,
     renderer: &Renderer,
     viewport: (u32, u32),
     theme: &Theme,
@@ -723,8 +761,9 @@ fn rebuild<A: App>(
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        binding_ctx: "State",
     };
-    let view = libra_interp::resolve(ast, &scope)
+    let view = libra_interp::resolve(ast, &scope, registry)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
     libra_components::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)
         .unwrap_or_else(|e| panic!("{e}"))
