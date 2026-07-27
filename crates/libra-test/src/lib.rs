@@ -14,7 +14,7 @@ use libra_markup::Node;
 use libra_raster::Renderer;
 use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_components::{InputFocus, LaidTree, Role, ScrollState};
+use libra_components::{Cursor, InputFocus, LaidTree, Role, ScrollState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -248,6 +248,25 @@ impl<A: App> Harness<A> {
 
     pub fn blur_hover(&mut self) {
         self.hover = None;
+    }
+
+    /// The pointer affordance over the selected item's center (§19) — what
+    /// the OS cursor becomes there in a real window. Derived from the tree,
+    /// so it is a component-level assertion (§15.3): the cursor is an OS
+    /// resource and never reaches a pixel, which is why snapshots can't
+    /// cover it and this verb exists.
+    pub fn cursor_over(&self, sel: Selector) -> Cursor {
+        let item =
+            self.find(&sel).unwrap_or_else(|| panic!("cursor_over: no item matches {sel:?}"));
+        let (x, y) = item.rect.center();
+        self.laid.cursor_at(x, y)
+    }
+
+    /// `cursor_over` at an explicit logical point — for affordances with no
+    /// queryable identity of their own (a `<Split>` divider gutter) and for
+    /// asserting empty space stays a plain arrow.
+    pub fn cursor_at(&self, x: f32, y: f32) -> Cursor {
+        self.laid.cursor_at(x, y)
     }
 
     /// M5 `<Split>`: set a split's fraction through its `onResize`
