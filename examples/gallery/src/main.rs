@@ -6,14 +6,14 @@
 //! `gallery::options()` (the single source) — this file only *adds* the
 //! optional `theme_file`.
 
-use gallery::{Gallery, VIEW};
+use gallery::Gallery;
 
 fn main() {
     let mut opts = gallery::options();
     if let Some(theme_path) = std::env::args().nth(1) {
         opts = opts.theme_file(theme_path);
     }
-    if let Err(e) = libra_platform::run_with::<Gallery>(VIEW, opts) {
+    if let Err(e) = libra_platform::run_with::<Gallery>(gallery::view_driver(), opts) {
         eprintln!("error: {e}");
         std::process::exit(1);
     }

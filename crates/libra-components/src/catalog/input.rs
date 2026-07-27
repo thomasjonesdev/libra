@@ -50,6 +50,45 @@ pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &st
     paint_input(cx.cmds, item.rect, value, placeholder, px, focused, cx.measurer, cx.theme);
 }
 
+/// Horizontal scroll offset so the caret and selection stay visible in a
+/// clipped single-line field. Computed at paint time from focus state —
+/// arrow keys and typing move the caret, which moves the viewport.
+fn input_scroll_x(
+    m: &dyn TextMeasurer,
+    value: &str,
+    px: f32,
+    inner_w: f32,
+    focus: Option<&InputFocus>,
+) -> f32 {
+    if inner_w <= 0.0 || value.is_empty() {
+        return 0.0;
+    }
+    let text_w = m.measure(value, px, FontStyle::Regular).0;
+    let max_scroll = (text_w - inner_w).max(0.0);
+    if max_scroll <= 0.0 {
+        return 0.0;
+    }
+    let Some(f) = focus else {
+        return 0.0;
+    };
+    let len = value.len();
+    let advance = |i: usize| m.measure(&value[..i.min(len)], px, FontStyle::Regular).0;
+    let mut scroll_x = 0.0f32;
+    let mut reveal = |x: f32| {
+        if x < scroll_x {
+            scroll_x = x;
+        } else if x > scroll_x + inner_w {
+            scroll_x = x - inner_w;
+        }
+    };
+    reveal(advance(f.caret.min(len)));
+    if !f.selection.is_empty() {
+        reveal(advance(f.selection.start.min(len)));
+        reveal(advance(f.selection.end.min(len)));
+    }
+    scroll_x.clamp(0.0, max_scroll)
+}
+
 /// Input painting (§10.1): field chrome, value or muted placeholder,
 /// and — when focused — a rounded accent focus ring (inset fill over an
 /// accent underlay — follows `radius_md`), the selection band, and a caret.
@@ -80,8 +119,18 @@ fn paint_input(
     } else {
         cmds.push(DrawCmd::RRect { rect, radius, color: theme.secondary });
     }
-    let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
+    let ty = rect.y + theme.btn_pad_y;
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+    let inner = Rect::new(
+        rect.x + theme.btn_pad_x,
+        rect.y + theme.btn_pad_y,
+        (rect.w - 2.0 * theme.btn_pad_x).max(0.0),
+        (rect.h - 2.0 * theme.btn_pad_y).max(0.0),
+    );
+    cmds.push(DrawCmd::PushClip { rect: inner });
+
+    let scroll_x = input_scroll_x(m, value, px, inner.w, focus);
+    let tx = rect.x + theme.btn_pad_x - scroll_x;
 
     if let Some(f) = focus {
         // Selection band behind the text.
@@ -123,5 +172,66 @@ fn paint_input(
             rect: Rect::new(cx, ty, 1.0, th),
             color: theme.text,
         });
+    }
+    cmds.push(DrawCmd::PopClip);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::InputFocus;
+
+    struct UnitWidth;
+
+    impl TextMeasurer for UnitWidth {
+        fn measure(&self, text: &str, _px: f32, _style: FontStyle) -> (f32, f32) {
+            (text.chars().count() as f32, 16.0)
+        }
+    }
+
+    #[test]
+    fn scroll_x_stays_zero_when_text_fits() {
+        let m = UnitWidth;
+        let focus = InputFocus {
+            test_id: "f".into(),
+            caret: 4,
+            selection: 4..4,
+        };
+        assert_eq!(input_scroll_x(&m, "abcd", 14.0, 8.0, Some(&focus)), 0.0);
+    }
+
+    #[test]
+    fn scroll_x_follows_caret_at_end() {
+        let m = UnitWidth;
+        let focus = InputFocus {
+            test_id: "f".into(),
+            caret: 12,
+            selection: 12..12,
+        };
+        // 12 chars, viewport 8 — caret at end reveals the tail.
+        assert_eq!(
+            input_scroll_x(&m, "abcdefghijkl", 14.0, 8.0, Some(&focus)),
+            4.0
+        );
+    }
+
+    #[test]
+    fn scroll_x_reveals_selection_edges() {
+        let m = UnitWidth;
+        let focus = InputFocus {
+            test_id: "f".into(),
+            caret: 10,
+            selection: 2..10,
+        };
+        assert_eq!(
+            input_scroll_x(&m, "abcdefghijkl", 14.0, 6.0, Some(&focus)),
+            4.0
+        );
+    }
+
+    #[test]
+    fn scroll_x_is_zero_without_focus() {
+        let m = UnitWidth;
+        assert_eq!(input_scroll_x(&m, "abcdefghijkl", 14.0, 4.0, None), 0.0);
     }
 }

@@ -2,8 +2,11 @@
 //!
 //! Architecture: ARCHITECTURE.md §27.1; plan PLAN-AWS-LOGIN.
 
+use std::path::PathBuf;
+
 use libra_core::CommandSpec;
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 
 pub const STORE_KEY: &str = "aws-sso-config";
 
@@ -13,13 +16,13 @@ pub const REFRESH_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
 pub const LOGIN_TIMEOUT_MS: u64 = 10 * 60 * 1000;
 pub const VERIFY_TIMEOUT_MS: u64 = 30_000;
 
+/// Org-wide SSO defaults — same for every user at this org (§27.1 onboarding).
 pub const DEFAULT_SESSION: &str = "aeos-govcloud";
 pub const DEFAULT_START_URL: &str =
-    "https://start.us-gov-west-1.us-gov-home.awsapps.com/directory/d-98671f268f#/?tab=accounts";
+    "https://start.us-gov-west-1.us-gov-home.awsapps.com/directory/d-98671f268f";
 pub const DEFAULT_SSO_REGION: &str = "us-gov-west-1";
 pub const DEFAULT_AWS_REGION: &str = "us-gov-west-1";
 pub const DEFAULT_SCOPES: &str = "sso:account:access";
-pub const DEFAULT_ACCOUNT_ID: &str = "359247995521";
 pub const DEFAULT_ROLE: &str = "Dev_Admin";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -49,10 +52,12 @@ pub enum ProcessStep {
     PreflightClaude,
     LoadConfig,
     ConfigWrite,
+    LoginSession,
+    ReadAccessToken,
+    ListAccounts,
     Login,
     Verify,
     Probe,
-    ReadConfigKeys,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -113,6 +118,9 @@ impl ConfigRow {
 }
 
 pub fn default_profile_name(role: &str, account: &str) -> String {
+    if role.is_empty() || account.is_empty() {
+        return String::new();
+    }
     format!("{role}-{account}")
 }
 
@@ -130,9 +138,12 @@ pub fn aws_configure_set(key: &str, value: &str) -> CommandSpec {
         .timeout_ms(10_000)
 }
 
-pub fn aws_configure_get(key: &str) -> CommandSpec {
+/// Write one field on an `[sso-session …]` block. AWS CLI ≥ 2.34.22 requires
+/// `--sso-session`; the legacy dotted key (`sso-session.NAME.field`) does not
+/// create new session sections reliably.
+pub fn aws_configure_sso_session_set(session: &str, key: &str, value: &str) -> CommandSpec {
     CommandSpec::new("aws")
-        .args(["configure", "get", key])
+        .args(["configure", "set", "--sso-session", session, key, value])
         .timeout_ms(10_000)
 }
 
@@ -140,6 +151,79 @@ pub fn aws_list_profiles() -> CommandSpec {
     CommandSpec::new("aws")
         .args(["configure", "list-profiles"])
         .timeout_ms(10_000)
+}
+
+pub fn aws_sso_login_session(session: &str) -> CommandSpec {
+    CommandSpec::new("aws")
+        .args(["sso", "login", "--sso-session", session])
+        .timeout_ms(LOGIN_TIMEOUT_MS)
+}
+
+/// AWS CLI SSO cache directory: `$HOME/.aws/sso/cache` (Unix) or
+/// `%USERPROFILE%\.aws\sso\cache` (Windows).
+fn aws_sso_cache_dir() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .map(|home| home.join(".aws").join("sso").join("cache"))
+}
+
+fn sha1_hex(input: &str) -> String {
+    format!("{:x}", Sha1::digest(input.as_bytes()))
+}
+
+/// Candidate SSO token cache files — session-name hash first (CLI ≥ 2.9), then
+/// start-url hash (legacy profile logins).
+pub fn sso_token_cache_paths(session: &str, start_url: &str) -> Vec<PathBuf> {
+    let Some(dir) = aws_sso_cache_dir() else {
+        return vec![];
+    };
+    let mut paths = vec![
+        dir.join(format!("{}.json", sha1_hex(session))),
+        dir.join(format!("{}.json", sha1_hex(start_url))),
+    ];
+    paths.dedup();
+    paths
+}
+
+/// Read a local file via subprocess — `cat` on Unix, `cmd /C type` on Windows.
+pub fn read_file_cmd(path: &str) -> CommandSpec {
+    #[cfg(windows)]
+    {
+        CommandSpec::new("cmd")
+            .args(["/C", "type", path])
+            .timeout_ms(10_000)
+    }
+    #[cfg(not(windows))]
+    {
+        CommandSpec::new("cat").arg(path).timeout_ms(10_000)
+    }
+}
+
+/// Pick an existing AWS profile for this role (e.g. `Dev_Admin-359247995521`).
+pub fn find_profile_for_role(role: &str, profiles: &[String]) -> Option<String> {
+    let prefix = format!("{role}-");
+    profiles
+        .iter()
+        .find(|p| p.starts_with(&prefix))
+        .cloned()
+        .or_else(|| profiles.iter().find(|p| p.as_str() == role).cloned())
+}
+
+/// Extract a 12-digit account id from a `{role}-{account}` profile name.
+pub fn account_id_from_profile(profile: &str) -> Option<String> {
+    let id = profile.rsplit_once('-')?.1;
+    if id.len() == 12 && id.chars().all(|c| c.is_ascii_digit()) {
+        Some(id.to_string())
+    } else {
+        None
+    }
+}
+
+pub fn aws_sso_list_accounts(access_token: &str, region: &str) -> CommandSpec {
+    CommandSpec::new("aws")
+        .args(["sso", "list-accounts", "--access-token", access_token, "--region", region])
+        .timeout_ms(VERIFY_TIMEOUT_MS)
 }
 
 pub fn aws_sso_login(profile: &str) -> CommandSpec {
@@ -154,20 +238,25 @@ pub fn aws_caller_identity(profile: &str) -> CommandSpec {
         .timeout_ms(VERIFY_TIMEOUT_MS)
 }
 
-pub fn config_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
+pub fn config_session_write_pairs(
+    _session_name: &str,
+    start_url: &str,
+    sso_region: &str,
+    registration_scopes: &str,
+) -> Vec<(String, String)> {
     vec![
-        (
-            format!("sso-session.{}.sso_start_url", cfg.session_name),
-            cfg.start_url.clone(),
-        ),
-        (
-            format!("sso-session.{}.sso_region", cfg.session_name),
-            cfg.sso_region.clone(),
-        ),
-        (
-            format!("sso-session.{}.sso_registration_scopes", cfg.session_name),
-            cfg.registration_scopes.clone(),
-        ),
+        ("sso_start_url".into(), start_url.into()),
+        ("sso_region".into(), sso_region.into()),
+        ("sso_registration_scopes".into(), registration_scopes.into()),
+    ]
+}
+
+fn config_session_dotted_key(session_name: &str, field: &str) -> String {
+    format!("sso-session.{session_name}.{field}")
+}
+
+pub fn config_profile_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
+    vec![
         (
             format!("profile.{}.sso_session", cfg.profile_name),
             cfg.session_name.clone(),
@@ -180,12 +269,25 @@ pub fn config_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
             format!("profile.{}.sso_role_name", cfg.profile_name),
             cfg.role_name.clone(),
         ),
-        (format!("profile.{}.region", cfg.profile_name), cfg.aws_region.clone()),
+        (
+            format!("profile.{}.region", cfg.profile_name),
+            cfg.aws_region.clone(),
+        ),
     ]
 }
 
-pub fn config_read_key_list(cfg: &SavedConfig) -> Vec<String> {
-    config_write_pairs(cfg).into_iter().map(|(k, _)| k).collect()
+pub fn config_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
+    let mut pairs = config_session_write_pairs(
+        &cfg.session_name,
+        &cfg.start_url,
+        &cfg.sso_region,
+        &cfg.registration_scopes,
+    )
+    .into_iter()
+    .map(|(field, value)| (config_session_dotted_key(&cfg.session_name, &field), value))
+    .collect::<Vec<_>>();
+    pairs.extend(config_profile_write_pairs(cfg));
+    pairs
 }
 
 pub fn parse_aws_major_version(stdout: &[u8]) -> Option<u32> {
@@ -197,6 +299,34 @@ pub fn parse_aws_major_version(stdout: &[u8]) -> Option<u32> {
         }
     }
     None
+}
+
+pub fn parse_sso_account_ids(stdout: &[u8]) -> Result<Vec<String>, String> {
+    let v: serde_json::Value =
+        serde_json::from_slice(stdout).map_err(|e| format!("could not parse SSO accounts: {e}"))?;
+    let list = v
+        .get("accountList")
+        .and_then(|a| a.as_array())
+        .ok_or_else(|| "SSO account list missing from AWS response".to_string())?;
+    let mut ids = Vec::new();
+    for entry in list {
+        if let Some(id) = entry.get("accountId").and_then(|v| v.as_str()) {
+            ids.push(id.to_string());
+        }
+    }
+    if ids.is_empty() {
+        return Err("no AWS accounts returned for this SSO session".into());
+    }
+    Ok(ids)
+}
+
+pub fn parse_sso_access_token(stdout: &[u8]) -> Result<String, String> {
+    let v: serde_json::Value = serde_json::from_slice(stdout)
+        .map_err(|_| "no cached SSO access token found — try signing in again".to_string())?;
+    v.get("accessToken")
+        .and_then(|t| t.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "SSO cache file is missing an access token".to_string())
 }
 
 pub fn parse_caller_identity(stdout: &[u8]) -> Option<(String, String)> {
@@ -242,29 +372,30 @@ pub fn format_next_refresh(t_ms: f64, last_login_t_ms: f64, auto_refresh: bool) 
 }
 
 pub fn validate_onboarding(
-    account_id: &str,
+    session_name: &str,
     start_url: &str,
-    profile_name: &str,
-    existing_profiles: &[String],
+    role_name: &str,
 ) -> Result<(), String> {
-    if account_id.len() != 12 || !account_id.chars().all(|c| c.is_ascii_digit()) {
-        return Err("account id must be 12 digits".into());
+    if session_name.trim().is_empty() {
+        return Err("SSO session name is required".into());
     }
     if !start_url.starts_with("https://") {
         return Err("start URL must begin with https://".into());
     }
-    if profile_name.trim().is_empty() {
-        return Err("profile name is required".into());
-    }
-    if existing_profiles.iter().any(|p| p == profile_name) {
-        return Err(format!("profile '{profile_name}' already exists — choose another name"));
+    if role_name.trim().is_empty() {
+        return Err("role name is required".into());
     }
     Ok(())
 }
 
+/// AWS stores `sso_start_url` without a `#` fragment — strip it before writing config.
+pub fn strip_url_fragment(start_url: &str) -> String {
+    start_url.split('#').next().unwrap_or(start_url).to_string()
+}
+
 pub fn url_fragment_warning(start_url: &str) -> String {
     if start_url.contains('#') {
-        "This URL contains a # fragment. AWS usually stores sso_start_url without it — you can strip it if login fails.".into()
+        "This URL contains a # fragment. It will be removed automatically when you save.".into()
     } else {
         String::new()
     }

@@ -8,34 +8,75 @@
       <Text size="sm" muted testId="claude-status">{claude_status_line}</Text>
       <if test={aws_missing}>
         <Alert tone="warning" title="AWS CLI v2 required" testId="aws-missing">
-          Install AWS CLI v2 from Company Portal or the AWS install docs, then restart this app.
+          Install AWS CLI v2 from Company Portal or the AWS install docs, then use Check again.
         </Alert>
+      </if>
+      <if test={preflight_busy}>
+        <else>
+          <Button variant="secondary" onPress={retryPreflight} testId="retry-preflight">Check again</Button>
+        </else>
       </if>
     </Column>
   </if>
 
   <if test={is_onboarding}>
-    <Column gap={8}>
-      <Text bold>AWS SSO setup</Text>
-      <Text size="sm" muted>Org defaults are pre-filled. Adjust if needed, then save.</Text>
-      <Input value={session_name} placeholder="session name" onChange={sessionNameChanged} testId="session-name" />
-      <Input value={start_url} placeholder="sso start url" onChange={startUrlChanged} testId="start-url" />
-      <if test={has_url_warning}>
-        <Alert tone="warning" title="URL fragment" testId="url-warning">{url_fragment_warning}</Alert>
-      </if>
-      <Input value={sso_region} placeholder="sso region" onChange={ssoRegionChanged} testId="sso-region" />
-      <Input value={aws_region} placeholder="aws region" onChange={awsRegionChanged} testId="aws-region" />
-      <Input value={registration_scopes} placeholder="registration scopes" onChange={registrationScopesChanged} testId="scopes" />
-      <Input value={account_id} placeholder="account id (12 digits)" onChange={accountIdChanged} testId="account-id" />
-      <Input value={role_name} placeholder="role name" onChange={roleNameChanged} testId="role-name" />
-      <Input value={profile_name} placeholder="profile name" onChange={profileNameChanged} testId="profile-name" />
+    <Column gap={12} grow>
+      <Column gap={4}>
+        <Heading level={2}>AWS SSO setup</Heading>
+        <Text size="sm" muted wrap>Org SSO defaults are pre-filled. Enter your role — profile name and account ID are set automatically after sign-in.</Text>
+      </Column>
+
+      <Scroll testId="onboarding-scroll">
+        <Card gap={16}>
+          <Column gap={10}>
+            <Text size="sm" bold muted>Identity Center</Text>
+            <Column gap={4}>
+              <Text size="sm" muted>SSO session name</Text>
+              <Input value={session_name} placeholder="sso session name" onChange={sessionNameChanged} testId="session-name" />
+            </Column>
+            <Column gap={4}>
+              <Text size="sm" muted>SSO start URL</Text>
+              <Input value={start_url} placeholder="https://start.example.awsapps.com/…" onChange={startUrlChanged} testId="start-url" />
+              <if test={has_url_warning}>
+                <Alert tone="warning" title="URL fragment" testId="url-warning">{url_fragment_warning}</Alert>
+              </if>
+            </Column>
+            <Row gap={10}>
+              <Column gap={4} grow>
+                <Text size="sm" muted>SSO region</Text>
+                <Input value={sso_region} placeholder="sso region" onChange={ssoRegionChanged} testId="sso-region" />
+              </Column>
+              <Column gap={4} grow>
+                <Text size="sm" muted>AWS region</Text>
+                <Input value={aws_region} placeholder="aws region" onChange={awsRegionChanged} testId="aws-region" />
+              </Column>
+            </Row>
+            <Column gap={4}>
+              <Text size="sm" muted>Registration scopes</Text>
+              <Input value={registration_scopes} placeholder="registration scopes" onChange={registrationScopesChanged} testId="scopes" />
+            </Column>
+          </Column>
+
+          <Separator />
+
+          <Column gap={10}>
+            <Text size="sm" bold muted>Role</Text>
+            <Column gap={4}>
+              <Text size="sm" muted>Role name</Text>
+              <Input value={role_name} placeholder="role name" onChange={roleNameChanged} testId="role-name" />
+            </Column>
+          </Column>
+        </Card>
+      </Scroll>
+
       <if test={has_onboarding_error}>
         <Alert tone="danger" title="Setup error" testId="onboarding-error">{onboarding_error}</Alert>
       </if>
+
       <Row gap={8}>
         <Button variant="ghost" onPress={copyConfigureSso} testId="copy-sso-cmd">Copy aws configure sso</Button>
         <Spacer />
-        <Button variant="primary" onPress={submitOnboarding} testId="save-setup">Save &amp; sign in</Button>
+        <Button variant="primary" onPress={submitOnboarding} testId="save-setup">Save & sign in</Button>
       </Row>
     </Column>
   </if>
@@ -52,11 +93,11 @@
 
       <if test={has_error}>
         <Alert tone="danger" title="Login failed" testId="error">{error_message}</Alert>
-        <Text testId="error-detail">{error_message}</Text>
+        <Text testId="error-detail" wrap>{error_message}</Text>
       </if>
 
       <Card>
-        <Text size="sm" muted testId="identity">{identity_line}</Text>
+        <Text size="sm" muted testId="identity" wrap>{identity_line}</Text>
         <Text size="sm" muted testId="verified">{verified_ago}</Text>
         <Text size="sm" muted testId="next">{next_refresh}</Text>
       </Card>
@@ -68,29 +109,30 @@
             <Button variant="primary" onPress={authenticate} testId="authenticate">Authenticate</Button>
           </else>
         </if>
-        <Spacer />
-        <Button variant="ghost" onPress={toggleConfig} testId="show-config">Show config</Button>
       </Row>
 
-      <if test={show_config}>
-        <Card>
-          <for each={config_rows} as="c" key={c.key}>
-            <Row gap={8}>
-              <Text size="sm" muted grow>{c.key}</Text>
-              <Text size="sm">{c.value}</Text>
-            </Row>
-          </for>
-          <Row gap={8} cross="center">
-            <Switch checked={auto_refresh} onToggle={toggleAutoRefresh} testId="auto-refresh" />
-            <Text size="sm" muted>Refresh automatically every 6 hours</Text>
-          </Row>
-          <Row gap={8}>
-            <Button variant="ghost" onPress={copyExportLine} testId="copy-export">Copy AWS_PROFILE line</Button>
-            <Spacer />
-            <Button variant="ghost" onPress={restartOnboarding} testId="reconfigure">Re-run setup</Button>
-          </Row>
-        </Card>
-      </if>
+      <Card gap={10}>
+        <Scroll height={220} testId="config-scroll">
+          <Column gap={10}>
+            <for each={config_rows} as="c" key={c.key}>
+              <Column gap={2}>
+                <Text size="sm" muted wrap>{c.key}</Text>
+                <Text size="sm" wrap>{c.value}</Text>
+              </Column>
+            </for>
+          </Column>
+        </Scroll>
+        <Separator />
+        <Row gap={8} cross="center">
+          <Switch checked={auto_refresh} onToggle={toggleAutoRefresh} testId="auto-refresh" />
+          <Text size="sm" muted>Refresh automatically every 6 hours</Text>
+        </Row>
+        <Row gap={8}>
+          <Button variant="ghost" onPress={copyExportLine} testId="copy-export">Copy AWS_PROFILE line</Button>
+          <Spacer />
+          <Button variant="ghost" onPress={restartOnboarding} testId="reconfigure">Re-run setup</Button>
+        </Row>
+      </Card>
     </Column>
   </if>
 </Column>

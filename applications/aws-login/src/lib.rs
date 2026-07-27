@@ -27,5 +27,5 @@ pub fn app_options() -> libra_platform::Options {
 }
 
 pub fn run_app() -> Result<(), Box<dyn std::error::Error>> {
-    libra_platform::run_rehydrating::<AwsLogin>(VIEW, app_options())
+    libra_platform::run_rehydrating::<AwsLogin>(view_driver(), app_options())
 }

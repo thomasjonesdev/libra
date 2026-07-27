@@ -8,6 +8,9 @@ use libra_draw::{Color, DrawCmd, FontStyle};
 use taffy::prelude::*;
 
 /// Word-wrap `text` to at most `max_w` advance width (space-separated words).
+/// A single word wider than `max_w` on its own (a URL, an ARN — no internal
+/// spaces to break on) is hard-broken at the character level so it clips
+/// within `max_w` instead of overflowing it.
 pub(crate) fn wrap_lines(
     text: &str,
     max_w: f32,
@@ -27,12 +30,19 @@ pub(crate) fn wrap_lines(
             format!("{current} {word}")
         };
         let (w, _) = m.measure(&trial, px, style);
-        if w <= max_w || current.is_empty() {
+        if w <= max_w {
             current = trial;
-        } else {
-            lines.push(current);
-            current = word.to_string();
+            continue;
         }
+        if !current.is_empty() {
+            lines.push(std::mem::take(&mut current));
+        }
+        let (word_w, _) = m.measure(word, px, style);
+        current = if word_w <= max_w {
+            word.to_string()
+        } else {
+            break_long_word(word, max_w, px, style, m, &mut lines)
+        };
     }
     if !current.is_empty() {
         lines.push(current);
@@ -41,6 +51,30 @@ pub(crate) fn wrap_lines(
         lines.push(String::new());
     }
     lines
+}
+
+/// Hard-break a single overlong token at the character level: push every
+/// `max_w`-filling prefix straight into `lines`, and return the leftover
+/// tail as the new accumulating line (so trailing words can still join it).
+fn break_long_word(
+    word: &str,
+    max_w: f32,
+    px: f32,
+    style: FontStyle,
+    m: &dyn TextMeasurer,
+    lines: &mut Vec<String>,
+) -> String {
+    let mut chunk = String::new();
+    for ch in word.chars() {
+        let mut trial = chunk.clone();
+        trial.push(ch);
+        let (w, _) = m.measure(&trial, px, style);
+        if w > max_w && !chunk.is_empty() {
+            lines.push(std::mem::take(&mut chunk));
+        }
+        chunk.push(ch);
+    }
+    chunk
 }
 
 pub(crate) fn wrapped_height(

@@ -176,7 +176,7 @@ pub enum ViewNode {
     /// muted body from the element's text content.
     Alert { tone: Tone, title: String, body: String, test_id: Option<String> },
     /// `<Card>…</Card>` (§7.1): the bordered, elevated surface
-    /// container — `surface_raised` + hairline frame. Ordinary flex
+    /// container — elevated `surface_raised` fill. Ordinary flex
     /// column inside (gap/padding attrs like Column).
     Card { style: BoxStyle, children: Vec<ViewNode> },
     /// `<Panel>…</Panel>` (§7.1): the plain surface container.
@@ -427,7 +427,7 @@ pub enum ItemKind {
     /// `<Alert>` — tinted callout painting its own title/body.
     Alert { tone: Tone, title: String, body: String, px_md: f32, px_sm: f32 },
     /// `<Card>`/`<Panel>` — a surface container behind its children
-    /// (`raised` adds the hairline frame + elevated fill).
+    /// (`raised` adds the elevated fill; hairline framing is Dialog-only).
     Surface { raised: bool },
     /// `<Skeleton>` — static placeholder block.
     Skeleton,

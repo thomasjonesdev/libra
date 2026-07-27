@@ -2,12 +2,16 @@
 //!
 //! Runs a Libra app crate in debug mode via `cargo run`. View hot reload
 //! (mtime watch + interpreter engine) is already wired by `libra::app!`
-//! and `libra-platform::Options::watch` in debug builds. Inspector,
-//! automation server, and managed `libra.toml` manifests are still open
-//! (§16, §18.4, §18.5).
+//! and `libra-platform::Options::watch` in debug builds. When `libra.toml`
+//! declares `[package].icon`, the path is forwarded to the app via
+//! `libra_platform::ICON_PATH_ENV` so the window shows the same icon as
+//! packaged builds. Inspector, automation server, and fuller manifest
+//! integration are still open (§16, §18.4, §18.5).
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+
+use crate::manifest::try_icon_path;
 
 /// Split `libra dev [path] [-- cargo-args…]`.
 pub fn parse_dev_args(args: &[String]) -> (PathBuf, Vec<String>) {
@@ -100,7 +104,7 @@ fn validate_libra_app(manifest: &str, package_dir: &Path) -> Option<String> {
     None
 }
 
-fn package_name(manifest: &str) -> Option<String> {
+pub fn package_name(manifest: &str) -> Option<String> {
     for line in manifest.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("name = ") {
@@ -130,6 +134,7 @@ pub fn dev(args: &[String]) -> ExitCode {
         }
     };
     let name = package_name(&manifest_source).unwrap_or_else(|| "app".into());
+    let app_dir = manifest.parent().unwrap().to_path_buf();
 
     eprintln!(
         "libra dev: running {name} (debug, view hot reload via interpreter — §18.2)"
@@ -147,6 +152,11 @@ pub fn dev(args: &[String]) -> ExitCode {
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
+
+    if let Some(icon) = try_icon_path(&app_dir) {
+        eprintln!("  icon: {}", icon.display());
+        cmd.env("LIBRA_ICON_PATH", icon);
+    }
 
     match cmd.status() {
         Ok(status) => match status.code() {

@@ -59,6 +59,10 @@ cargo run -p dashboard --release -- bench   # §22 budget check (headless, deter
 cargo run -p notes                     # Phase 3: text entry (Input + editing core + keyboard)
 cargo run -p todos                     # §6.2 item fields: per-row toggle/delete via t.id / t.text
 cargo run -p libra-cli -- check .      # parse/validate all .lx markup (microseconds)
+cargo install --path cli/libra --force # install libra CLI (check, dev, build, package)
+libra dev -p counter                   # debug run with view hot reload
+libra build -p aws-login               # release binary (codegen views + LTO)
+libra package -p aws-login             # macOS .app + DMG from libra.toml (§20)
 cargo test -p fetcher --test integration    # one test *kind* (unit/components/integration/snapshots)
 cargo test -p libra-markup             # one crate's unit tests
 LIBRA_VALIDATE=1 cargo test -p counter  # validate (re-record) snapshots after intentional visual changes

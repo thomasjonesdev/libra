@@ -23,6 +23,7 @@ libra-effects = { path = "crates/libra-effects" }
 libra-data = { path = "crates/libra-data" }
 libra-text = { path = "crates/libra-text" }
 libra-codegen = { path = "crates/libra-codegen" }
+libra-build = { path = "crates/libra-build" }
 libra-query = { path = "crates/libra-query" }
 # Determinism-critical rendering stack — pinned exactly (§ Phase 0
 # shortcuts): bumping any of these can change rendered bytes and requires
@@ -36,6 +37,7 @@ fontdue = "=0.8.0"
 # policy (notably serde, previously declared in ~9 places).
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
 tempfile = "3"
 directories = "5"
 ureq = "2"
@@ -46,9 +48,11 @@ softbuffer = "0.4"
 arboard = { version = "3", default-features = false }
 accesskit = "0.24"
 accesskit_winit = "0.33"
+png = "0.17"
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
+sha1 = "0.10"
 
 # Paint path stays fast in plain `cargo run` / `libra dev` (§22): pixel
 # loops and the pinned raster stack need LLVM opts even when the rest of
@@ -72,3 +76,10 @@ opt-level = 2
 
 [profile.dev.package.libra-platform]
 opt-level = 2
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(libra_has_view_codegen)"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

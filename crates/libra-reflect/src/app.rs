@@ -172,6 +172,31 @@ pub fn app(input: TokenStream) -> TokenStream {
     quote! {
         pub const VIEW: &str = include_str!(#view_lit);
 
+        #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
+        #[allow(clippy::all)]
+        mod __libra_view_codegen {
+            include!(concat!(env!("OUT_DIR"), "/view.rs"));
+        }
+
+        #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
+        fn __libra_build_view(state: &#state_ty) -> ::libra_components::ViewNode {
+            __libra_view_codegen::build_view(state)
+        }
+
+        /// View source for the windowed shell (PLAN-PACKAGE P0): interpreter
+        /// in debug; codegen in release when the crate's `build.rs` ran
+        /// [`libra_build::compile_app`].
+        pub fn view_driver() -> ::libra_platform::ViewDriver<#state_ty> {
+            #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
+            {
+                ::libra_platform::ViewDriver::with_codegen(VIEW, __libra_build_view)
+            }
+            #[cfg(not(all(not(debug_assertions), libra_has_view_codegen)))]
+            {
+                ::libra_platform::ViewDriver::new(VIEW)
+            }
+        }
+
         impl ::libra_core::App for #state_ty {
             type Msg = Action;
 
@@ -224,7 +249,7 @@ pub fn app(input: TokenStream) -> TokenStream {
         /// to customize the options, in which case it builds on [`options`]
         /// and calls `::libra_platform::run_with` itself.
         pub fn run() -> ::std::result::Result<(), ::std::boxed::Box<dyn ::std::error::Error>> {
-            ::libra_platform::run_with::<#state_ty>(VIEW, options())
+            ::libra_platform::run_with::<#state_ty>(view_driver(), options())
         }
     }
     .into()

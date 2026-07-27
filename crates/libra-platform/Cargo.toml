@@ -23,3 +23,4 @@ directories.workspace = true
 arboard.workspace = true
 accesskit.workspace = true
 accesskit_winit.workspace = true
+png.workspace = true

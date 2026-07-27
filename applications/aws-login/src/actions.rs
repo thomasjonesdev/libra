@@ -5,10 +5,13 @@
 use libra_core::{ClipboardResult, Effect, Instant, KvResult, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    aws_caller_identity, aws_configure_get, aws_configure_set, aws_list_profiles, aws_sso_login,
-    claude_version_cmd, config_read_key_list, config_write_pairs, configure_sso_command,
-    export_profile_line, format_duration_ago, format_next_refresh, parse_aws_major_version,
-    parse_caller_identity, url_fragment_warning, validate_onboarding, AppScreen, AuthStatus,
+    aws_caller_identity, aws_configure_set, aws_configure_sso_session_set, aws_list_profiles, aws_sso_list_accounts,
+    aws_sso_login, aws_sso_login_session, aws_version_cmd, claude_version_cmd,
+    account_id_from_profile, config_profile_write_pairs, config_session_write_pairs,
+    config_write_pairs, configure_sso_command, export_profile_line, find_profile_for_role,
+    format_duration_ago, format_next_refresh, parse_aws_major_version, parse_caller_identity,
+    parse_sso_access_token, parse_sso_account_ids, read_file_cmd, sso_token_cache_paths,
+    strip_url_fragment, url_fragment_warning, validate_onboarding, AppScreen, AuthStatus,
     ConfigRow, ProcessStep, SavedConfig, PROBE_INTERVAL_MS, REFRESH_INTERVAL_MS, STORE_KEY,
 };
 use crate::state::AwsLogin;
@@ -60,23 +63,14 @@ impl AwsLogin {
 
     pub fn submit_onboarding(&mut self) -> Vec<Effect<Action>> {
         self.onboarding_error.clear();
-        self.profile_name = self.profile_name.trim().to_string();
-        if self.profile_name.is_empty() {
-            self.profile_name = crate::model::default_profile_name(&self.role_name, &self.account_id);
-        }
+        self.session_name = self.session_name.trim().to_string();
+        self.start_url = strip_url_fragment(&self.start_url);
         self.url_fragment_warning = url_fragment_warning(&self.start_url);
+        self.sync_profile_name();
+        self.known_profiles.clear();
         self.list_profiles_for_validation = true;
         self.process_step = ProcessStep::Idle;
         vec![self.spawn_process(aws_list_profiles())]
-    }
-
-    pub fn toggle_config(&mut self) -> Vec<Effect<Action>> {
-        self.show_config = !self.show_config;
-        if !self.show_config {
-            return vec![];
-        }
-        self.refresh_config_rows_from_saved();
-        self.start_config_read()
     }
 
     pub fn toggle_auto_refresh(&mut self) -> Option<Effect<Action>> {
@@ -86,6 +80,7 @@ impl AwsLogin {
             let mut updated = saved;
             updated.auto_refresh = self.auto_refresh;
             self.saved = Some(updated.clone());
+            self.populate_config_rows_from_saved();
             let bytes = serde_json::to_vec(&updated).unwrap_or_default();
             return Some(Effect::kv_set(STORE_KEY, bytes));
         }
@@ -104,18 +99,28 @@ impl AwsLogin {
         self.screen = AppScreen::Onboarding;
         self.auth = AuthStatus::Unknown;
         self.configured = false;
-        self.show_config = false;
+        self.config_rows.clear();
         self.error_message.clear();
         self.onboarding_error.clear();
+        self.known_profiles.clear();
         self.apply_form_defaults();
     }
 
-    pub fn session_name_changed(&mut self, text: String) {
-        self.session_name = text;
+    pub fn retry_preflight(&mut self) -> Effect<Action> {
+        self.screen = AppScreen::Preflight;
+        self.aws_ok = false;
+        self.aws_status_line = "Checking for AWS CLI v2…".into();
+        self.claude_status_line = "Claude CLI: not checked yet".into();
+        self.process_step = ProcessStep::PreflightAws;
+        self.spawn_process(aws_version_cmd())
     }
+
     pub fn start_url_changed(&mut self, text: String) {
         self.start_url = text;
         self.url_fragment_warning = url_fragment_warning(&self.start_url);
+    }
+    pub fn session_name_changed(&mut self, text: String) {
+        self.session_name = text;
     }
     pub fn sso_region_changed(&mut self, text: String) {
         self.sso_region = text;
@@ -126,16 +131,9 @@ impl AwsLogin {
     pub fn registration_scopes_changed(&mut self, text: String) {
         self.registration_scopes = text;
     }
-    pub fn account_id_changed(&mut self, text: String) {
-        self.account_id = text;
-        self.profile_name = crate::model::default_profile_name(&self.role_name, &self.account_id);
-    }
     pub fn role_name_changed(&mut self, text: String) {
         self.role_name = text;
-        self.profile_name = crate::model::default_profile_name(&self.role_name, &self.account_id);
-    }
-    pub fn profile_name_changed(&mut self, text: String) {
-        self.profile_name = text;
+        self.sync_profile_name();
     }
 
     pub fn process_done(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
@@ -151,10 +149,12 @@ impl AwsLogin {
             ProcessStep::PreflightClaude => self.handle_preflight_claude(result),
             ProcessStep::LoadConfig => vec![],
             ProcessStep::ConfigWrite => self.handle_config_write(result),
+            ProcessStep::LoginSession => self.handle_login_session(result),
+            ProcessStep::ReadAccessToken => self.handle_read_access_token(result),
+            ProcessStep::ListAccounts => self.handle_list_accounts(result),
             ProcessStep::Login => self.handle_login(result),
             ProcessStep::Verify => self.handle_verify(result),
             ProcessStep::Probe => self.handle_probe(result),
-            ProcessStep::ReadConfigKeys => self.handle_read_config_key(result),
             ProcessStep::Idle if self.list_profiles_for_validation => {
                 self.handle_list_profiles_for_validation(result)
             }
@@ -209,6 +209,8 @@ impl AwsLogin {
             AuthStatus::LoggingIn | AuthStatus::Verifying
         ) || self.active_process.is_some();
         self.aws_missing = self.screen == AppScreen::Preflight && !self.aws_ok;
+        self.preflight_busy =
+            self.screen == AppScreen::Preflight && self.active_process.is_some();
         self.has_url_warning = !self.url_fragment_warning.is_empty();
         self.has_onboarding_error = !self.onboarding_error.is_empty();
         self.refresh_time_labels();
@@ -216,6 +218,19 @@ impl AwsLogin {
 }
 
 impl AwsLogin {
+    fn sync_profile_name(&mut self) {
+        let role = self.role_name.trim();
+        if role.is_empty() {
+            self.profile_name.clear();
+            return;
+        }
+        self.profile_name = if self.account_id.is_empty() {
+            role.to_string()
+        } else {
+            crate::model::default_profile_name(role, &self.account_id)
+        };
+    }
+
     fn profile_name(&self) -> String {
         if let Some(saved) = &self.saved {
             return saved.profile_name.clone();
@@ -243,6 +258,7 @@ impl AwsLogin {
         self.profile_name = cfg.profile_name.clone();
         self.auto_refresh = cfg.auto_refresh;
         self.saved = Some(cfg);
+        self.populate_config_rows_from_saved();
     }
 
     fn refresh_time_labels(&mut self) {
@@ -251,7 +267,7 @@ impl AwsLogin {
             format_next_refresh(self.now_t_ms, self.last_login_t_ms, self.auto_refresh);
     }
 
-    fn refresh_config_rows_from_saved(&mut self) {
+    fn populate_config_rows_from_saved(&mut self) {
         let mut rows = vec![];
         if let Some(cfg) = &self.saved {
             rows.push(ConfigRow::new("session", cfg.session_name.clone()));
@@ -264,19 +280,11 @@ impl AwsLogin {
                 "auto refresh",
                 if cfg.auto_refresh { "on" } else { "off" },
             ));
-            self.config_read_queue = config_read_key_list(cfg);
-            self.config_read_index = 0;
-            self.process_step = ProcessStep::ReadConfigKeys;
+            for (key, value) in config_write_pairs(cfg) {
+                rows.push(ConfigRow::new(key, value));
+            }
         }
         self.config_rows = rows;
-    }
-
-    fn start_config_read(&mut self) -> Vec<Effect<Action>> {
-        if self.config_read_index < self.config_read_queue.len() {
-            let key = self.config_read_queue[self.config_read_index].clone();
-            return vec![self.spawn_process(aws_configure_get(&key))];
-        }
-        vec![]
     }
 
     fn handle_preflight_aws(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
@@ -334,15 +342,14 @@ impl AwsLogin {
         } else {
             vec![]
         };
-        if let Err(msg) = validate_onboarding(
-            &self.account_id,
-            &self.start_url,
-            &self.profile_name,
-            &profiles,
-        ) {
+        self.known_profiles = profiles;
+        if let Err(msg) =
+            validate_onboarding(&self.session_name, &self.start_url, &self.role_name)
+        {
             self.onboarding_error = msg;
             return vec![];
         }
+        self.sync_profile_name();
         let cfg = SavedConfig::from_form(
             &self.session_name,
             &self.start_url,
@@ -354,16 +361,26 @@ impl AwsLogin {
             &self.profile_name,
             self.auto_refresh,
         );
-        self.saved = Some(cfg.clone());
-        self.config_writes = config_write_pairs(&cfg);
-        self.process_step = ProcessStep::ConfigWrite;
+        self.saved = Some(cfg);
         self.pending_login_after_config = true;
+
+        self.config_writes_are_profile = false;
+        self.config_writes = config_session_write_pairs(
+            &self.session_name,
+            &self.start_url,
+            &self.sso_region,
+            &self.registration_scopes,
+        );
+        self.process_step = ProcessStep::ConfigWrite;
         self.run_next_config_write()
     }
 
     fn handle_config_write(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
         if !exit_ok(&result) {
-            self.onboarding_error = stderr_message(&result, "aws configure set failed");
+            self.onboarding_error = stderr_message(
+                &result,
+                "aws configure set failed (SSO sessions need AWS CLI v2.34.22 or newer)",
+            );
             self.process_step = ProcessStep::Idle;
             self.pending_login_after_config = false;
             return vec![];
@@ -375,11 +392,131 @@ impl AwsLogin {
         if let Some((key, value)) = self.config_writes.first().cloned() {
             self.config_writes.remove(0);
             self.process_step = ProcessStep::ConfigWrite;
-            return vec![self.spawn_process(aws_configure_set(&key, &value))];
+            let command = if self.config_writes_are_profile {
+                aws_configure_set(&key, &value)
+            } else {
+                aws_configure_sso_session_set(&self.session_name, &key, &value)
+            };
+            return vec![self.spawn_process(command)];
+        }
+        if !self.config_writes_are_profile {
+            self.process_step = ProcessStep::LoginSession;
+            return vec![self.spawn_process(aws_sso_login_session(&self.session_name))];
         }
         self.process_step = ProcessStep::Idle;
         let bytes = serde_json::to_vec(self.saved.as_ref().unwrap()).unwrap_or_default();
         vec![Effect::kv_set_acked(STORE_KEY, bytes, Action::ConfigSaved)]
+    }
+
+    fn handle_login_session(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
+        if !exit_ok(&result) {
+            self.onboarding_error = stderr_message(&result, "SSO session login failed");
+            self.process_step = ProcessStep::Idle;
+            self.pending_login_after_config = false;
+            return vec![];
+        }
+        // Re-setup with an existing profile (refresh_aws_sso.sh parity): derive the
+        // account from the profile name instead of listing accounts via OIDC token.
+        if let Some(profile) = find_profile_for_role(&self.role_name, &self.known_profiles) {
+            if let Some(account_id) = account_id_from_profile(&profile) {
+                self.profile_name = profile;
+                return self.finish_onboarding_with_account(account_id);
+            }
+        }
+        self.process_step = ProcessStep::ReadAccessToken;
+        self.begin_read_access_token()
+    }
+
+    fn begin_read_access_token(&mut self) -> Vec<Effect<Action>> {
+        self.token_cache_paths = sso_token_cache_paths(&self.session_name, &self.start_url)
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        self.token_cache_index = 0;
+        if self.token_cache_paths.is_empty() {
+            self.onboarding_error = "could not locate AWS config directory".into();
+            self.process_step = ProcessStep::Idle;
+            self.pending_login_after_config = false;
+            return vec![];
+        }
+        vec![self.spawn_process(read_file_cmd(&self.token_cache_paths[0]))]
+    }
+
+    fn handle_read_access_token(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
+        if !exit_ok(&result) {
+            self.token_cache_index += 1;
+            if self.token_cache_index < self.token_cache_paths.len() {
+                let path = self.token_cache_paths[self.token_cache_index].clone();
+                return vec![self.spawn_process(read_file_cmd(&path))];
+            }
+            self.onboarding_error =
+                stderr_message(&result, "could not read cached SSO access token");
+            self.process_step = ProcessStep::Idle;
+            self.pending_login_after_config = false;
+            return vec![];
+        }
+        let token = match parse_sso_access_token(&result.stdout) {
+            Ok(t) => t,
+            Err(msg) => {
+                self.onboarding_error = msg;
+                self.process_step = ProcessStep::Idle;
+                self.pending_login_after_config = false;
+                return vec![];
+            }
+        };
+        self.process_step = ProcessStep::ListAccounts;
+        vec![self.spawn_process(aws_sso_list_accounts(&token, &self.sso_region))]
+    }
+
+    fn handle_list_accounts(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
+        if !exit_ok(&result) {
+            self.onboarding_error = stderr_message(&result, "could not list AWS accounts");
+            self.process_step = ProcessStep::Idle;
+            self.pending_login_after_config = false;
+            return vec![];
+        }
+        let accounts = match parse_sso_account_ids(&result.stdout) {
+            Ok(ids) => ids,
+            Err(msg) => {
+                self.onboarding_error = msg;
+                self.process_step = ProcessStep::Idle;
+                self.pending_login_after_config = false;
+                return vec![];
+            }
+        };
+        self.finish_onboarding_with_account(accounts[0].clone())
+    }
+
+    fn finish_onboarding_with_account(&mut self, account_id: String) -> Vec<Effect<Action>> {
+        self.account_id = account_id.clone();
+        self.sync_profile_name();
+        let cfg = SavedConfig::from_form(
+            &self.session_name,
+            &self.start_url,
+            &self.sso_region,
+            &self.aws_region,
+            &self.registration_scopes,
+            &account_id,
+            &self.role_name,
+            &self.profile_name,
+            self.auto_refresh,
+        );
+        self.saved = Some(cfg.clone());
+
+        // Match refresh_aws_sso.sh ensure_sso_configured: an existing profile is
+        // reused as-is — no aws configure set pass, just save app prefs and sign in.
+        if self.known_profiles.iter().any(|p| p == &self.profile_name) {
+            self.config_writes.clear();
+            self.config_writes_are_profile = false;
+            self.process_step = ProcessStep::Idle;
+            let bytes = serde_json::to_vec(self.saved.as_ref().unwrap()).unwrap_or_default();
+            return vec![Effect::kv_set_acked(STORE_KEY, bytes, Action::ConfigSaved)];
+        }
+
+        self.config_writes_are_profile = true;
+        self.config_writes = config_profile_write_pairs(&cfg);
+        self.process_step = ProcessStep::ConfigWrite;
+        self.run_next_config_write()
     }
 
     fn handle_login(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
@@ -404,6 +541,11 @@ impl AwsLogin {
         if let Some((account, arn)) = parse_caller_identity(&result.stdout) {
             self.auth = AuthStatus::Active;
             self.identity_line = format!("{account} · {arn}");
+            self.account_id = account.clone();
+            if let Some(saved) = self.saved.as_mut() {
+                saved.account_id = account;
+            }
+            self.populate_config_rows_from_saved();
             self.last_login_t_ms = self.now_t_ms;
             self.last_verified_t_ms = self.now_t_ms;
             self.last_probe_t_ms = self.now_t_ms;
@@ -422,6 +564,11 @@ impl AwsLogin {
             if let Some((account, arn)) = parse_caller_identity(&result.stdout) {
                 self.auth = AuthStatus::Active;
                 self.identity_line = format!("{account} · {arn}");
+                self.account_id = account.clone();
+                if let Some(saved) = self.saved.as_mut() {
+                    saved.account_id = account;
+                }
+                self.populate_config_rows_from_saved();
                 self.last_verified_t_ms = self.now_t_ms;
                 self.error_message.clear();
                 return vec![];
@@ -433,25 +580,6 @@ impl AwsLogin {
             self.begin_login();
             return vec![self.spawn_process(aws_sso_login(&self.profile_name()))];
         }
-        vec![]
-    }
-
-    fn handle_read_config_key(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
-        if self.config_read_index < self.config_read_queue.len() {
-            let key = self.config_read_queue[self.config_read_index].clone();
-            let value = if exit_ok(&result) {
-                String::from_utf8_lossy(&result.stdout).trim().to_string()
-            } else {
-                "(unavailable)".into()
-            };
-            self.config_rows.push(ConfigRow::new(key, value));
-            self.config_read_index += 1;
-        }
-        if self.config_read_index < self.config_read_queue.len() {
-            let key = self.config_read_queue[self.config_read_index].clone();
-            return vec![self.spawn_process(aws_configure_get(&key))];
-        }
-        self.process_step = ProcessStep::Idle;
         vec![]
     }
 }

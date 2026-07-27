@@ -2,12 +2,11 @@
 
 mod common;
 
-use aws_login::model::SavedConfig;
 use aws_login::Action;
 use libra_core::Effect;
 use libra_test::{by, fx};
 
-use common::{fixture_identity_result, harness, through_preflight_to_kv};
+use common::{fixture_identity_result, fixture_saved_config, harness, through_preflight_to_kv};
 
 #[test]
 fn preflight_shows_aws_check_first() {
@@ -16,10 +15,33 @@ fn preflight_shows_aws_check_first() {
 }
 
 #[test]
+fn retry_preflight_reruns_aws_version_check() {
+    let mut h = harness();
+    let aws = h.expect_effect(fx::process_program("aws"));
+    h.resolve_process(
+        aws,
+        libra_core::ProcessResult {
+            status: libra_core::ProcessStatus::SpawnFailed("not found".into()),
+            stdout: vec![],
+            stderr: vec![],
+            finished_at_unix_ms: 1,
+        },
+    );
+    h.query(by::test_id("aws-missing"));
+    h.query(by::test_id("retry-preflight"));
+    h.click(by::test_id("retry-preflight"));
+    h.query(by::test_id("aws-status")).assert_text("Checking for AWS CLI v2…");
+    let retry = h.expect_effect(fx::process_program("aws"));
+    let libra_core::Effect::Process { command, .. } = &retry else { unreachable!() };
+    assert!(command.args.iter().any(|a| a == "--version"));
+}
+
+#[test]
 fn missing_config_opens_onboarding() {
     let mut h = harness();
     through_preflight_to_kv(&mut h);
     h.query(by::test_id("session-name"));
+    h.query(by::test_id("role-name"));
     h.query(by::test_id("save-setup"));
     h.expect_no_effects();
 }
@@ -29,17 +51,7 @@ fn steady_state_shows_authenticate_button() {
     let mut h = harness();
     through_preflight_to_kv(&mut h);
 
-    let cfg = SavedConfig::from_form(
-        "aeos-govcloud",
-        "https://start.example",
-        "us-gov-west-1",
-        "us-gov-west-1",
-        "sso:account:access",
-        "111122223333",
-        "Dev_Admin",
-        "Dev_Admin-111122223333",
-        true,
-    );
+    let cfg = fixture_saved_config();
     h.dispatch(Action::ConfigLoaded(Some(serde_json::to_vec(&cfg).unwrap())));
 
     let probe = h.expect_effect(fx::process_program("aws"));
@@ -54,17 +66,7 @@ fn steady_state_shows_authenticate_button() {
 fn authenticate_emits_sso_login_then_identity_check() {
     let mut h = harness();
     through_preflight_to_kv(&mut h);
-    let cfg = SavedConfig::from_form(
-        "aeos-govcloud",
-        "https://start.example",
-        "us-gov-west-1",
-        "us-gov-west-1",
-        "sso:account:access",
-        "111122223333",
-        "Dev_Admin",
-        "Dev_Admin-111122223333",
-        true,
-    );
+    let cfg = fixture_saved_config();
     h.dispatch(Action::ConfigLoaded(Some(serde_json::to_vec(&cfg).unwrap())));
     let probe = h.expect_effect(fx::process_program("aws"));
     h.resolve_process(probe, fixture_identity_result());

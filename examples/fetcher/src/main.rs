@@ -9,11 +9,11 @@
 //! Architecture: ARCHITECTURE.md §18.2 (the iteration loop), §13.2 (state
 //! snapshots).
 
-use fetcher::{Fetcher, VIEW};
+use fetcher::Fetcher;
 
 fn main() {
     let opts = fetcher::options().app_id("libra-fetcher");
-    if let Err(e) = libra_platform::run_rehydrating::<Fetcher>(VIEW, opts) {
+    if let Err(e) = libra_platform::run_rehydrating::<Fetcher>(fetcher::view_driver(), opts) {
         eprintln!("error: {e}");
         std::process::exit(1);
     }

@@ -35,7 +35,7 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-NOTIFY]] | planned (NT1–NT4) | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
 | [[PLAN-RESIDENCY]] | planned (R1–R6) | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
 | [[PLAN-NATIVE-INTEGRATIONS]] | planned | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[PLAN-UI-SURFACE]] |
-| [[PLAN-PACKAGE]] | planned | [[23-roadmap|§23]], [[20-packaging\|§20]] |
+| [[PLAN-PACKAGE]] | in progress (P0–P5 done; P6 Windows/Linux open) | [[23-roadmap|§23]], [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] |
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |
 | [[PLAN-RECONCILER]] | planned | [[06.2-closed-grammar|§6.2]] |

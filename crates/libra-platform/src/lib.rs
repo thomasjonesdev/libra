@@ -13,6 +13,7 @@
 //! snapshots), §17 (accessibility), §12.5 (sources).
 
 pub mod a11y;
+pub mod icon;
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -100,6 +101,9 @@ fn report_frame_stats(intervals_ms: &mut Vec<f64>, present_ms: &mut Vec<f64>) {
     present_ms.clear();
 }
 
+/// Environment variable set by `libra dev` when `libra.toml` declares an icon.
+pub const ICON_PATH_ENV: &str = "LIBRA_ICON_PATH";
+
 /// How to run an app in a window.
 pub struct Options {
     pub title: String,
@@ -114,6 +118,8 @@ pub struct Options {
     pub theme_file: Option<PathBuf>,
     /// §12.6: programs the effects runtime may spawn for this app.
     pub process_allowlist: Vec<String>,
+    /// Window / title-bar icon (PNG). Also read from [`ICON_PATH_ENV`] when unset.
+    pub icon: Option<PathBuf>,
 }
 
 impl Options {
@@ -125,6 +131,7 @@ impl Options {
             watch: None,
             theme_file: None,
             process_allowlist: vec![],
+            icon: None,
         }
     }
     pub fn app_id(mut self, id: &str) -> Self {
@@ -143,29 +150,89 @@ impl Options {
         self.process_allowlist = programs.into_iter().map(Into::into).collect();
         self
     }
+    pub fn icon(mut self, path: impl Into<PathBuf>) -> Self {
+        self.icon = Some(path.into());
+        self
+    }
+}
+
+/// How the shell obtains a [`ViewNode`] from app state (PLAN-PACKAGE P0).
+///
+/// Debug builds always interpret the embedded `.lx` string. Release builds
+/// compiled with `libra_has_view_codegen` (set by the app's `build.rs`) call
+/// the generated `build_view` fn; release builds without that cfg fall back to
+/// the interpreter (transitional — e.g. integration-test fixtures).
+pub struct ViewDriver<A: 'static> {
+    lx: &'static str,
+    #[cfg(not(debug_assertions))]
+    build: Option<fn(&A) -> libra_components::ViewNode>,
+    _marker: std::marker::PhantomData<A>,
+}
+
+impl<A> ViewDriver<A> {
+    /// Interpret `lx` at runtime (debug always; release when no codegen).
+    pub const fn new(lx: &'static str) -> Self {
+        Self {
+            lx,
+            #[cfg(not(debug_assertions))]
+            build: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Release-only: use the `build.rs`-generated view fn.
+    #[cfg(not(debug_assertions))]
+    pub const fn with_codegen(lx: &'static str, build: fn(&A) -> libra_components::ViewNode) -> Self {
+        Self {
+            lx,
+            build: Some(build),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn lx(&self) -> &'static str {
+        self.lx
+    }
+
+    fn build_fn(&self) -> Option<fn(&A) -> libra_components::ViewNode> {
+        #[cfg(not(debug_assertions))]
+        {
+            self.build
+        }
+        #[cfg(debug_assertions)]
+        {
+            None
+        }
+    }
+}
+
+impl<A> From<&'static str> for ViewDriver<A> {
+    fn from(lx: &'static str) -> Self {
+        ViewDriver::new(lx)
+    }
 }
 
 /// Run an app in a native window until it is closed (embedded view,
 /// no persistence) — the Phase 0 signature, kept for simple apps.
 pub fn run<A: App + 'static>(
-    lx_source: &str,
+    view: ViewDriver<A>,
     title: &str,
     logical_size: (f32, f32),
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A::Msg: Send + 'static,
 {
-    run_with::<A>(lx_source, Options::new(title, logical_size))
+    run_with::<A>(view, Options::new(title, logical_size))
 }
 
 pub fn run_with<A: App + 'static>(
-    lx_source: &str,
+    view: impl Into<ViewDriver<A>>,
     opts: Options,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A::Msg: Send + 'static,
 {
-    run_inner::<A>(lx_source, opts, None, None)
+    run_inner::<A>(view.into(), opts, None, None)
 }
 
 /// `run_with` plus §18.2 model rehydration: on exit the model snapshots
@@ -175,13 +242,14 @@ where
 /// is discarded with a note — defaults win, the session doesn't crash.
 /// Requires `app_id` (for the snapshot location).
 pub fn run_rehydrating<A>(
-    lx_source: &str,
+    view: impl Into<ViewDriver<A>>,
     opts: Options,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A: App + serde::Serialize + serde::de::DeserializeOwned + 'static,
     A::Msg: Send + 'static,
 {
+    let view = view.into();
     let app_id = opts.app_id.clone().ok_or("run_rehydrating requires Options::app_id")?;
     let path = snapshot_path(&app_id).ok_or("no home directory for model snapshot")?;
 
@@ -209,7 +277,7 @@ where
         Err(e) => eprintln!("[libra] model snapshot failed to serialize: {e}"),
     });
 
-    run_inner::<A>(lx_source, opts, rehydrated, Some(save_hook))
+    run_inner::<A>(view, opts, rehydrated, Some(save_hook))
 }
 
 fn snapshot_path(app_id: &str) -> Option<std::path::PathBuf> {
@@ -219,7 +287,7 @@ fn snapshot_path(app_id: &str) -> Option<std::path::PathBuf> {
 type SaveHook<A> = Box<dyn Fn(&A)>;
 
 fn run_inner<A: App + 'static>(
-    lx_source: &str,
+    view: ViewDriver<A>,
     opts: Options,
     rehydrated: Option<A>,
     save_hook: Option<SaveHook<A>>,
@@ -227,13 +295,38 @@ fn run_inner<A: App + 'static>(
 where
     A::Msg: Send + 'static,
 {
-    let ast = libra_markup::parse(lx_source).map_err(|e| format!("markup parse error: {e}"))?;
-    let registry = opts
-        .watch
-        .as_ref()
-        .and_then(|p| p.parent())
-        .map(|dir| libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default())
-        .unwrap_or_default();
+    let mut opts = opts;
+    if opts.icon.is_none() {
+        if let Ok(path) = std::env::var(ICON_PATH_ENV) {
+            if !path.is_empty() {
+                opts.icon = Some(PathBuf::from(path));
+            }
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    let use_codegen = view.build_fn().is_some();
+    #[cfg(debug_assertions)]
+    let use_codegen = false;
+
+    let (ast, registry, view_build) = if use_codegen {
+        (
+            None,
+            libra_markup::ComponentRegistry::default(),
+            view.build_fn(),
+        )
+    } else {
+        let ast = Some(
+            libra_markup::parse(view.lx()).map_err(|e| format!("markup parse error: {e}"))?,
+        );
+        let registry = opts
+            .watch
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|dir| libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default())
+            .unwrap_or_default();
+        (ast, registry, None)
+    };
     let (app, init_cmds) = A::init();
     let app = match rehydrated {
         Some(model) => {
@@ -288,6 +381,7 @@ where
         app,
         ast,
         registry,
+        view_build,
         effects,
         renderer: Renderer::new(),
         laid: None,
@@ -365,9 +459,11 @@ fn cursor_icon(cursor: Cursor) -> CursorIcon {
 struct Shell<A: App> {
     opts: Options,
     app: A,
-    ast: Node,
+    ast: Option<Node>,
     /// §7.2 composed components discovered alongside the root view file.
     registry: libra_markup::ComponentRegistry,
+    /// Release codegen entry (PLAN-PACKAGE P0). `None` ⇒ interpret `ast`.
+    view_build: Option<fn(&A) -> libra_components::ViewNode>,
     effects: Effects<A::Msg>,
     renderer: Renderer,
     laid: Option<LaidTree>,
@@ -482,7 +578,16 @@ where
             has_instant_action: &has_instant_action,
             binding_ctx: "State",
         };
-        match libra_interp::resolve(&self.ast, &scope, &self.registry) {
+        let view_result = if let Some(build) = self.view_build {
+            Ok(build(&self.app))
+        } else {
+            libra_interp::resolve(
+                self.ast.as_ref().expect("ast or codegen build fn"),
+                &scope,
+                &self.registry,
+            )
+        };
+        match view_result {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
@@ -1123,7 +1228,7 @@ where
         };
         match libra_markup::parse(&source) {
             Ok(ast) => {
-                self.ast = ast;
+                self.ast = Some(ast);
                 if let Some(dir) = path.parent() {
                     self.registry =
                         libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default();
@@ -1284,19 +1389,28 @@ where
         if self.gfx.is_some() {
             return;
         }
+        let mut attrs = Window::default_attributes()
+            .with_title(self.opts.title.clone())
+            // Created hidden: the AccessKit adapter must
+            // attach before first show.
+            .with_visible(false)
+            .with_inner_size(LogicalSize::new(
+                self.opts.logical_size.0 as f64,
+                self.opts.logical_size.1 as f64,
+            ));
+        if let Some(path) = self.opts.icon.as_deref() {
+            if let Some(icon) = icon::load_png(path) {
+                attrs = attrs.with_window_icon(Some(icon));
+            } else {
+                eprintln!(
+                    "[libra] window icon not loaded from {} (expected a square PNG)",
+                    path.display()
+                );
+            }
+        }
         let window = Arc::new(
             event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title(self.opts.title.clone())
-                        // Created hidden: the AccessKit adapter must
-                        // attach before first show.
-                        .with_visible(false)
-                        .with_inner_size(LogicalSize::new(
-                            self.opts.logical_size.0 as f64,
-                            self.opts.logical_size.1 as f64,
-                        )),
-                )
+                .create_window(attrs)
                 .expect("create window"),
         );
         let context = softbuffer::Context::new(window.clone()).expect("softbuffer context");

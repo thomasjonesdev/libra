@@ -6,9 +6,9 @@ use libra_core::{Effect, ProcessId};
 
 use crate::actions::Action;
 use crate::model::{
-    AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig, DEFAULT_ACCOUNT_ID,
-    DEFAULT_AWS_REGION, DEFAULT_ROLE, DEFAULT_SCOPES, DEFAULT_SESSION, DEFAULT_SSO_REGION,
-    DEFAULT_START_URL, STORE_KEY, aws_version_cmd,
+    AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig, DEFAULT_AWS_REGION, DEFAULT_ROLE,
+    DEFAULT_SCOPES, DEFAULT_SESSION, DEFAULT_SSO_REGION, DEFAULT_START_URL, STORE_KEY,
+    aws_version_cmd,
 };
 
 #[derive(Default)]
@@ -36,7 +36,6 @@ pub struct AwsLogin {
     pub next_refresh: String,
     pub error_message: String,
     pub auto_refresh: bool,
-    pub show_config: bool,
     pub config_rows: Vec<ConfigRow>,
 
     // ---- projections (§6.3) ----
@@ -47,6 +46,7 @@ pub struct AwsLogin {
     pub is_preflight: bool,
     pub is_steady: bool,
     pub aws_missing: bool,
+    pub preflight_busy: bool,
     pub has_url_warning: bool,
     pub has_onboarding_error: bool,
 
@@ -68,10 +68,7 @@ pub struct AwsLogin {
     pub config_writes: Vec<(String, String)>,
     #[libra(skip)]
     #[serde(skip, default)]
-    pub config_read_queue: Vec<String>,
-    #[libra(skip)]
-    #[serde(skip, default)]
-    pub config_read_index: usize,
+    pub config_writes_are_profile: bool,
     #[libra(skip)]
     #[serde(skip, default)]
     pub configured: bool,
@@ -102,6 +99,15 @@ pub struct AwsLogin {
     #[libra(skip)]
     #[serde(skip, default)]
     pub list_profiles_for_validation: bool,
+    #[libra(skip)]
+    #[serde(skip, default)]
+    pub known_profiles: Vec<String>,
+    #[libra(skip)]
+    #[serde(skip, default)]
+    pub token_cache_paths: Vec<String>,
+    #[libra(skip)]
+    #[serde(skip, default)]
+    pub token_cache_index: usize,
 }
 
 impl AwsLogin {
@@ -111,9 +117,9 @@ impl AwsLogin {
         self.sso_region = DEFAULT_SSO_REGION.into();
         self.aws_region = DEFAULT_AWS_REGION.into();
         self.registration_scopes = DEFAULT_SCOPES.into();
-        self.account_id = DEFAULT_ACCOUNT_ID.into();
+        self.account_id.clear();
         self.role_name = DEFAULT_ROLE.into();
-        self.profile_name = crate::model::default_profile_name(DEFAULT_ROLE, DEFAULT_ACCOUNT_ID);
+        self.profile_name = DEFAULT_ROLE.into();
         self.auto_refresh = true;
     }
 

@@ -8,8 +8,12 @@ license.workspace = true
 libra.workspace = true
 libra-core.workspace = true
 libra-platform.workspace = true
+libra-components.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true
 libra-data.workspace = true
+
+[build-dependencies]
+libra-build.workspace = true

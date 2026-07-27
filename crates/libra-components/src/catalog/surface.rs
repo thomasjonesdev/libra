@@ -1,5 +1,5 @@
 //! Surface containers + static display (§7.1, PLAN-CATALOG): `Card`
-//! (raised, hairline-framed), `Panel` (plain), `Alert` (status-token
+//! `Card` (raised, elevated fill), `Panel` (plain), `Alert` (status-token
 //! callout), `Skeleton` (static placeholder), `Avatar` (initials).
 //! All token-only paint.
 
@@ -43,6 +43,29 @@ pub(crate) fn build_surface(
     Ok(id)
 }
 
+/// Total laid height for an alert at `max_w`, with title/body soft-wrapped.
+pub(crate) fn alert_height(
+    title: &str,
+    body: &str,
+    max_w: f32,
+    px_md: f32,
+    px_sm: f32,
+    pad: f32,
+    line_gap: f32,
+    m: &dyn TextMeasurer,
+) -> f32 {
+    let content_w = (max_w - 2.0 * pad).max(0.0);
+    let (_, th_title) = m.measure("Ag", px_md, FontStyle::Bold);
+    let title_lines = catalog::text::wrap_lines(title, content_w, px_md, FontStyle::Bold, m);
+    let mut h = 2.0 * pad + title_lines.len() as f32 * th_title;
+    if !body.is_empty() {
+        let (_, th_sm) = m.measure("Ag", px_sm, FontStyle::Regular);
+        let body_lines = catalog::text::wrap_lines(body, content_w, px_sm, FontStyle::Regular, m);
+        h += line_gap + body_lines.len() as f32 * th_sm;
+    }
+    h
+}
+
 pub(crate) fn build_alert(
     cx: &mut BuildCx,
     tone: Tone,
@@ -52,13 +75,14 @@ pub(crate) fn build_alert(
 ) -> Result<NodeId, taffy::TaffyError> {
     let px_md = cx.theme.type_md;
     let px_sm = cx.theme.type_sm;
-    let (_, th_md) = cx.m.measure("Ag", px_md, FontStyle::Regular);
-    let (_, th_sm) = cx.m.measure("Ag", px_sm, FontStyle::Regular);
     let pad = cx.theme.space(4);
-    let h = 2.0 * pad + th_md + if body.is_empty() { 0.0 } else { th_sm + cx.theme.space(1) };
+    let line_gap = cx.theme.space(1);
+    // Single-line estimate — reflow_alert_heights fixes this after width is known.
+    let h = alert_height(title, body, 320.0, px_md, px_sm, pad, line_gap, cx.m);
     let id = cx.tree.new_leaf(Style {
-        size: Size { width: auto(), height: length(h) },
+        size: Size { width: percent(1.0), height: length(h) },
         flex_shrink: 0.0,
+        min_size: Size { width: length(0.0), height: auto() },
         ..Default::default()
     })?;
     cx.meta.push((
@@ -121,8 +145,12 @@ pub(crate) fn build_avatar(
 
 pub(crate) fn paint_surface(cx: &mut PaintCx, rect: Rect, raised: bool) {
     if raised {
-        // Card: the Dialog panel chrome — one surface language.
-        catalog::dialog::paint_panel(cx, rect);
+        // Card: elevated fill only — hairline framing is Dialog chrome.
+        cx.cmds.push(DrawCmd::RRect {
+            rect,
+            radius: cx.theme.radius_lg,
+            color: cx.theme.surface_raised,
+        });
     } else {
         cx.cmds.push(DrawCmd::RRect { rect, radius: cx.theme.radius_md, color: cx.theme.surface });
     }
@@ -140,25 +168,35 @@ pub(crate) fn paint_alert(
     let (bg, fg) = catalog::badge::tone_colors(cx.theme, tone);
     cx.cmds.push(DrawCmd::RRect { rect, radius: cx.theme.radius_md, color: bg });
     let pad = cx.theme.space(4);
-    let (tx, ty) = (rect.x + pad, rect.y + pad);
-    cx.cmds.push(DrawCmd::Text {
-        x: tx,
-        y: ty,
-        content: title.to_string(),
-        px: px_md,
-        style: FontStyle::Bold,
-        color: fg,
-    });
-    if !body.is_empty() {
-        let (_, th_md) = cx.measurer.measure("Ag", px_md, FontStyle::Regular);
+    let line_gap = cx.theme.space(1);
+    let content_w = (rect.w - 2.0 * pad).max(0.0);
+    let (tx, mut ty) = (rect.x + pad, rect.y + pad);
+    let (_, th_title) = cx.measurer.measure("Ag", px_md, FontStyle::Bold);
+    for line in catalog::text::wrap_lines(title, content_w, px_md, FontStyle::Bold, cx.measurer) {
         cx.cmds.push(DrawCmd::Text {
             x: tx,
-            y: ty + th_md + cx.theme.space(1),
-            content: body.to_string(),
-            px: px_sm,
-            style: FontStyle::Regular,
+            y: ty,
+            content: line,
+            px: px_md,
+            style: FontStyle::Bold,
             color: fg,
         });
+        ty += th_title;
+    }
+    if !body.is_empty() {
+        ty += line_gap;
+        let (_, th_sm) = cx.measurer.measure("Ag", px_sm, FontStyle::Regular);
+        for line in catalog::text::wrap_lines(body, content_w, px_sm, FontStyle::Regular, cx.measurer) {
+            cx.cmds.push(DrawCmd::Text {
+                x: tx,
+                y: ty,
+                content: line,
+                px: px_sm,
+                style: FontStyle::Regular,
+                color: fg,
+            });
+            ty += th_sm;
+        }
     }
 }
 
