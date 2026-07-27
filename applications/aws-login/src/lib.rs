@@ -23,7 +23,7 @@ libra::app! {
 pub fn app_options() -> libra_platform::Options {
     options()
         .app_id("aws-login")
-        .process_allowlist(["aws", "claude"])
+        .process_allowlist(["aws", "claude", "sh"])
 }
 
 pub fn run_app() -> Result<(), Box<dyn std::error::Error>> {

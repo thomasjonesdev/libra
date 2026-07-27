@@ -69,6 +69,8 @@ pub fn compile_app(config: &AppBuildConfig) {
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
     std::fs::write(Path::new(&out_dir).join("view.rs"), code).expect("write view.rs");
+    // Declared for `libra::app!` cfg branches in the app crate (§6.4).
+    println!("cargo:rustc-check-cfg=cfg(libra_has_view_codegen)");
     println!("cargo:rustc-cfg=libra_has_view_codegen");
 }
 

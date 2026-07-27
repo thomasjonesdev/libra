@@ -226,6 +226,10 @@ fn unix_ms_now() -> u64 {
 fn apply_filtered_env(cmd: &mut Command, extra: &[(String, String)]) {
     cmd.env_clear();
     for key in FILTERED_ENV_KEYS {
+        if *key == "PATH" {
+            cmd.env("PATH", augmented_path());
+            continue;
+        }
         if let Ok(val) = std::env::var(key) {
             cmd.env(key, val);
         }
@@ -233,6 +237,164 @@ fn apply_filtered_env(cmd: &mut Command, extra: &[(String, String)]) {
     for (k, v) in extra {
         cmd.env(k, v);
     }
+}
+
+/// Packaged GUI apps inherit a minimal PATH from the OS launcher — not the
+/// login-shell PATH where Homebrew, snap, and MSI installs land. Prepend the
+/// usual CLI locations on each platform so allowlisted programs resolve (§12.6).
+fn augmented_path() -> String {
+    let mut dirs = Vec::new();
+    platform_cli_dirs(&mut dirs);
+    user_cli_dirs(&mut dirs);
+    if let Ok(existing) = std::env::var("PATH") {
+        for part in existing.split(path_separator()) {
+            push_unique(&mut dirs, part.to_string());
+        }
+    }
+    dirs.join(path_separator())
+}
+
+fn platform_cli_dirs(dirs: &mut Vec<String>) {
+    #[cfg(target_os = "macos")]
+    macos_cli_dirs(dirs);
+    #[cfg(target_os = "linux")]
+    linux_cli_dirs(dirs);
+    #[cfg(windows)]
+    windows_cli_dirs(dirs);
+}
+
+#[cfg(target_os = "macos")]
+fn macos_cli_dirs(dirs: &mut Vec<String>) {
+    push_unique(dirs, "/opt/homebrew/bin".into());
+    push_unique(dirs, "/usr/local/bin".into());
+    if let Ok(parts) = read_etc_paths() {
+        for part in parts {
+            push_unique(dirs, part);
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_cli_dirs(dirs: &mut Vec<String>) {
+    for p in [
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        "/usr/bin",
+        "/bin",
+        "/snap/bin",
+        "/home/linuxbrew/.linuxbrew/bin",
+    ] {
+        push_unique(dirs, p.into());
+    }
+    if let Ok(parts) = read_etc_environment_path() {
+        for part in parts {
+            push_unique(dirs, part);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_cli_dirs(dirs: &mut Vec<String>) {
+    const AWS: &str = r"Amazon\AWSCLIV2";
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        push_unique(dirs, format!(r"{pf}\{AWS}"));
+    }
+    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+        push_unique(dirs, format!(r"{pf86}\{AWS}"));
+    }
+    if let Ok(pd) = std::env::var("ProgramData") {
+        push_unique(dirs, format!(r"{pd}\chocolatey\bin"));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        push_unique(dirs, format!(r"{local}\Programs"));
+        push_unique(dirs, format!(r"{local}\Microsoft\WindowsApps"));
+    }
+    // Fallbacks when the process env omits ProgramFiles (some GUI launchers).
+    push_unique(dirs, r"C:\Program Files\Amazon\AWSCLIV2".into());
+    push_unique(dirs, r"C:\Program Files (x86)\Amazon\AWSCLIV2".into());
+    push_unique(dirs, r"C:\ProgramData\chocolatey\bin".into());
+}
+
+fn user_cli_dirs(dirs: &mut Vec<String>) {
+    let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) else {
+        return;
+    };
+    let sep = std::path::MAIN_SEPARATOR;
+    push_unique(dirs, format!("{home}{sep}.local{sep}bin"));
+    #[cfg(windows)]
+    {
+        push_unique(dirs, format!("{home}\\scoop\\shims"));
+    }
+    #[cfg(not(windows))]
+    {
+        push_unique(dirs, format!("{home}{sep}.cargo{sep}bin"));
+    }
+}
+
+fn push_unique(dirs: &mut Vec<String>, dir: String) {
+    if !dir.is_empty() && !dirs.iter().any(|d| d == &dir) {
+        dirs.push(dir);
+    }
+}
+
+fn path_separator() -> &'static str {
+    if cfg!(windows) {
+        ";"
+    } else {
+        ":"
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn read_etc_paths() -> Result<Vec<String>, std::io::Error> {
+    use std::io::{BufRead, BufReader};
+
+    let mut dirs = Vec::new();
+    if let Ok(paths) = std::fs::read_to_string("/etc/paths") {
+        for line in paths.lines() {
+            let line = line.trim();
+            if !line.is_empty() {
+                push_unique(&mut dirs, line.to_string());
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir("/etc/paths.d") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Ok(file) = std::fs::File::open(&path) {
+                    for line in BufReader::new(file).lines().map_while(Result::ok) {
+                        let line = line.trim();
+                        if !line.is_empty() {
+                            push_unique(&mut dirs, line.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(dirs)
+}
+
+/// Login PATH from `/etc/environment` (Debian/Ubuntu/GNOME etc.).
+#[cfg(target_os = "linux")]
+fn read_etc_environment_path() -> Result<Vec<String>, std::io::Error> {
+    let text = std::fs::read_to_string("/etc/environment")?;
+    let mut dirs = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("PATH=") else {
+            continue;
+        };
+        let rest = rest.trim().trim_matches('"').trim_matches('\'');
+        for part in rest.split(':') {
+            let part = part.trim();
+            if !part.is_empty() {
+                push_unique(&mut dirs, part.to_string());
+            }
+        }
+    }
+    Ok(dirs)
 }
 
 fn do_process(
@@ -455,6 +617,41 @@ mod tests {
         match recv(&rx) {
             Action::Entropy(b) => assert_eq!(b.len(), 16),
             other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn augmented_path_prepends_platform_cli_dirs() {
+        let path = augmented_path();
+        let parts: Vec<&str> = path.split(path_separator()).collect();
+        assert!(!parts.is_empty(), "PATH must not be empty: {path}");
+        #[cfg(target_os = "macos")]
+        {
+            let brew = parts
+                .iter()
+                .position(|&p| p == "/opt/homebrew/bin")
+                .expect("homebrew bin");
+            let usr = parts
+                .iter()
+                .position(|&p| p == "/usr/bin")
+                .expect("/usr/bin from /etc/paths or parent");
+            assert!(brew < usr, "Homebrew must precede system PATH: {path}");
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let local = parts
+                .iter()
+                .position(|&p| p == "/usr/local/bin")
+                .expect("/usr/local/bin");
+            let usr = parts.iter().position(|&p| p == "/usr/bin").expect("/usr/bin");
+            assert!(local < usr, "user/local bin must precede system PATH: {path}");
+        }
+        #[cfg(windows)]
+        {
+            assert!(
+                parts.iter().any(|p| p.contains("AWSCLIV2")),
+                "AWS CLI install dir must be on PATH: {path}"
+            );
         }
     }
 

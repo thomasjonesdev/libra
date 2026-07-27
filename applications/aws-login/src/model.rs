@@ -2,11 +2,11 @@
 //!
 //! Architecture: ARCHITECTURE.md §27.1; plan PLAN-AWS-LOGIN.
 
+use std::fmt;
 use std::path::PathBuf;
 
-use libra_core::CommandSpec;
+use libra_core::{CommandSpec, LibraReflect};
 use serde::{Deserialize, Serialize};
-use sha1::{Digest, Sha1};
 
 pub const STORE_KEY: &str = "aws-sso-config";
 
@@ -99,15 +99,15 @@ impl SavedConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, libra_core::LibraReflect)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LibraReflect)]
 pub struct ConfigRow {
     pub key: String,
     pub value: String,
 }
 
-impl std::fmt::Display for ConfigRow {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.key)
+impl fmt::Display for ConfigRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.key.fmt(f)
     }
 }
 
@@ -118,10 +118,10 @@ impl ConfigRow {
 }
 
 pub fn default_profile_name(role: &str, account: &str) -> String {
-    if role.is_empty() || account.is_empty() {
-        return String::new();
+    match (role.is_empty(), account.is_empty()) {
+        (true, _) | (_, true) => String::new(),
+        (false, false) => [role, "-", account].concat(),
     }
-    format!("{role}-{account}")
 }
 
 pub fn aws_version_cmd() -> CommandSpec {
@@ -169,7 +169,10 @@ fn aws_sso_cache_dir() -> Option<PathBuf> {
 }
 
 fn sha1_hex(input: &str) -> String {
-    format!("{:x}", Sha1::digest(input.as_bytes()))
+    use sha1::{Digest, Sha1};
+    match Sha1::digest(input.as_bytes()) {
+        digest => format!("{:x}", digest),
+    }
 }
 
 /// Candidate SSO token cache files — session-name hash first (CLI ≥ 2.9), then
@@ -244,36 +247,42 @@ pub fn config_session_write_pairs(
     sso_region: &str,
     registration_scopes: &str,
 ) -> Vec<(String, String)> {
-    vec![
-        ("sso_start_url".into(), start_url.into()),
-        ("sso_region".into(), sso_region.into()),
-        ("sso_registration_scopes".into(), registration_scopes.into()),
-    ]
+    match (start_url, sso_region, registration_scopes) {
+        (start_url, sso_region, registration_scopes) => vec![
+            ("sso_start_url".into(), start_url.into()),
+            ("sso_region".into(), sso_region.into()),
+            ("sso_registration_scopes".into(), registration_scopes.into()),
+        ],
+    }
 }
 
 fn config_session_dotted_key(session_name: &str, field: &str) -> String {
-    format!("sso-session.{session_name}.{field}")
+    match (session_name, field) {
+        (session_name, field) => format!("sso-session.{session_name}.{field}"),
+    }
 }
 
 pub fn config_profile_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
-    vec![
-        (
-            format!("profile.{}.sso_session", cfg.profile_name),
-            cfg.session_name.clone(),
-        ),
-        (
-            format!("profile.{}.sso_account_id", cfg.profile_name),
-            cfg.account_id.clone(),
-        ),
-        (
-            format!("profile.{}.sso_role_name", cfg.profile_name),
-            cfg.role_name.clone(),
-        ),
-        (
-            format!("profile.{}.region", cfg.profile_name),
-            cfg.aws_region.clone(),
-        ),
-    ]
+    match cfg {
+        cfg => vec![
+            (
+                format!("profile.{}.sso_session", cfg.profile_name),
+                cfg.session_name.clone(),
+            ),
+            (
+                format!("profile.{}.sso_account_id", cfg.profile_name),
+                cfg.account_id.clone(),
+            ),
+            (
+                format!("profile.{}.sso_role_name", cfg.profile_name),
+                cfg.role_name.clone(),
+            ),
+            (
+                format!("profile.{}.region", cfg.profile_name),
+                cfg.aws_region.clone(),
+            ),
+        ],
+    }
 }
 
 pub fn config_write_pairs(cfg: &SavedConfig) -> Vec<(String, String)> {
@@ -341,13 +350,12 @@ pub fn format_duration_ago(t_ms: f64, then_t_ms: f64) -> String {
         return "not yet verified".into();
     }
     let mins = ((t_ms - then_t_ms) / 60_000.0).max(0.0) as u64;
-    if mins < 1 {
-        "verified just now".into()
-    } else if mins < 60 {
-        format!("verified {mins} minute{} ago", if mins == 1 { "" } else { "s" })
-    } else {
-        let hours = mins / 60;
-        format!("verified {hours} hour{} ago", if hours == 1 { "" } else { "s" })
+    match mins {
+        0 => "verified just now".into(),
+        m if m < 60 => format!("verified {m} minute{} ago", if m == 1 { "" } else { "s" }),
+        _ => match mins / 60 {
+            hours => format!("verified {hours} hour{} ago", if hours == 1 { "" } else { "s" }),
+        },
     }
 }
 
@@ -363,11 +371,11 @@ pub fn format_next_refresh(t_ms: f64, last_login_t_ms: f64, auto_refresh: bool) 
         return "refresh due".into();
     }
     let mins = (remaining / 60_000.0).ceil() as u64;
-    if mins < 60 {
-        format!("next refresh in {mins} minute{}", if mins == 1 { "" } else { "s" })
-    } else {
-        let hours = mins / 60;
-        format!("next refresh in {hours} hour{}", if hours == 1 { "" } else { "s" })
+    match mins {
+        m if m < 60 => format!("next refresh in {m} minute{}", if m == 1 { "" } else { "s" }),
+        _ => match mins / 60 {
+            hours => format!("next refresh in {hours} hour{}", if hours == 1 { "" } else { "s" }),
+        },
     }
 }
 
@@ -402,7 +410,9 @@ pub fn url_fragment_warning(start_url: &str) -> String {
 }
 
 pub fn export_profile_line(profile: &str) -> String {
-    format!("export AWS_PROFILE={profile}")
+    match profile {
+        profile => format!("export AWS_PROFILE={profile}"),
+    }
 }
 
 pub fn configure_sso_command() -> String {
