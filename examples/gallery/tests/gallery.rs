@@ -265,6 +265,26 @@ fn tabs_select_and_close() {
     assert!(h.state().tab_dismissed, "× dispatched onClose");
 }
 
+#[test]
+fn snapshot_workbench_toast_dark() {
+    select("libra-dark", "toast").assert_snapshot("workbench_toast_dark");
+}
+
+#[test]
+fn snapshot_workbench_toast_light() {
+    select("libra-light", "toast").assert_snapshot("workbench_toast_light");
+}
+
+/// The overlay × fires onDismiss; the host is not a modal barrier.
+#[test]
+fn toast_dismisses() {
+    let mut h = select("libra-dark", "toast");
+    assert_eq!(h.cursor_over(by::test_id("pg-toast-close")), libra_components::Cursor::Pointer);
+    assert!(!h.state().toast_dismissed);
+    h.click(by::test_id("pg-toast-close"));
+    assert!(h.state().toast_dismissed, "× dispatched onDismiss");
+}
+
 /// Select toggles the model; the trailing × fires onRemove.
 #[test]
 fn chip_selects_and_dismisses() {

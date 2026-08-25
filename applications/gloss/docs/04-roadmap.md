@@ -101,6 +101,10 @@ filed note via M3's review surface. Diarization is post-v1.
 save and undo through the patch journal. Still missing `@`-mentions, Cmd+K, and
 a rules file.
 
+Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
+`<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
+after save/undo.
+
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.
 

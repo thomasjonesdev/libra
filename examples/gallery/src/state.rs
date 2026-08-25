@@ -57,6 +57,7 @@ pub struct Gallery {
     pub is_stepper: bool,
     pub is_timeline: bool,
     pub is_tabs: bool,
+    pub is_toast: bool,
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
@@ -100,6 +101,8 @@ pub struct Gallery {
     pub tab_preview: bool,
     pub tab_body: String,
     pub tab_dismissed: bool,
+    /// Toast playground (overlay dismiss).
+    pub toast_dismissed: bool,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -146,6 +149,7 @@ impl Gallery {
             is_stepper: false,
             is_timeline: false,
             is_tabs: false,
+            is_toast: false,
             is_split: false,
             is_chart: false,
             is_sparkline: false,
@@ -173,6 +177,7 @@ impl Gallery {
             tab_preview: false,
             tab_body: String::new(),
             tab_dismissed: false,
+            toast_dismissed: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

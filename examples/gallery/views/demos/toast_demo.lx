@@ -1,0 +1,4 @@
+<props />
+
+<Text bold muted>Playground (overlay — dismiss via ×)</Text>
+<Text size="sm" muted wrap>Mount with if. Auto-timeout is an app Timer, not the component. Gloss can fire one after a save.</Text>

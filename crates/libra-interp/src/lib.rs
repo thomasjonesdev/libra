@@ -996,6 +996,44 @@ fn element(
             Ok(ViewNode::Alert { tone, title, body, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG wave 7): detached non-modal overlay.
+        // Mount via `<if>`; optional onDismiss; timeout is an app Timer.
+        "Toast" => {
+            let mut tone = Tone::Neutral;
+            let mut title = String::new();
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = parse_tone(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = v.clone(),
+                    ("title", AttrValue::Ident(p)) => {
+                        title = (scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?;
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => on_dismiss = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let body = text_content(children, scope, *span)?;
+            if title.is_empty() && body.is_empty() {
+                return Err(err(*span, "<Toast> needs title=… or body text"));
+            }
+            let on_dismiss = match on_dismiss {
+                None => None,
+                Some((m, mspan)) => {
+                    require_camel_case(&m, mspan)?;
+                    if !(scope.has_action)(&m) {
+                        return Err(err(mspan, format!("no action '{m}' on Action — check the enum")));
+                    }
+                    Some(m)
+                }
+            };
+            Ok(ViewNode::Toast { tone, title, body, on_dismiss, test_id })
+        }
+
         // §7.1 (PLAN-CATALOG): surface containers — Column semantics
         // with token surface defaults.
         "Card" | "Panel" => {
@@ -1966,7 +2004,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Toast, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

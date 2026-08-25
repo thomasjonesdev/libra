@@ -50,6 +50,10 @@ impl Gallery {
         self.tab_dismissed = true;
     }
 
+    pub fn dismiss_toast(&mut self) {
+        self.toast_dismissed = true;
+    }
+
     pub fn body_changed(&mut self, s: String) {
         self.ctl_body = s;
     }
@@ -180,6 +184,7 @@ impl Gallery {
         self.is_stepper = s == "stepper";
         self.is_timeline = s == "timeline";
         self.is_tabs = s == "tabs";
+        self.is_toast = s == "toast";
         self.tab_editor = self.tab_pick == "editor";
         self.tab_preview = self.tab_pick == "preview";
         self.tab_body = if self.tab_editor {

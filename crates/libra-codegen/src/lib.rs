@@ -641,6 +641,54 @@ fn gen_node(
             ))
         }
 
+        // §7.1 (PLAN-CATALOG wave 7), matching interp's "Toast" arm.
+        "Toast" => {
+            let mut tone = "Neutral";
+            let mut title = "::std::string::String::new()".to_string();
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = tone_variant(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = format!("{}.to_string()", str_lit(v)),
+                    ("title", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound, binding_ctx).map_err(|m| err(a.span, m))?;
+                        title = format!("::std::string::ToString::to_string(&{expr})");
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_dismiss = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let body = gen_text_content(children, cfg, *span, d + 1, bound, binding_ctx)?;
+            let (dismiss_expr, dismiss_at) = match &on_dismiss {
+                Some((m, mspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *mspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Toast {{ {at}\n\
+                 {i}    tone: ::libra_components::Tone::{tone},\n\
+                 {i}    title: {title},\n\
+                 {i}    body: {body},\n\
+                 {i}    on_dismiss: {dismiss_expr}, {dismiss_at}\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         // §7.1, matching interp's "Card"/"Panel" arms exactly.
         "Card" | "Panel" => {
             let (mut gap, mut padding, mut grow) = (0.0f32, 0.0f32, 0.0f32);

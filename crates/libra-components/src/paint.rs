@@ -135,6 +135,12 @@ impl LaidTree {
                     ItemKind::Alert { tone, title, body, px_md, px_sm } => {
                         catalog::surface::paint_alert(&mut cx, item.rect, *tone, title, body, *px_md, *px_sm)
                     }
+                    ItemKind::ToastHost => {}
+                    ItemKind::ToastBox { tone } => catalog::toast::paint_box(&mut cx, item, *tone),
+                    ItemKind::ToastCopy { title, body, px_md, px_sm } => {
+                        catalog::toast::paint_copy(&mut cx, item, title, body, *px_md, *px_sm)
+                    }
+                    ItemKind::ToastClose => catalog::toast::paint_close(&mut cx, item),
                     ItemKind::Surface { raised } => {
                         catalog::surface::paint_surface(&mut cx, item.rect, *raised)
                     }

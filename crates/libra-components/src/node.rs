@@ -217,6 +217,17 @@ pub enum ViewNode {
     /// an inline callout — status-token tinted panel, bold title line,
     /// muted body from the element's text content.
     Alert { tone: Tone, title: String, body: String, test_id: Option<String> },
+    /// `<Toast tone? title? onDismiss?>body</Toast>` (§7.1, PLAN-CATALOG
+    /// wave 7): a detached, non-modal overlay at the bottom-right.
+    /// Mount via `<if>`; optional `onDismiss` is a trailing ×. Auto-
+    /// timeout is an app Timer, not a paint-path clock.
+    Toast {
+        tone: Tone,
+        title: String,
+        body: String,
+        on_dismiss: Option<String>,
+        test_id: Option<String>,
+    },
     /// `<Card>…</Card>` (§7.1): the bordered, elevated surface
     /// container — elevated `surface_raised` fill. Ordinary flex
     /// column inside (gap/padding attrs like Column).
@@ -486,6 +497,15 @@ pub enum ItemKind {
     },
     /// `<Alert>` — tinted callout painting its own title/body.
     Alert { tone: Tone, title: String, body: String, px_md: f32, px_sm: f32 },
+    /// `<Toast>` overlay host — full viewport, paints nothing, not a
+    /// modal barrier (clicks outside fall through).
+    ToastHost,
+    /// Toast card — raised fill + tone stripe.
+    ToastBox { tone: Tone },
+    /// Toast title + body copy.
+    ToastCopy { title: String, body: String, px_md: f32, px_sm: f32 },
+    /// Toast trailing dismiss glyph.
+    ToastClose,
     /// `<Card>`/`<Panel>` — a surface container behind its children
     /// (`raised` adds the elevated fill; hairline framing is Dialog-only).
     Surface { raised: bool },

@@ -66,6 +66,12 @@
       <if test={is_tabs}>
         <TabsDemo tab_editor={tab_editor} tab_preview={tab_preview} tab_body={tab_body} pickTabEditor={pickTabEditor} pickTabPreview={pickTabPreview} dismissTab={dismissTab} />
       </if>
+      <if test={is_toast}>
+        <ToastDemo />
+      </if>
+      <if test={is_toast}>
+        <Toast tone="success" title="Saved" onDismiss={dismissToast} testId="pg-toast">Atlas.md written</Toast>
+      </if>
       <if test={is_textarea}>
         <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>

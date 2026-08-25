@@ -50,6 +50,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("stepper", "Stepper"),
     ("timeline", "Timeline"),
     ("tabs", "Tabs"),
+    ("toast", "Toast"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),

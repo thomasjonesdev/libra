@@ -132,6 +132,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Alert { tone, title, body, test_id } => {
             catalog::surface::build_alert(cx, *tone, title, body, test_id)
         }
+        ViewNode::Toast { tone, title, body, on_dismiss, test_id } => {
+            catalog::toast::build(cx, *tone, title, body, on_dismiss, test_id)
+        }
         ViewNode::Card { style, children } => catalog::surface::build_surface(cx, style, children, true),
         ViewNode::Panel { style, children } => {
             catalog::surface::build_surface(cx, style, children, false)
@@ -458,5 +461,11 @@ pub(crate) fn is_source_node(n: &ViewNode) -> bool {
 /// sources (zero-layout mounts) and `<Dialog>` (a detached overlay root).
 pub(crate) fn is_detached_node(n: &ViewNode) -> bool {
     is_source_node(n)
-        || matches!(n, ViewNode::Dialog { .. } | ViewNode::ContextMenu { .. } | ViewNode::Drawer { .. })
+        || matches!(
+            n,
+            ViewNode::Dialog { .. }
+                | ViewNode::ContextMenu { .. }
+                | ViewNode::Drawer { .. }
+                | ViewNode::Toast { .. }
+        )
 }

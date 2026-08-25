@@ -747,6 +747,7 @@ fn nav_produces_identical_trees() {
 const SEARCH: &str = include_str!("../fixtures/search.lx");
 const CHIP: &str = include_str!("../fixtures/chip.lx");
 const TABS: &str = include_str!("../fixtures/tabs.lx");
+const TOAST: &str = include_str!("../fixtures/toast.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -886,6 +887,54 @@ fn tabs_produce_identical_trees() {
     assert_eq!(
         (*selected, on_press_arg.as_deref(), on_close_arg.as_deref(), label.as_str()),
         (true, Some("1"), Some("1"), "Alpha")
+    );
+}
+
+/// PLAN-CATALOG wave 7 — `<Toast>`: tone, optional title, body, optional
+/// unit onDismiss. Both engines must agree.
+#[test]
+fn toast_produces_identical_trees() {
+    use libra_components::{Tone, ViewNode};
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TOAST, &state, &fixture_registry());
+        let compiled = generated::build_toast(&state);
+        assert_eq!(interp, compiled, "engine drift on toast fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TOAST, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Toast {
+                tone: Tone::Success,
+                title,
+                body,
+                on_dismiss: Some(d),
+                test_id: Some(id),
+            } if title == "Ada" && body == "saved" && d == "reset" && id == "bound-toast"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(
+            &children[1],
+            ViewNode::Toast { tone: Tone::Danger, title, on_dismiss: None, .. } if title == "Failed"
+        ),
+        "{:?}",
+        children[1]
+    );
+    assert!(
+        matches!(
+            &children[2],
+            ViewNode::Toast { title, body, on_dismiss: Some(d), test_id: Some(id), .. }
+                if title.is_empty() && body == "Saved" && d == "increment" && id == "body-only"
+        ),
+        "{:?}",
+        children[2]
     );
 }
 
