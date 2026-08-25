@@ -22,10 +22,12 @@ Libra apps ship as native binaries wrapped by **`libra build`** (release artifac
 | `libra dev -p <crate>` | Debug run; hot-reloads `.lx`; uses `[package].icon` when present |
 | `libra build -p <crate>` | Release binary (view codegen + LTO) → `target/release/<crate>` |
 | `libra package -p <crate>` | Platform bundle from `libra.toml` → `<app>/dist/` |
+| `libra package … --target macos\|windows\|linux` | Host must match target (cross-compile deferred) |
+| `libra package … --format <fmt>` | Override default format(s) for the target |
 
 Install the CLI once: `cargo install --path cli/libra --force`.
 
-**macOS packaging** also requires `cargo install cargo-packager --locked` on the build machine.
+**Packaging** also requires `cargo install cargo-packager --locked` on the build machine.
 
 ## `libra.toml` v1
 
@@ -36,8 +38,10 @@ Minimal manifest beside the app `Cargo.toml`. Paths are relative to the manifest
 | `[app]` | `name`, `bundle_id`, `app_user_model_id` | Display name + OS identity (NT3/R5 consumers) |
 | `[package]` | `icon` | Square PNG; packager derives `.icns` / platform sizes |
 | `[package.sign.macos]` | `identity`, `notary_profile`, `provider_short_name` | Optional; unsigned OK for local sharing |
-| `[package.sign.windows]` | `thumbprint` | Documented; wired in P6 |
-| `[package.sign.linux]` | — | Reserved for P6 |
+| `[package.sign.windows]` | `thumbprint` | Optional Authenticode signing |
+| `[package.sign.linux]` | — | Reserved (deb/AppImage signing later) |
+
+`libra package` also writes `packaging/libra-identity.toml` (gitignored) and bundles it as a packager **resource** — `app_user_model_id`, `bundle_id`, and `product_name` for [[PLAN-NOTIFY]] NT3 and [[PLAN-RESIDENCY]] R5 consumers at runtime.
 
 Window title and logical size remain on `libra::app!` for single-window v1 apps ([[26-open-questions|§26]] defers multi-window manifest fields).
 
@@ -47,9 +51,9 @@ Full schema and stage plan: [[PLAN-PACKAGE]].
 
 | OS | Default formats | Status |
 |---|---|---|
-| macOS | `.app` + `.dmg` | **Shipped** (P0–P5) |
-| Windows | NSIS / MSI | P6 |
-| Linux | deb / AppImage | P6 |
+| macOS | `.app` + `.dmg` | **Shipped** |
+| Windows | NSIS installer | **Shipped** — run on Windows; `[package.sign.windows].thumbprint` optional |
+| Linux | `.deb` + AppImage | **Shipped** — run on Linux |
 
 - Icon pipeline: one square PNG → platform icon sets (no author sizing matrix).
 - Signing/notarization: config-file driven via `[package.sign.*]`; CI recipes in the app README scaffold.
@@ -58,11 +62,11 @@ Full schema and stage plan: [[PLAN-PACKAGE]].
 
 ## Reference implementation
 
-**`applications/aws-login`** — end-to-end macOS path:
+**`applications/aws-login`** — end-to-end packaging reference:
 
 - Sample `libra.toml` + `assets/icon.png`
 - Developer docs: build, package, sign, test — `applications/aws-login/README.md`
-- End-user install path (DMG → Applications, Gatekeeper notes for unsigned builds)
+- End-user install paths (DMG / NSIS / deb / AppImage)
 
 ## Why packaging is early
 
@@ -73,9 +77,7 @@ Packaging is a **prerequisite**, not only a finishing step:
 
 Both degrade honestly in dev (`NotifyResult::Unsupported`) rather than pretending — but neither can be *finished* before `libra package` exists.
 
-**Execution plan:** [[PLAN-PACKAGE]] (P0 release codegen → P1 `libra build` → P2 `libra.toml` → P3 macOS bundle → P4 signing → **P5 docs** → P6 other platforms).
-
----
+**Execution plan:** [[PLAN-PACKAGE]] — **complete** (P0 release codegen through P6 Windows/Linux bundles).
 
 ---
 

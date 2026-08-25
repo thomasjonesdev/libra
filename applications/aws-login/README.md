@@ -4,9 +4,9 @@ Libra reference app for AWS SSO session management. See `architecture/plans/PLAN
 
 ## Install (end users)
 
-You need a **macOS** build artifact — either a `.dmg` from a release or one you package locally (below).
+You need a build artifact for your platform — from a release or from `libra package` on that OS (below).
 
-### From a release DMG
+### macOS (DMG)
 
 1. Open `AWS Login_<version>_aarch64.dmg`.
 2. Drag **AWS Login.app** into **Applications**.
@@ -15,20 +15,49 @@ You need a **macOS** build artifact — either a `.dmg` from a release or one yo
 
 **Signed builds** (Developer ID + notarization configured at release time) open normally on any Mac.
 
-**Unsigned builds** (default local `libra package` output) may be blocked by Gatekeeper on first launch:
+**Unsigned builds** (default local `libra package` output) may be blocked by Gatekeeper on another Mac.
 
-- **Right-click** the app → **Open** → confirm **Open** once, or
-- **System Settings → Privacy & Security** → **Open Anyway** after the first blocked attempt.
+If macOS says the app is **“damaged and can’t be opened”**, that is usually Gatekeeper + an unsigned transfer — not file corruption. Try, on the **receiving** Mac:
 
-This is expected for ad-hoc sharing; production releases should use `[package.sign.macos]` (see below).
+```sh
+xattr -cr "/Applications/AWS Login.app"
+```
 
-### Requirements
+Then launch again, or **Right-click → Open → Open** once.
 
-- macOS 11 or later (Apple Silicon build shown; Intel requires packaging on that arch)
+If it still fails, confirm the build is **Apple Silicon** (`aarch64` in the DMG name) and the target Mac is too — Intel Macs need an x86_64 build.
+
+For ad-hoc sharing without the “damaged” false alarm, rebuild with a current `libra package` (it ad-hoc signs the bundle after packager). Production releases should use `[package.sign.macos]` (see below).
+
+### Windows (NSIS)
+
+1. Run the installer from `dist/` (e.g. `AWS Login_<version>_x64-setup.exe`).
+2. Follow the installer; the app installs under `%LOCALAPPDATA%` by default.
+3. Launch **AWS Login** from the Start menu.
+
+Optional Authenticode signing: set `[package.sign.windows].thumbprint` in `libra.toml` before packaging on Windows.
+
+### Linux (deb or AppImage)
+
+**deb:** install with your package manager, then launch `aws-login` from the app menu:
+
+```sh
+sudo dpkg -i dist/aws-login_<version>_amd64.deb
+```
+
+**AppImage:** make executable and run (no install step):
+
+```sh
+chmod +x dist/AWS\ Login_<version>_amd64.AppImage
+./dist/AWS\ Login_<version>_amd64.AppImage
+```
+
+### Requirements (all platforms)
+
 - Network access for AWS SSO authentication
-- `aws` CLI on `PATH` if you use credential export (app probes this at runtime)
+- `aws` CLI discoverable on `PATH` if you use credential export (the packaged app augments `PATH` with common install locations — Homebrew, `/usr/local/bin`, Chocolatey, Scoop, etc.)
 
-No Rust toolchain required on the install machine — only the packaged `.app` / DMG.
+No Rust toolchain required on the install machine — only the packaged artifact.
 
 ## Development
 
@@ -49,7 +78,7 @@ libra build -p aws-login
 
 Produces `target/release/aws-login` with release view codegen and LTO (§18.2).
 
-## Packaging (macOS)
+## Packaging
 
 Prerequisite (one-time, on the **build** machine):
 
@@ -57,15 +86,35 @@ Prerequisite (one-time, on the **build** machine):
 cargo install cargo-packager --locked
 ```
 
-Unsigned bundle (local sharing):
+Run on the **host OS** you are targeting (`--target` must match the machine you are on):
 
 ```sh
-libra package -p aws-login
+libra package -p aws-login                    # host defaults: .app+.dmg / NSIS / deb+AppImage
+libra package -p aws-login --format app       # single format override
+libra package -p aws-login --target windows   # on Windows only
+libra package -p aws-login --target linux     # on Linux only
 ```
+
+### macOS
 
 Output: `applications/aws-login/dist/AWS Login.app` and `dist/AWS Login_<version>_aarch64.dmg`.
 
-Identity fields live in `libra.toml` (`bundle_id`, `app_user_model_id`) for downstream native integrations (notifications, launch-at-login).
+### Windows
+
+Output: NSIS installer under `applications/aws-login/dist/` (e.g. `AWS Login_<version>_x64-setup.exe`).
+
+Optional signing in `libra.toml`:
+
+```toml
+[package.sign.windows]
+thumbprint = "YOUR_CERT_SHA1_THUMBPRINT"
+```
+
+### Linux
+
+Output: `dist/aws-login_<version>_amd64.deb` and `dist/AWS Login_<version>_amd64.AppImage`.
+
+Identity fields live in `libra.toml` (`bundle_id`, `app_user_model_id`). `libra package` also writes `packaging/libra-identity.toml` and bundles it for native integrations (Windows toast AppUserModelID, launch-at-login, etc.).
 
 ### `libra.toml` (sample)
 
@@ -75,7 +124,7 @@ The committed manifest beside this crate is the v1 reference — copy and edit f
 [app]
 name = "AWS Login"                    # display name in Finder / DMG
 bundle_id = "dev.libra.aws-login"     # macOS CFBundleIdentifier
-app_user_model_id = "Libra.AwsLogin" # Windows toast ID (P6)
+app_user_model_id = "Libra.AwsLogin" # Windows toast AppUserModelID
 
 [package]
 icon = "assets/icon.png"              # square PNG; one source for all platform sizes

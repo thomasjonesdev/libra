@@ -1,6 +1,7 @@
 /target
 **/dist/
 **/Packager.toml
+**/packaging/libra-identity.toml
 *.actual.png
 *.diff.png
 .DS_Store

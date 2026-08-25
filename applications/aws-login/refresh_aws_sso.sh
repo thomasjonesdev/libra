@@ -21,7 +21,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DEFAULT_SSO_SESSION_NAME="${AWS_SSO_SESSION_NAME:-aeos-govcloud}"
-DEFAULT_SSO_START_URL="${AWS_SSO_START_URL:-https://start.us-gov-west-1.us-gov-home.awsapps.com/directory/d-98671f268f#/?tab=accounts}"
+# AWS stores sso_start_url without a `#` fragment — strip any pasted-from-browser
+# suffix (e.g. #/?tab=accounts) before it's written to ~/.aws/config, or a
+# later run of the libra aws-login app (which strips fragments) will disagree
+# with this script's [sso-session] value and AWS CLI will refuse to log in
+# with "sso_start_url is inconsistent between profile and sso-session".
+RAW_SSO_START_URL="${AWS_SSO_START_URL:-https://start.us-gov-west-1.us-gov-home.awsapps.com/directory/d-98671f268f#/?tab=accounts}"
+DEFAULT_SSO_START_URL="${RAW_SSO_START_URL%%#*}"
 DEFAULT_SSO_REGION="${AWS_SSO_REGION:-us-gov-west-1}"
 DEFAULT_AWS_REGION="${AWS_DEFAULT_REGION:-us-gov-west-1}"
 DEFAULT_SSO_REGISTRATION_SCOPES="${AWS_SSO_REGISTRATION_SCOPES:-sso:account:access}"

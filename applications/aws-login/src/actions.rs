@@ -10,9 +10,10 @@ use crate::model::{
     account_id_from_profile, config_profile_write_pairs, config_session_write_pairs,
     config_write_pairs, configure_sso_command, export_profile_line, find_profile_for_role,
     format_duration_ago, format_next_refresh, parse_aws_major_version, parse_caller_identity,
-    parse_sso_access_token, parse_sso_account_ids, read_file_cmd, sso_token_cache_paths,
-    strip_url_fragment, url_fragment_warning, validate_onboarding, AppScreen, AuthStatus,
-    ConfigRow, ProcessStep, SavedConfig, PROBE_INTERVAL_MS, REFRESH_INTERVAL_MS, STORE_KEY,
+    parse_sso_access_token, parse_sso_account_ids, read_file_cmd, sso_config_conflict_hint,
+    sso_token_cache_paths, strip_url_fragment, url_fragment_warning, validate_onboarding,
+    AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig, PROBE_INTERVAL_MS,
+    REFRESH_INTERVAL_MS, STORE_KEY,
 };
 use crate::state::AwsLogin;
 
@@ -239,6 +240,17 @@ impl AwsLogin {
             return self.profile_name.clone();
         }
         crate::model::default_profile_name(&self.role_name, &self.account_id)
+    }
+
+    /// `stderr_message` plus a hint when AWS CLI reports a legacy per-profile
+    /// `sso_start_url` conflicting with the linked `sso-session` (the CLI
+    /// never auto-heals this — see `sso_config_conflict_hint`).
+    fn profile_error_message(&self, result: &ProcessResult, prefix: &str) -> String {
+        let base = stderr_message(result, prefix);
+        match sso_config_conflict_hint(&base, &self.profile_name()) {
+            Some(hint) => format!("{base}\n\n{hint}"),
+            None => base,
+        }
     }
 
     fn begin_login(&mut self) {
@@ -522,7 +534,7 @@ impl AwsLogin {
     fn handle_login(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
         if !exit_ok(&result) {
             self.auth = AuthStatus::Failed;
-            self.error_message = stderr_message(&result, "aws sso login failed");
+            self.error_message = self.profile_error_message(&result, "aws sso login failed");
             self.process_step = ProcessStep::Idle;
             return vec![];
         }
@@ -534,7 +546,7 @@ impl AwsLogin {
     fn handle_verify(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
         if !exit_ok(&result) {
             self.auth = AuthStatus::Failed;
-            self.error_message = stderr_message(&result, "identity verification failed");
+            self.error_message = self.profile_error_message(&result, "identity verification failed");
             self.process_step = ProcessStep::Idle;
             return vec![];
         }

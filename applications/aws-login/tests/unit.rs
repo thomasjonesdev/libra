@@ -3,8 +3,8 @@
 use aws_login::model::{
     account_id_from_profile, find_profile_for_role, format_duration_ago, format_next_refresh,
     parse_aws_major_version, parse_caller_identity, parse_sso_access_token, parse_sso_account_ids,
-    sso_token_cache_paths, strip_url_fragment, url_fragment_warning, validate_onboarding,
-    REFRESH_INTERVAL_MS,
+    sso_config_conflict_hint, sso_token_cache_paths, strip_url_fragment, url_fragment_warning,
+    validate_onboarding, REFRESH_INTERVAL_MS,
 };
 
 #[test]
@@ -101,6 +101,21 @@ fn parse_caller_identity_json() {
     let (acct, arn) = parse_caller_identity(json).expect("parses");
     assert_eq!(acct, "111122223333");
     assert!(arn.contains("assumed-role"));
+}
+
+#[test]
+fn sso_config_conflict_hint_matches_cli_inconsistency_error() {
+    let stderr = "aws: [ERROR]: The value for sso_start_url is inconsistent between profile \
+        (https://start.example/d-abc#/?tab=accounts) and sso-session \
+        (https://start.example/d-abc).";
+    let hint = sso_config_conflict_hint(stderr, "Dev_Admin-111122223333").expect("hint");
+    assert!(hint.contains("[profile Dev_Admin-111122223333]"));
+    assert!(hint.contains("sso_start_url"));
+}
+
+#[test]
+fn sso_config_conflict_hint_ignores_unrelated_errors() {
+    assert!(sso_config_conflict_hint("network timeout", "Dev_Admin-111122223333").is_none());
 }
 
 #[test]

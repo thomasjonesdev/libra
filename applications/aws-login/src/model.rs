@@ -401,6 +401,25 @@ pub fn strip_url_fragment(start_url: &str) -> String {
     start_url.split('#').next().unwrap_or(start_url).to_string()
 }
 
+/// Detect the AWS CLI "sso_start_url is inconsistent between profile and
+/// sso-session" error — a legacy per-profile `sso_start_url` left over from
+/// before the profile was linked to an `sso_session` (e.g. an older
+/// `aws configure sso` run, or a start URL edited after onboarding). The CLI
+/// treats any explicit profile-level `sso_start_url` as authoritative and
+/// refuses to proceed if it disagrees with the linked session's value — it
+/// never auto-heals. Surface an actionable hint instead of the raw CLI error.
+pub fn sso_config_conflict_hint(stderr: &str, profile: &str) -> Option<String> {
+    if stderr.contains("inconsistent") && stderr.contains("sso_start_url") && stderr.contains("sso-session") {
+        Some(format!(
+            "Fix: open ~/.aws/config, find [profile {profile}], and delete its `sso_start_url = …` line \
+             (keep `sso_session = …` — AWS reads the URL from the linked [sso-session] block now). \
+             Then retry."
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn url_fragment_warning(start_url: &str) -> String {
     if start_url.contains('#') {
         "This URL contains a # fragment. It will be removed automatically when you save.".into()

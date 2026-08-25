@@ -10,7 +10,7 @@
 //!   interpreter + view hot reload). Inspector, automation server, and
 //!   managed `libra.toml` manifests are still open (§16, §18.4).
 //! - `libra build` — release binary with codegen views + LTO (PLAN-PACKAGE P1).
-//! - `libra package` — platform bundles via cargo-packager (PLAN-PACKAGE P3).
+//! - `libra package` — platform bundles via cargo-packager (PLAN-PACKAGE P3–P6).
 
 mod app;
 mod build;
@@ -35,7 +35,7 @@ fn main() -> ExitCode {
             eprintln!("  libra check [paths…]          validate .lx markup (default: .)");
             eprintln!("  libra dev [path] [-- args…]   run app in debug with view hot reload");
             eprintln!("  libra build [path] [-p crate] release binary (codegen + LTO)");
-            eprintln!("  libra package [-p crate]      platform bundle (.app/DMG on macOS)");
+            eprintln!("  libra package [-p crate] [--target macos|windows|linux] [--format …]  platform bundle");
             eprintln!("  libra test [filter…] [flags]  run the test suite (see --help in §18.1)");
             ExitCode::from(2)
         }

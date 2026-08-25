@@ -5,13 +5,13 @@
 [app]
 name = "AWS Login"                   # Finder / DMG display name
 bundle_id = "dev.libra.aws-login"    # macOS CFBundleIdentifier
-app_user_model_id = "Libra.AwsLogin" # Windows toast AppUserModelID (P6)
+app_user_model_id = "Libra.AwsLogin" # Windows toast AppUserModelID
 
 [package]
 icon = "assets/icon.png"             # square PNG; one source for all platform icon sizes
 
 # Optional — enables codesign + notarization in `libra package` (P4).
-# [package.sign.macos]
-# identity = "Developer ID Application: Your Name (TEAMID)"
-# notary_profile = "libra-notary"    # xcrun notarytool store-credentials profile name
+[package.sign.macos]
+identity = "Developer ID Application: Thomas Jones (4LP57JV5FB)"
+notary_profile = "libra-notary"
 # provider_short_name = "YourTeamShortName"

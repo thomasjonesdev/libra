@@ -229,6 +229,8 @@ at runtime once the platform switch lands.
 - [x] `[package.sign.macos]` path documented; signing optional (P4)
 - [x] `bundle_id` and `app_user_model_id` present for NT3/R5 to consume (P2)
 - [x] README install-path docs; sample `libra.toml`; cross-link [[20-packaging|§20]] (P5)
+- [x] `libra package -p aws-login` emits NSIS on Windows and deb + AppImage on Linux (P6)
+- [x] `packaging/libra-identity.toml` bundled as a packager resource (P6 — NT3/R5 hook)
 - [x] `cargo test --workspace` green at every stage boundary
 - [ ] No snapshot PNGs change unless an unrelated pixel change landed in the
       same PR
@@ -254,10 +256,10 @@ at runtime once the platform switch lands.
 | P0 | `crates/libra-build/` (new) or shared helper extracted from `conformance/build.rs`; `applications/aws-login/build.rs`; `crates/libra-platform/src/lib.rs` (cfg switch) |
 | P1 | `cli/libra/src/build.rs`; root `Cargo.toml` `[profile.release]`; `cli/libra/src/main.rs` |
 | P2 | `cli/libra/src/manifest.rs` (parse/validate `libra.toml`); `applications/aws-login/libra.toml` |
-| P3 | `cli/libra/src/package.rs`; `cli/libra/Cargo.toml` (optional `cargo-packager` invocation via `std::process::Command`) |
-| P4 | `cli/libra/src/package/sign.rs`; README scaffold |
+| P3 | `cli/libra/src/package/mod.rs`; `cli/libra/Cargo.toml` (optional `cargo-packager` invocation via `std::process::Command`) |
+| P4 | signing fields in `manifest.rs` + README scaffold |
 | P5 | `README.md`; `applications/aws-login/README` or crate doc |
-| P6 | `cli/libra/src/package/` platform modules |
+| P6 | `cli/libra/src/package/target.rs`; Windows NSIS + Linux deb/AppImage in `manifest.rs` |
 
 Reference today:
 
@@ -269,9 +271,8 @@ Reference today:
 ## When this lands (vault checklist — [[AGENTS#9 How to change the system safely|AGENTS §9]])
 
 1. [[20-packaging|§20]] — no change expected (plan implements existing contract).
-2. [[AGENTS]] §8 — move packaging from "still open" to in-progress/done as
-   stages land; cite P0–P6 status. **P0–P5 landed** (macOS build/package path + docs).
-3. [[Plans Index]] — update status column as stages complete.
+2. [[AGENTS]] §8 — packaging **done** (P0–P6): `libra build`/`libra package`, `libra.toml`, macOS/Windows/Linux bundles, signing docs, identity resource.
+3. [[Plans Index]] — update status column as stages complete. **PLAN-PACKAGE complete.**
 4. [[PLAN-NOTIFY]] / [[PLAN-RESIDENCY]] — confirm NT3/R5 dependency on P3 is
    recorded (this plan satisfies RESIDENCY's "PLAN-PACKAGE should record that").
 
