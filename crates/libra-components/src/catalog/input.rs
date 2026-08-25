@@ -44,10 +44,34 @@ pub(crate) fn build(
 }
 
 pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &str, px: f32) {
+    paint_field(cx, item, value, placeholder, px, 0.0);
+}
+
+/// Shared field chrome used by Input and `<Search>` (PLAN-CATALOG).
+/// `leading` reserves extra left inset so Search can draw a glyph
+/// without overlapping the value.
+pub(crate) fn paint_field(
+    cx: &mut PaintCx,
+    item: &Item,
+    value: &str,
+    placeholder: &str,
+    px: f32,
+    leading: f32,
+) {
     let focused = cx
         .focus
         .filter(|f| item.semantics.test_id.as_deref() == Some(f.test_id.as_str()));
-    paint_input(cx.cmds, item.rect, value, placeholder, px, focused, cx.measurer, cx.theme);
+    paint_input(
+        cx.cmds,
+        item.rect,
+        value,
+        placeholder,
+        px,
+        leading,
+        focused,
+        cx.measurer,
+        cx.theme,
+    );
 }
 
 /// Horizontal scroll offset so the caret and selection stay visible in a
@@ -101,6 +125,7 @@ fn paint_input(
     value: &str,
     placeholder: &str,
     px: f32,
+    leading: f32,
     focus: Option<&InputFocus>,
     m: &dyn TextMeasurer,
     theme: &Theme,
@@ -121,16 +146,17 @@ fn paint_input(
     }
     let ty = rect.y + theme.btn_pad_y;
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+    let left = theme.btn_pad_x + leading;
     let inner = Rect::new(
-        rect.x + theme.btn_pad_x,
+        rect.x + left,
         rect.y + theme.btn_pad_y,
-        (rect.w - 2.0 * theme.btn_pad_x).max(0.0),
+        (rect.w - left - theme.btn_pad_x).max(0.0),
         (rect.h - 2.0 * theme.btn_pad_y).max(0.0),
     );
     cmds.push(DrawCmd::PushClip { rect: inner });
 
     let scroll_x = input_scroll_x(m, value, px, inner.w, focus);
-    let tx = rect.x + theme.btn_pad_x - scroll_x;
+    let tx = rect.x + left - scroll_x;
 
     if let Some(f) = focus {
         // Selection band behind the text.

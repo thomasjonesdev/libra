@@ -130,6 +130,17 @@ pub enum ViewNode {
     /// `test_id` is required — it is the focus identity until the
     /// reconciler brings structural IDs.
     Input { value: String, placeholder: String, on_change: String, test_id: String },
+    /// `<Search>` (§7.1, PLAN-CATALOG wave 3): Input chrome + submit.
+    /// Same controlled `value`/`onChange`/`testId` contract as Input;
+    /// optional `onSubmit` is a unit action fired on Enter. Live-filter
+    /// UIs omit it.
+    Search {
+        value: String,
+        placeholder: String,
+        on_change: String,
+        on_submit: Option<String>,
+        test_id: String,
+    },
     /// `<ListItem>` (§7.1, PLAN-CATALOG): a pressable list row —
     /// title line, optional muted `subtitle`/`meta` lines, `selected`
     /// wash (`theme.surface_raised`; also the hover wash). The whole
@@ -369,8 +380,8 @@ pub enum Cursor {
     /// Anything pressable: Button, ListItem, Switch/Checkbox/Radio,
     /// Slider, a crumb, a page button, a dismissible scrim.
     Pointer,
-    /// I-beam — an `Input`/`Textarea` (`Role::TextInput`), where a press
-    /// places a caret instead of dispatching (§10.1).
+    /// I-beam — an `Input`/`Search`/`Textarea` (`Role::TextInput`), where
+    /// a press places a caret instead of dispatching (§10.1).
     Text,
     /// Horizontal resize — a `<Split>` divider gutter, whose press
     /// starts a drag rather than a click.
@@ -409,6 +420,10 @@ pub enum ItemKind {
     Scroll,
     Chart { handle: SeriesHandle, panel: bool },
     Input { value: String, placeholder: String, px: f32 },
+    /// `<Search>` — Input chrome plus a leading glyph; `on_submit` is
+    /// the optional Enter handler (unit action). Focus/edit reuse
+    /// `Role::TextInput`.
+    Search { value: String, placeholder: String, px: f32, on_submit: Option<String> },
     /// Multi-line sibling of Input (§10.1 stage 1) — same focus
     /// machinery, line-aware paint.
     Textarea { value: String, placeholder: String, px: f32 },

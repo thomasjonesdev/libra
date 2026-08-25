@@ -30,6 +30,7 @@ pub(crate) mod list_item;
 pub(crate) mod pagination;
 pub(crate) mod progress;
 pub(crate) mod scroll;
+pub(crate) mod search;
 pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod source;

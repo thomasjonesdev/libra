@@ -1121,6 +1121,18 @@ where
                 self.apply_edit(EditOp::Insert('\n'));
                 return;
             }
+            // `<Search onSubmit>` (§7.1): Enter submits the unit
+            // action. The query is already in State via onChange.
+            Key::Named(NamedKey::Enter) => {
+                if let Some(name) = self.focused_search_submit() {
+                    let msg = A::Msg::action_by_name(&name).unwrap_or_else(|| {
+                        panic!("'{name}' is not a unit Action variant")
+                    });
+                    self.dispatch(msg);
+                    return;
+                }
+                None
+            }
             Key::Named(NamedKey::ArrowUp) if self.focused_is_textarea() => Some(EditOp::Up(shift)),
             Key::Named(NamedKey::ArrowDown) if self.focused_is_textarea() => {
                 Some(EditOp::Down(shift))
@@ -1217,6 +1229,22 @@ where
         laid.items.iter().any(|i| {
             i.semantics.test_id.as_deref() == Some(id.as_str())
                 && matches!(i.kind, libra_components::ItemKind::Textarea { .. })
+        })
+    }
+
+    /// Unit-action name for Enter on a focused `<Search onSubmit>`
+    /// (§7.1). `None` if focus is not a Search, or Search omitted it.
+    fn focused_search_submit(&self) -> Option<String> {
+        let (id, ..) = self.focus.as_ref()?;
+        let laid = self.laid.as_ref()?;
+        laid.items.iter().find_map(|i| {
+            if i.semantics.test_id.as_deref() != Some(id.as_str()) {
+                return None;
+            }
+            match &i.kind {
+                libra_components::ItemKind::Search { on_submit, .. } => on_submit.clone(),
+                _ => None,
+            }
         })
     }
 

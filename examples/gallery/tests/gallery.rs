@@ -232,6 +232,28 @@ fn snapshot_workbench_list_item_light() {
 }
 
 #[test]
+fn snapshot_workbench_search_dark() {
+    select("libra-dark", "search").assert_snapshot("workbench_search_dark");
+}
+
+#[test]
+fn snapshot_workbench_search_light() {
+    select("libra-light", "search").assert_snapshot("workbench_search_light");
+}
+
+/// Typing updates the bound value; Enter fires `onSubmit`.
+#[test]
+fn search_types_and_submits_on_enter() {
+    let mut h = select("libra-dark", "search");
+    assert_eq!(h.cursor_over(by::test_id("pg-search")), libra_components::Cursor::Text);
+    h.type_text(by::test_id("pg-search"), " more");
+    assert_eq!(h.state().ctl_input, "editable more");
+    assert!(!h.state().search_submitted);
+    h.press_enter();
+    assert!(h.state().search_submitted, "Enter dispatched onSubmit");
+}
+
+#[test]
 fn snapshot_workbench_textarea_dark() {
     select("libra-dark", "textarea").assert_snapshot("workbench_textarea_dark");
 }

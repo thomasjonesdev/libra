@@ -507,6 +507,36 @@ impl<A: App> Harness<A> {
         self.focus = None;
     }
 
+    /// Enter on the focused field (§7.1 Search): dispatches `onSubmit`
+    /// when the focus is a `<Search>` that declared one; inserts a
+    /// newline in a Textarea; no-ops on a plain Input (shell parity).
+    pub fn press_enter(&mut self) {
+        let Some((id, _, _)) = &self.focus else {
+            panic!("press_enter: no Input is focused — click or type_text first");
+        };
+        let item = self
+            .laid
+            .items
+            .iter()
+            .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+            .unwrap_or_else(|| panic!("press_enter: focused '{id}' is gone from the tree"));
+        match &item.kind {
+            libra_components::ItemKind::Search {
+                on_submit: Some(name),
+                ..
+            } => {
+                let msg = A::Msg::action_by_name(name).unwrap_or_else(|| {
+                    panic!("'{name}' is not a unit Action variant")
+                });
+                self.dispatch(msg);
+            }
+            libra_components::ItemKind::Textarea { .. } => {
+                self.edit(EditOp::Insert('\n'));
+            }
+            _ => {}
+        }
+    }
+
     fn focus_paint(&self) -> Option<InputFocus> {
         self.focus.as_ref().map(|(id, e, _)| InputFocus {
             test_id: id.clone(),

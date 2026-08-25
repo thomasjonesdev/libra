@@ -744,9 +744,46 @@ fn nav_produces_identical_trees() {
     assert_eq!((title.as_str(), *done), ("ok", false));
 }
 
+const SEARCH: &str = include_str!("../fixtures/search.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
+
+/// PLAN-CATALOG wave 3 — `<Search>`: Input-shaped value/onChange/testId
+/// plus optional unit `onSubmit`. Both engines must agree.
+#[test]
+fn search_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(SEARCH, &state, &fixture_registry());
+        let compiled = generated::build_search(&state);
+        assert_eq!(interp, compiled, "engine drift on search fixture (variant #{i})");
+    }
+
+    let state = TestState { name: "Ada".into(), ..TestState::default() };
+    let interp = interp_tree_src(SEARCH, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Search {
+                value,
+                on_change,
+                on_submit: Some(sub),
+                test_id,
+                ..
+            } if value == "Ada" && on_change == "nameChanged" && sub == "reset" && test_id == "bound-search"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(&children[1], ViewNode::Search { on_submit: None, test_id, .. } if test_id == "live-search"),
+        "{:?}",
+        children[1]
+    );
+}
 
 #[test]
 fn composed_produces_identical_trees() {

@@ -1488,6 +1488,67 @@ fn gen_node(
             ))
         }
 
+        // §7.1 (PLAN-CATALOG wave 3), matching libra-interp's "Search"
+        // arm: Input-shaped value/onChange/testId plus optional unit
+        // onSubmit (Enter).
+        "Search" => {
+            let mut value: Option<(String, Span)> = None;
+            let mut placeholder = String::new();
+            let mut on_change: Option<(String, Span)> = None;
+            let mut on_submit: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
+                    ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("onSubmit", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_submit = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, vspan) =
+                value.ok_or_else(|| err(*span, "<Search> requires value={someField}"))?;
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Search> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Search> requires testId=\"…\" (focus identity)"))?;
+            let value_ref = display_ref_expr(&path, bound, binding_ctx).map_err(|m| err(vspan, m))?;
+            let (submit_expr, submit_at) = match &on_submit {
+                Some((m, sspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *sspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Search {{ {at}\n\
+                 {i}    value: ::std::string::ToString::to_string(&{value_ref}), {vat}\n\
+                 {i}    placeholder: {ph}.to_string(),\n\
+                 {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
+                 {i}    on_submit: {submit_expr}, {submit_at}\n\
+                 {i}    test_id: {tid}.to_string(),\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                vat = at(cfg, vspan),
+                ph = str_lit(&placeholder),
+                msg_ty = cfg.action,
+                variant_ref = pascalize(&msg),
+                name_lit = str_lit(&msg),
+                mat = at(cfg, mspan),
+                tid = str_lit(&test_id),
+            ))
+        }
+
         // §12.5: invisible, zero-layout — declares a mount-scoped
         // subscription, matching libra-interp's "Frames" arm exactly
         // (both engines share §6.4's no-drift guarantee).
@@ -1594,7 +1655,7 @@ fn gen_node(
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Frames, Interval, Stream, for, if"
             ),
         )),
     }

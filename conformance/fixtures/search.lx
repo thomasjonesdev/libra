@@ -1,0 +1,4 @@
+<Column gap={8} padding={12}>
+  <Search value={name} placeholder="find…" onChange={nameChanged} onSubmit={reset} testId="bound-search" />
+  <Search value={name} placeholder="live filter" onChange={nameChanged} testId="live-search" />
+</Column>

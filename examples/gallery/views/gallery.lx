@@ -57,6 +57,9 @@
       <if test={is_input}>
         <InputDemo ctl_input={ctl_input} inputChanged={inputChanged} />
       </if>
+      <if test={is_search}>
+        <SearchDemo ctl_input={ctl_input} inputChanged={inputChanged} search={search} />
+      </if>
       <if test={is_textarea}>
         <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>

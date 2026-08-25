@@ -53,6 +53,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),
     ("input", "Input"),
+    ("search", "Search"),
     ("textarea", "Textarea"),
     ("list_item", "ListItem"),
     ("switch", "Switch"),

@@ -1491,6 +1491,58 @@ fn element(
             Ok(ViewNode::Input { value, placeholder, on_change: msg, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG wave 3): Input chrome + optional Enter
+        // submit. `onChange` is a String-payload action; `onSubmit` is
+        // an optional unit action. `testId` is the focus identity.
+        "Search" => {
+            let mut value: Option<(String, Span)> = None;
+            let mut placeholder = String::new();
+            let mut on_change: Option<(String, Span)> = None;
+            let mut on_submit: Option<String> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
+                    ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
+                    ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("onSubmit", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("no action '{m}' on Action — check the enum"),
+                            ));
+                        }
+                        on_submit = Some(m.clone());
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (path, vspan) =
+                value.ok_or_else(|| err(*span, "<Search> requires value={someField}"))?;
+            let value = (scope.field)(&path)
+                .ok_or_else(|| err(vspan, format!("no field '{path}' on State")))?;
+            let (msg, mspan) =
+                on_change.ok_or_else(|| err(*span, "<Search> requires onChange={someAction}"))?;
+            require_camel_case(&msg, mspan)?;
+            if !(scope.has_str_action)(&msg) {
+                return Err(err(
+                    mspan,
+                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                ));
+            }
+            let test_id = test_id
+                .ok_or_else(|| err(*span, "<Search> requires testId=\"…\" (focus identity)"))?;
+            Ok(ViewNode::Search {
+                value,
+                placeholder,
+                on_change: msg,
+                on_submit,
+                test_id,
+            })
+        }
+
         // §7.1 (PLAN-CATALOG): a pressable list row — title/subtitle/
         // meta lines + a `selected` wash. Attrs are literals or
         // bindings (loop fields included); `selected` follows the
@@ -1752,7 +1804,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

@@ -1,0 +1,11 @@
+<props ctl_input: String, inputChanged: Action(String), search: Action />
+
+<Text bold muted>Playground (type, then Enter to submit)</Text>
+<Row>
+  <Search value={ctl_input} placeholder="Search…" onChange={inputChanged} onSubmit={search} testId="pg-search" />
+</Row>
+<Spacer />
+<Text bold muted>Live filter (no submit)</Text>
+<Row>
+  <Search value={ctl_input} placeholder="filter…" onChange={inputChanged} testId="pg-search-live" />
+</Row>

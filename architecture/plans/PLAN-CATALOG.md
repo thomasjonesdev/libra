@@ -49,7 +49,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
 | `Checkbox` | `Checkbox` | **shipped** 2026-07-19 | Model-owned; check glyph is a display-list Polyline |
 | `Slider` | `Slider` | **shipped** 2026-07-19/20 | Model-owned; the shell's Split-drag machinery generalized to a `DragTarget` enum |
-| `SearchBar` | `Search` | planned | Input chrome + submit |
+| `SearchBar` | `Search` | **shipped** 2026-08-25 | Input chrome + optional Enter `onSubmit`; live-filter UIs omit it |
 | `Spinner` | `Spinner` | **blocked** | Needs either an arc/circle draw command (none today) **or** an animation phase on the paint path — the latter is §9.6 animated tokens (unbuilt). A deterministic *static* spinner is just decoration; revisit when §9.6 or an arc `DrawCmd` lands |
 | `ProgressBar` | `Progress` | **shipped** 2026-07-18 | `value={0..1}` — **literal or bound** (`value={ratio}`, typed f32; §6.5 preserved — [[26-open-questions|§26]] #8); `surface_raised` track + `accent` fill, pill radius |
 | `Card` | `Card` + `Panel` | **shipped** 2026-07-19 | Surface containers sharing the Dialog panel chrome (Card framed/raised, Panel plain) |
@@ -107,7 +107,7 @@ never invents colors.
 | **0** | Token table expansion | Shared foundation — **done** ([[PLAN-TOKENS]] T1) |
 | **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **all done** (Scroll 2026-07-18) |
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
-| **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; `Search` next | Control set parity |
+| **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; ✅ `Search` shipped 2026-08-25 | Control set parity |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
 | **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |

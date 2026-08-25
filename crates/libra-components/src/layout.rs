@@ -66,6 +66,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Input { value, placeholder, on_change, test_id } => {
             catalog::input::build(cx, value, placeholder, on_change, test_id)
         }
+        ViewNode::Search { value, placeholder, on_change, on_submit, test_id } => {
+            catalog::search::build(cx, value, placeholder, on_change, on_submit, test_id)
+        }
         ViewNode::ListItem {
             title,
             subtitle,

@@ -24,6 +24,12 @@ impl Gallery {
         self.ctl_input = s;
     }
 
+    /// `<Search onSubmit>` playground — the query is already in
+    /// `ctl_input` via onChange; this just records that Enter fired.
+    pub fn search(&mut self) {
+        self.search_submitted = true;
+    }
+
     pub fn body_changed(&mut self, s: String) {
         self.ctl_body = s;
     }
@@ -130,6 +136,7 @@ impl Gallery {
         self.is_progress = s == "progress";
         self.is_button = s == "button";
         self.is_input = s == "input";
+        self.is_search = s == "search";
         self.is_textarea = s == "textarea";
         self.is_list_item = s == "list_item";
         self.is_chart = s == "chart";
