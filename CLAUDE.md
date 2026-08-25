@@ -109,7 +109,7 @@ Key invariants (Appendix A checklist — any change must keep these):
 
 - Reflection is hand-written in the oldest code paths (`ReflectState::field` / `ReflectAction::action_by_name`); `#[derive(LibraReflect)]` and `#[libra::state]`/`#[libra::actions]` are the two generated paths (the latter preferred for new apps). Keep them in sync with the Action enum when touching an app.
 - No reconciler: the laid tree rebuilds fully per dispatch (`key=` already carries identity data for the future one — PLAN-RECONCILER).
-- Text is fontdue advance-layout only (no shaping/kerning); sans is Work Sans (Medium + Bold) and Space Mono is bundled for future mono tokens via `include_bytes!` from `assets/fonts/`.
+- Text is fontdue advance-layout only (no shaping/kerning); sans is Work Sans (Medium + Bold + Italic for markdown emphasis) and Space Mono is bundled for future mono tokens via `include_bytes!` from `assets/fonts/`.
 - Dependency versions for the determinism-critical stack are **pinned exactly** (`=0.5.2` taffy, `=0.11.4` tiny-skia, `=0.8.0` fontdue) in the workspace `Cargo.toml` — bumping any of them can change rendered bytes and requires re-validating snapshots. Those crates plus the workspace paint path (`libra-raster` / `libra-draw` / `libra-data` / `libra-components` / `libra-platform`) compile at `opt-level = 2` under `[profile.dev.package.*]` so plain `cargo run` / `libra dev` stay interactive — pixel loops are unusable at opt-level 0.
 
 ## Crate layout rules

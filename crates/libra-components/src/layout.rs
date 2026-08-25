@@ -78,13 +78,17 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             on_press_arg,
             on_menu,
             on_menu_arg,
+            inset,
             test_id,
         } => catalog::list_item::build(
             cx, title, subtitle, meta, *selected, on_press, on_press_arg, on_menu, on_menu_arg,
-            test_id,
+            *inset, test_id,
         ),
         ViewNode::Textarea { value, placeholder, on_change, test_id } => {
             catalog::textarea::build(cx, value, placeholder, on_change, test_id)
+        }
+        ViewNode::Markdown { source, skip_title, test_id, on_wikilink } => {
+            catalog::markdown::build(cx, source, skip_title, test_id, on_wikilink)
         }
         ViewNode::Dialog { title, on_dismiss, test_id, children } => {
             catalog::dialog::build(cx, title, on_dismiss, test_id, children)
@@ -190,6 +194,7 @@ pub fn layout(
     .map_err(|e| LayoutError(format!("{e:?}")))?;
 
     reflow_wrapped_text(&mut tree, root, &meta, measurer, viewport)?;
+    reflow_textareas(&mut tree, root, &meta, measurer, theme, viewport)?;
     reflow_alert_heights(&mut tree, root, &meta, measurer, theme, viewport)?;
 
     // Flatten with accumulated absolute positions, in paint (pre-)order.
@@ -263,6 +268,44 @@ fn reflow_wrapped_text(
         if (laid.size.height - h).abs() > 0.5 {
             let mut st = tree.style(*id).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
             st.size.height = length(h);
+            tree.set_style(*id, st).map_err(|e| LayoutError(format!("{e:?}")))?;
+            changed = true;
+        }
+    }
+    if changed {
+        tree.compute_layout(root, space).map_err(|e| LayoutError(format!("{e:?}")))?;
+    }
+    Ok(())
+}
+
+/// After the first layout pass, `<Textarea>` height follows soft-wrapped
+/// visual lines so a parent Scroll can actually scroll a long note.
+fn reflow_textareas(
+    tree: &mut TaffyTree<()>,
+    root: NodeId,
+    meta: &Meta,
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+    viewport: (f32, f32),
+) -> Result<(), LayoutError> {
+    let space = Size {
+        width: AvailableSpace::Definite(viewport.0),
+        height: AvailableSpace::Definite(viewport.1),
+    };
+    let mut changed = false;
+    for (id, kind, _, _) in meta {
+        let ItemKind::Textarea { value, px, .. } = kind else {
+            continue;
+        };
+        let laid = tree.layout(*id).map_err(|e| LayoutError(format!("{e:?}")))?;
+        let inner_w = laid.size.width - 2.0 * theme.btn_pad_x;
+        if inner_w <= 0.0 {
+            continue;
+        }
+        let h = catalog::textarea::wrapped_height(value, inner_w, *px, measurer, theme);
+        if (laid.size.height - h).abs() > 0.5 {
+            let mut st = tree.style(*id).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
+            st.min_size.height = length(h);
             tree.set_style(*id, st).map_err(|e| LayoutError(format!("{e:?}")))?;
             changed = true;
         }

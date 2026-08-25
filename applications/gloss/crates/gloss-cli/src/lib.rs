@@ -4,11 +4,12 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use gloss_core::{
-    apply_op, apply_patch, hash_bytes, list_notes, Journal, Patch, RelPath, VaultPath, Workspace,
+    apply_op, apply_patch, find_backlinks, hash_bytes, list_notes, Journal, Patch, RelPath,
+    VaultPath, Workspace,
 };
 
 pub fn is_cli_command(cmd: &str) -> bool {
-    matches!(cmd, "list" | "cat" | "hash" | "apply" | "undo")
+    matches!(cmd, "list" | "cat" | "hash" | "apply" | "undo" | "backlinks")
 }
 
 pub fn run() -> ExitCode {
@@ -26,6 +27,7 @@ pub fn run_args(mut args: impl Iterator<Item = String>) -> ExitCode {
         "hash" => cmd_hash(&mut args),
         "apply" => cmd_apply(&mut args),
         "undo" => cmd_undo(&mut args),
+        "backlinks" => cmd_backlinks(&mut args),
         _ => {
             eprintln!("{}", usage());
             ExitCode::from(2)
@@ -34,7 +36,23 @@ pub fn run_args(mut args: impl Iterator<Item = String>) -> ExitCode {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  gloss list --root DIR\n  gloss cat --root DIR --path REL\n  gloss hash --root DIR --path REL\n  gloss apply --root DIR --patch FILE [--journal FILE]\n  gloss undo --root DIR --journal FILE"
+    "usage:\n  gloss list --root DIR\n  gloss cat --root DIR --path REL\n  gloss hash --root DIR --path REL\n  gloss backlinks --root DIR --path REL\n  gloss apply --root DIR --patch FILE [--journal FILE]\n  gloss undo --root DIR --journal FILE"
+}
+
+fn cmd_backlinks(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let (ws, path) = match open_file(args) {
+        Ok(v) => v,
+        Err(e) => return bad(&e),
+    };
+    match find_backlinks(&ws, path.root, &path.rel) {
+        Ok(notes) => {
+            for n in notes {
+                println!("{n}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => bad(&e.to_string()),
+    }
 }
 
 fn cmd_list(args: &mut impl Iterator<Item = String>) -> ExitCode {

@@ -97,12 +97,32 @@ filed note via M3's review surface. Diarization is post-v1.
 
 ## M4 — Editor shell
 
-**Started.** Libra app with Browse (native folder sheet), note list, `<Textarea>`,
-save and undo through the patch journal. Still missing `@`-mentions, Cmd+K, and
-a rules file.
+**Started.** Libra app with Browse (native folder sheet), note list, preview-first
+`<Markdown>` (display-only), soft-wrapped `<Textarea>` behind Edit, save and undo
+through the patch journal. Rail functions: quick open, daily note, link/backlink
+drawer — see [[09-app-functions]]. Still missing `@`-mentions, Cmd+K inline edit,
+and a rules file.
+
+Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
+`<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
+after save/undo.
 
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.
+
+## M4.1 — Markdown display crate
+
+**Started.** `libra-markdown` parses CommonMark (frontmatter skip, block AST,
+inline spans). Preview is catalog `<Markdown>` — real `Heading` / `Text` /
+`Separator` children, never a webview, never WYSIWYG (§24). Inlines paint as
+Text runs: strong → bold, emphasis → italic face, strike → hairline,
+code/math → muted source, links and `[[wikilinks]]` → accent (press
+dispatches `onWikilink`). GFM tables lay out as rows. The same crate is
+the substrate for M5 Tab paint later — do not start a second parser.
+
+**Exit:** opening a real vault note shows headings, paragraphs, lists, fenced
+code, bold, italic, strike, tables, math source, and wikilinks as
+components; Edit still writes through a soft-wrapped `<Textarea>`.
 
 ## M5 — Tab
 

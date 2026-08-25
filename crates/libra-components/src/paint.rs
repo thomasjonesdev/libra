@@ -86,8 +86,10 @@ impl LaidTree {
                     // Containers, scroll viewports, and mounted sources paint nothing.
                     ItemKind::Box | ItemKind::Scroll | ItemKind::Source(_) => {}
                     ItemKind::Separator => catalog::separator::paint(&mut cx, item),
-                    ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm, .. } => {
-                        catalog::list_item::paint(&mut cx, item, title, subtitle, meta, *selected, *px_md, *px_sm)
+                    ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm, inset, .. } => {
+                        catalog::list_item::paint(
+                            &mut cx, item, title, subtitle, meta, *selected, *px_md, *px_sm, *inset,
+                        )
                     }
                     ItemKind::Textarea { value, placeholder, px } => {
                         catalog::textarea::paint(&mut cx, item, value, placeholder, *px)
@@ -101,8 +103,10 @@ impl LaidTree {
                     ItemKind::Search { value, placeholder, px, .. } => {
                         catalog::search::paint(&mut cx, item, value, placeholder, *px)
                     }
-                    ItemKind::Text { content, px, style, color, wrap } => {
-                        catalog::text::paint(&mut cx, item, content, *px, *style, *color, *wrap)
+                    ItemKind::Text { content, px, style, color, wrap, strike } => {
+                        catalog::text::paint(
+                            &mut cx, item, content, *px, *style, *color, *wrap, *strike,
+                        )
                     }
                     ItemKind::Button { label, px, variant } => {
                         catalog::button::paint(&mut cx, item, label, *px, *variant)
@@ -291,6 +295,7 @@ mod tests {
                     style: FontStyle::Regular,
                     color: libra_draw::Color::rgb(255, 255, 255),
                     wrap: false,
+                    strike: false,
                 },
                 Rect::new(0.0, 0.0, 100.0, 20.0),
                 Role::Text,

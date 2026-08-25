@@ -120,6 +120,12 @@ ceiling on WYSIWYG prose and inline completion until that crate exists.
 - **`@`-mentions** — `@note`, `@folder`, `@tag`, `@repo`. This is also the answer
   to "relations without hard syntax": `@` is existing muscle memory, and
   accepting a mention silently emits the wikilink.
+- **Quick open (C)** — `<Dialog>` + filter over vault paths; catalog
+  `CommandPalette` replaces the shell later. See [[09-app-functions]].
+- **Daily note (D)** — open or create `Daily/YYYY-MM-DD.md` (Obsidian-style
+  search order). Shipped.
+- **Links drawer (G)** — outgoing wikilinks from the open note + full-vault
+  backlink scan via `gloss backlinks`. Not a graph viz — that waits on M1.
 - **Rules file** — `.gloss/rules.md`, per-workspace, plain Markdown. This is how
   a methodology like Tracer becomes user-authorable.
 

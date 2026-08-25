@@ -397,6 +397,18 @@ impl<A: App> Harness<A> {
         &self.app
     }
 
+    /// Laid geometry for the current viewport. Overflow checks walk this.
+    pub fn laid(&self) -> &LaidTree {
+        &self.laid
+    }
+
+    pub fn set_viewport(&mut self, w: u32, h: u32) {
+        self.viewport = (w, h);
+        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.laid.apply_scroll(&self.scroll_state);
+        self.laid.apply_menu_anchor(self.menu_anchor);
+    }
+
     /// Dispatch an action directly through the real update, then
     /// rebuild. Returned effects are intercepted into the integration
     /// queue (§15.4).

@@ -42,6 +42,9 @@ impl Color {
 pub enum FontStyle {
     Regular,
     Bold,
+    /// Work Sans Italic — markdown emphasis only (PLAN-GEIST stays two
+    /// UI weights; this face is the display-only third).
+    Italic,
 }
 
 #[derive(Debug, Clone, PartialEq)]

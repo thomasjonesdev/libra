@@ -25,6 +25,8 @@ libra-text = { path = "crates/libra-text" }
 libra-codegen = { path = "crates/libra-codegen" }
 libra-build = { path = "crates/libra-build" }
 libra-query = { path = "crates/libra-query" }
+libra-markdown = { path = "crates/libra-markdown" }
+pulldown-cmark = { version = "0.13", default-features = false }
 # Determinism-critical rendering stack — pinned exactly (§ Phase 0
 # shortcuts): bumping any of these can change rendered bytes and requires
 # re-blessing every snapshot.

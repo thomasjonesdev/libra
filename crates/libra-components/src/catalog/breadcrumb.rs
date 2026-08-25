@@ -67,7 +67,8 @@ pub(crate) fn build_item(
     let (w, h) = cx.m.measure(label, px, style);
     let id = cx.tree.new_leaf(Style {
         size: Size { width: length(w), height: length(h) },
-        flex_shrink: 0.0,
+        flex_shrink: 1.0,
+        min_size: Size { width: length(0.0), height: length(h) },
         ..Default::default()
     })?;
     let press = if current { None } else { on_press.as_ref().map(|n| (n.clone(), on_press_arg.clone())) };
@@ -98,6 +99,7 @@ pub(crate) fn paint_chevron(cx: &mut PaintCx, item: &Item) {
 pub(crate) fn paint_label(cx: &mut PaintCx, item: &Item, label: &str, current: bool) {
     let (color, style) =
         if current { (cx.theme.text, FontStyle::Bold) } else { (cx.theme.accent, FontStyle::Regular) };
+    cx.cmds.push(DrawCmd::PushClip { rect: item.rect });
     cx.cmds.push(DrawCmd::Text {
         x: item.rect.x,
         y: item.rect.y,
@@ -106,4 +108,5 @@ pub(crate) fn paint_label(cx: &mut PaintCx, item: &Item, label: &str, current: b
         style,
         color,
     });
+    cx.cmds.push(DrawCmd::PopClip);
 }

@@ -15,6 +15,7 @@ const INTERVAL_STREAM: &str = include_str!("../fixtures/interval_stream.lx");
 const ACCESSORS: &str = include_str!("../fixtures/accessors.lx");
 const CHROME: &str = include_str!("../fixtures/chrome.lx");
 const LIST_TEXTAREA: &str = include_str!("../fixtures/list_textarea.lx");
+const LIST_ITEM_INSET: &str = include_str!("../fixtures/list_item_inset.lx");
 const DIALOG: &str = include_str!("../fixtures/dialog.lx");
 const SPLIT: &str = include_str!("../fixtures/split.lx");
 const MENU: &str = include_str!("../fixtures/menu.lx");
@@ -25,6 +26,7 @@ const NAV: &str = include_str!("../fixtures/nav.lx");
 const BADGE: &str = include_str!("../fixtures/badge.lx");
 const HEADING_PROGRESS: &str = include_str!("../fixtures/heading_progress.lx");
 const SCROLL: &str = include_str!("../fixtures/scroll.lx");
+const MARKDOWN: &str = include_str!("../fixtures/markdown.lx");
 
 fn interp_tree_src(src: &str, state: &TestState, registry: &libra_markup::ComponentRegistry) -> libra_components::ViewNode {
     let ast = libra_markup::parse(src).expect("fixture parses");
@@ -525,6 +527,64 @@ fn list_textarea_produces_identical_trees() {
         "{:?}",
         children[3]
     );
+}
+
+/// Display-only `<Markdown source>` — both engines keep the source node.
+#[test]
+fn markdown_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(MARKDOWN, &state, &fixture_registry());
+        let compiled = generated::build_markdown(&state);
+        assert_eq!(interp, compiled, "engine drift on markdown fixture (variant #{i})");
+    }
+
+    let state = TestState { name: "# Hi\n\npara".into(), status: "Hi".into(), ..TestState::default() };
+    let interp = interp_tree_src(MARKDOWN, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Markdown { source, skip_title, test_id: Some(id), .. }
+                if source == "# Hi" && skip_title.is_empty() && id == "literal"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(
+            &children[1],
+            ViewNode::Markdown { source, skip_title, test_id: Some(id), .. }
+                if source == "# Hi\n\npara" && skip_title == "Hi" && id == "bound"
+        ),
+        "{:?}",
+        children[1]
+    );
+}
+
+/// `<ListItem inset>` — literal px or a bound f32; both engines agree.
+#[test]
+fn list_item_inset_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(LIST_ITEM_INSET, &state, &fixture_registry());
+        let compiled = generated::build_list_item_inset(&state);
+        assert_eq!(interp, compiled, "engine drift on list_item_inset fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(LIST_ITEM_INSET, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::ListItem { inset, test_id, .. } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!((*inset, test_id.as_deref()), (16.0, Some("literal-inset")));
+    let ViewNode::ListItem { inset, test_id, .. } = &children[1] else {
+        panic!("{:?}", children[1])
+    };
+    assert_eq!((*inset, test_id.as_deref()), (16.0, Some("bound-inset")));
 }
 
 /// PLAN-CATALOG `<Dialog>` (M6) — the in-tree modal: title as literal

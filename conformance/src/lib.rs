@@ -62,6 +62,8 @@ pub struct TestState {
     /// Numeric binding — `<Pagination current={page}>` / `<Stepper
     /// current={page}>`. Typed u32 field, same §6.5 rule as `ratio`.
     pub page: u32,
+    /// Numeric binding — `<ListItem inset={inset}>`.
+    pub inset: f32,
 }
 
 impl Default for TestState {
@@ -85,6 +87,7 @@ impl Default for TestState {
             user: User { name: "Ada".into(), active: true },
             ratio: 0.5,
             page: 0,
+            inset: 16.0,
         }
     }
 }
@@ -120,6 +123,7 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/accessors.rs"));
     include!(concat!(env!("OUT_DIR"), "/chrome.rs"));
     include!(concat!(env!("OUT_DIR"), "/list_textarea.rs"));
+    include!(concat!(env!("OUT_DIR"), "/list_item_inset.rs"));
     include!(concat!(env!("OUT_DIR"), "/badge.rs"));
     include!(concat!(env!("OUT_DIR"), "/heading_progress.rs"));
     include!(concat!(env!("OUT_DIR"), "/scroll.rs"));
@@ -134,4 +138,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/composed_inlined.rs"));
     include!(concat!(env!("OUT_DIR"), "/slot_host.rs"));
     include!(concat!(env!("OUT_DIR"), "/search.rs"));
+    include!(concat!(env!("OUT_DIR"), "/markdown.rs"));
 }

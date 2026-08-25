@@ -1255,6 +1255,7 @@ fn gen_node(
             let mut selected = "false".to_string();
             let mut on_press: Option<(String, Option<String>, Span)> = None;
             let mut on_menu: Option<(String, Option<String>, Span)> = None;
+            let mut inset = "0.0f32".to_string();
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -1281,6 +1282,10 @@ fn gen_node(
                     ("onMenu", AttrValue::Ident(m)) => on_menu = Some((m.clone(), None, a.span)),
                     ("onMenu", AttrValue::Call { name: m, arg }) => {
                         on_menu = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("inset", AttrValue::Num(v)) => inset = f32_lit(*v),
+                    ("inset", AttrValue::Ident(p)) => {
+                        inset = display_ref_expr(p, bound, binding_ctx).map_err(|m| err(a.span, m))?;
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -1355,6 +1360,7 @@ fn gen_node(
                  {i}    on_press_arg: {arg_expr},\n\
                  {i}    on_menu: {menu_expr},\n\
                  {i}    on_menu_arg: {menu_arg_expr},\n\
+                 {i}    inset: {inset},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
@@ -1642,6 +1648,68 @@ fn gen_node(
             ))
         }
 
+        "Markdown" => {
+            let mut source: Option<(String, Span)> = None;
+            let mut skip_title = "::std::string::String::new()".to_string();
+            let mut test_id: Option<String> = None;
+            let mut on_wikilink: Option<(String, Span)> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("source", AttrValue::Str(s)) => {
+                        source = Some((format!("{}.to_string()", str_lit(s)), a.span))
+                    }
+                    ("source", AttrValue::Ident(p)) => {
+                        let expr =
+                            display_ref_expr(p, bound, binding_ctx).map_err(|m| err(a.span, m))?;
+                        source = Some((
+                            format!("::std::string::ToString::to_string(&{expr})"),
+                            a.span,
+                        ));
+                    }
+                    ("skipTitle", AttrValue::Str(s)) => {
+                        skip_title = format!("{}.to_string()", str_lit(s));
+                    }
+                    ("skipTitle", AttrValue::Ident(p)) => {
+                        let expr =
+                            display_ref_expr(p, bound, binding_ctx).map_err(|m| err(a.span, m))?;
+                        skip_title = format!("::std::string::ToString::to_string(&{expr})");
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    ("onWikilink", AttrValue::Ident(m)) => on_wikilink = Some((m.clone(), a.span)),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let (source_expr, sspan) = source
+                .ok_or_else(|| err(*span, "<Markdown> requires source={someField} or source=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Markdown> takes no children"));
+            }
+            let on_wikilink_expr = match on_wikilink {
+                Some((msg, mspan)) => {
+                    require_camel_case(&msg, mspan)?;
+                    format!(
+                        "{{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(&msg),
+                        name_lit = str_lit(&msg),
+                    )
+                }
+                None => "::core::option::Option::None".to_string(),
+            };
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Markdown {{ {at}\n\
+                 {i}    source: {source_expr}, {sat}\n\
+                 {i}    skip_title: {skip_title},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}    on_wikilink: {on_wikilink},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                sat = at(cfg, sspan),
+                tid = opt_str(&test_id),
+                on_wikilink = on_wikilink_expr,
+            ))
+        }
+
         "for" => Err(err(
             *span,
             "<for> is only allowed as a direct child of <Column>/<Row>",
@@ -1655,7 +1723,7 @@ fn gen_node(
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
             ),
         )),
     }

@@ -19,8 +19,9 @@ second UI stack.
 ## Decision
 
 Gloss is a first-party Libra app (`applications/gloss`). The vault core stays
-a headless Rust library. The editor is Libra `<Textarea>` until a markdown-aware
-crate earns its place. Writes leave reduce as `Effect::Process` to the `gloss`
+a headless Rust library. Preview is display-only `<Markdown>` via `libra-markdown`.
+The source editor is Libra `<Textarea>` until that crate grows inline paint.
+Writes leave reduce as `Effect::Process` to the `gloss`
 CLI (the same binary, with `list` / `apply` subcommands).
 
 ## Consequences

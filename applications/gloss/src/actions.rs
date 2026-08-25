@@ -3,8 +3,10 @@
 use libra_core::{Effect, FolderPick, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, undo_cmd, IoKind, Pending,
-    AUTOSAVE_MS, STORE_KEY,
+    apply_create_cmd, apply_replace_cmd, backlinks_cmd, cat_cmd, daily_note_content,
+    default_daily_note_path, is_folder_id, parse_list, resolve_daily_note, today_local_iso,
+    unique_folder_note, unique_inbox_path, undo_cmd, IoKind, NoteRow, Pending, AUTOSAVE_MS,
+    STORE_KEY,
 };
 use crate::state::Gloss;
 
@@ -72,6 +74,21 @@ impl Gloss {
         self.query.clear();
     }
 
+    pub fn select_file(&mut self, id: String) -> Option<Effect<Action>> {
+        if id.is_empty() {
+            return None;
+        }
+        if is_folder_id(&id, &self.note_paths) {
+            if self.expanded.contains(&id) {
+                self.expanded.remove(&id);
+            } else {
+                self.expanded.insert(id);
+            }
+            return None;
+        }
+        self.select_note(id)
+    }
+
     pub fn select_note(&mut self, id: String) -> Option<Effect<Action>> {
         if id.is_empty() {
             return None;
@@ -84,6 +101,16 @@ impl Gloss {
             return self.flush_save();
         }
         self.begin_cat(id)
+    }
+
+    pub fn follow_wikilink(&mut self, target: String) -> Option<Effect<Action>> {
+        match crate::model::resolve_wikilink(&target, &self.note_paths) {
+            Some(path) => self.select_note(path),
+            None => {
+                self.status = format!("No note matching '{target}'");
+                None
+            }
+        }
     }
 
     pub fn body_changed(&mut self, text: String) -> Option<Effect<Action>> {
@@ -123,31 +150,70 @@ impl Gloss {
     }
 
     pub fn new_note(&mut self) -> Option<Effect<Action>> {
+        self.create_note(unique_inbox_path(&self.note_paths), "# Untitled\n\n")
+    }
+
+    pub fn open_daily_note(&mut self) -> Option<Effect<Action>> {
         if self.vault_path.trim().is_empty() {
             self.status = "Open a vault first".into();
             return None;
         }
-        let path = unique_inbox_path(&self.note_paths);
-        let content = "# Untitled\n\n";
-        let cmd = match apply_create_cmd(self.vault_path.trim(), &path, content) {
-            Ok(c) => c,
-            Err(e) => {
-                self.status = e;
-                return None;
-            }
-        };
-        if self.is_busy() {
-            self.status = "Wait for the current save".into();
+        let date = self
+            .daily_date_override
+            .clone()
+            .unwrap_or_else(today_local_iso);
+        if let Some(path) = resolve_daily_note(&date, &self.note_paths) {
+            return self.select_note(path);
+        }
+        let path = default_daily_note_path(&date);
+        self.create_note(path, &daily_note_content(&date))
+    }
+
+    pub fn open_command_palette(&mut self) {
+        if self.vault_path.trim().is_empty() {
+            self.status = "Open a vault first".into();
+            return;
+        }
+        self.show_command_palette = true;
+        self.palette_query.clear();
+    }
+
+    pub fn close_command_palette(&mut self) {
+        self.show_command_palette = false;
+        self.palette_query.clear();
+    }
+
+    pub fn palette_query_changed(&mut self, text: String) {
+        self.palette_query = text;
+    }
+
+    pub fn palette_pick(&mut self, id: String) -> Option<Effect<Action>> {
+        self.close_command_palette();
+        self.select_note(id)
+    }
+
+    pub fn open_graph(&mut self) -> Option<Effect<Action>> {
+        if self.selected_path.is_empty() {
+            self.status = "Select a note first".into();
             return None;
         }
-        self.selected_path = path;
-        self.loaded_body = content.into();
-        self.editor_body = content.into();
-        self.in_flight_body = self.editor_body.clone();
-        self.dirty = false;
-        self.save_pending = false;
-        self.status = "Creating…".into();
-        self.spawn(cmd, IoKind::Apply)
+        self.show_graph = true;
+        self.scan_backlinks()
+    }
+
+    pub fn close_graph(&mut self) {
+        self.show_graph = false;
+        self.graph_loading = false;
+        self.backlink_rows.clear();
+    }
+
+    pub fn graph_pick(&mut self, id: String) -> Option<Effect<Action>> {
+        self.close_graph();
+        self.select_note(id)
+    }
+
+    pub fn new_folder(&mut self) -> Option<Effect<Action>> {
+        self.create_note(unique_folder_note(&self.note_paths), "# Untitled\n\n")
     }
 
     pub fn undo(&mut self) -> Option<Effect<Action>> {
@@ -178,6 +244,82 @@ impl Gloss {
         }
     }
 
+    pub fn toggle_sort(&mut self) {
+        self.sort_alpha = !self.sort_alpha;
+    }
+
+    pub fn collapse_all(&mut self) {
+        self.expanded.clear();
+    }
+
+    pub fn toggle_preview(&mut self) {
+        self.show_preview = !self.show_preview;
+    }
+
+    pub fn open_settings(&mut self) {
+        self.show_settings = true;
+    }
+
+    pub fn close_settings(&mut self) {
+        self.show_settings = false;
+    }
+
+    pub fn go_back(&mut self) -> Option<Effect<Action>> {
+        let Some(prev) = self.history_back.pop() else {
+            self.status = "Nothing to go back to".into();
+            return None;
+        };
+        if !self.selected_path.is_empty() {
+            self.history_forward.push(self.selected_path.clone());
+        }
+        self.history_lock = true;
+        self.select_note(prev)
+    }
+
+    pub fn go_forward(&mut self) -> Option<Effect<Action>> {
+        let Some(next) = self.history_forward.pop() else {
+            self.status = "Nothing to go forward to".into();
+            return None;
+        };
+        if !self.selected_path.is_empty() {
+            self.history_back.push(self.selected_path.clone());
+        }
+        self.history_lock = true;
+        self.select_note(next)
+    }
+
+    pub fn new_tab(&mut self) {
+        self.open_new_tab = true;
+        self.status = "Next note opens in a new tab".into();
+    }
+
+    pub fn open_in_new_tab(&mut self, id: String) -> Option<Effect<Action>> {
+        if id.is_empty() || is_folder_id(&id, &self.note_paths) {
+            return None;
+        }
+        self.open_new_tab = true;
+        self.select_note(id)
+    }
+
+    pub fn close_tab(&mut self, id: String) -> Option<Effect<Action>> {
+        if id.is_empty() {
+            return None;
+        }
+        self.open_tabs.retain(|p| p != &id);
+        self.history_back.retain(|p| p != &id);
+        self.history_forward.retain(|p| p != &id);
+        if self.selected_path != id {
+            return None;
+        }
+        if let Some(next) = self.open_tabs.last().cloned() {
+            self.history_lock = true;
+            self.select_note(next)
+        } else {
+            self.clear_selection();
+            None
+        }
+    }
+
     pub fn io_done(&mut self, result: ProcessResult) -> Option<Effect<Action>> {
         let kind = self.io;
         self.io = IoKind::Idle;
@@ -194,6 +336,9 @@ impl Gloss {
                     self.pending = Pending::None;
                 }
             }
+            if kind == IoKind::Backlinks {
+                self.graph_loading = false;
+            }
             return None;
         }
         let follow = match kind {
@@ -203,10 +348,7 @@ impl Gloss {
                 if let Pending::Cat(ref path) = self.pending {
                     if !self.note_paths.iter().any(|p| p == path) {
                         if self.selected_path == *path {
-                            self.selected_path.clear();
-                            self.editor_body.clear();
-                            self.loaded_body.clear();
-                            self.dirty = false;
+                            self.clear_selection();
                         }
                         self.pending = Pending::None;
                     }
@@ -214,11 +356,9 @@ impl Gloss {
                 if !self.selected_path.is_empty()
                     && !self.note_paths.iter().any(|p| p == &self.selected_path)
                 {
-                    self.selected_path.clear();
-                    self.editor_body.clear();
-                    self.loaded_body.clear();
-                    self.dirty = false;
+                    self.clear_selection();
                 }
+                self.open_tabs.retain(|p| self.note_paths.iter().any(|n| n == p));
                 if self.selected_path.is_empty() {
                     if let Some(first) = self.note_paths.first().cloned() {
                         self.begin_cat(first)
@@ -235,7 +375,7 @@ impl Gloss {
                 self.editor_body = body;
                 self.dirty = false;
                 self.save_pending = false;
-                self.status = self.selected_path.clone();
+                self.status = format!("{} notes", self.note_paths.len());
                 None
             }
             IoKind::Apply => {
@@ -257,6 +397,21 @@ impl Gloss {
                 }
                 self.open_list()
             }
+            IoKind::Backlinks => {
+                let paths = parse_list(&result.stdout);
+                self.backlink_rows = paths
+                    .into_iter()
+                    .map(|p| NoteRow {
+                        id: p.clone(),
+                        title: crate::model::file_stem(&p),
+                        snippet: p,
+                        selected: false,
+                    })
+                    .collect();
+                self.graph_loading = false;
+                self.status = format!("{} backlink(s)", self.backlink_rows.len());
+                None
+            }
             IoKind::Idle => None,
         };
         if follow.is_some() {
@@ -267,12 +422,81 @@ impl Gloss {
 }
 
 impl Gloss {
+    fn scan_backlinks(&mut self) -> Option<Effect<Action>> {
+        if self.selected_path.is_empty() {
+            return None;
+        }
+        if self.is_busy() {
+            self.pending = Pending::Backlinks;
+            return None;
+        }
+        self.graph_loading = true;
+        self.backlink_rows.clear();
+        self.status = "Scanning backlinks…".into();
+        self.spawn(
+            backlinks_cmd(self.vault_path.trim(), &self.selected_path),
+            IoKind::Backlinks,
+        )
+    }
+
+    fn create_note(&mut self, path: String, content: &str) -> Option<Effect<Action>> {
+        if self.vault_path.trim().is_empty() {
+            self.status = "Open a vault first".into();
+            return None;
+        }
+        let content = content.to_string();
+        let cmd = match apply_create_cmd(self.vault_path.trim(), &path, &content) {
+            Ok(c) => c,
+            Err(e) => {
+                self.status = e;
+                return None;
+            }
+        };
+        if self.is_busy() {
+            self.status = "Wait for the current save".into();
+            return None;
+        }
+        self.push_history(&path);
+        self.place_in_tab(&path);
+        self.selected_path = path.clone();
+        self.loaded_body = content.clone();
+        self.editor_body = content;
+        self.in_flight_body = self.editor_body.clone();
+        self.dirty = false;
+        self.save_pending = false;
+        self.expand_ancestors(&path);
+        self.status = "Creating…".into();
+        self.spawn(cmd, IoKind::Apply)
+    }
+
+    fn clear_selection(&mut self) {
+        self.selected_path.clear();
+        self.editor_body.clear();
+        self.loaded_body.clear();
+        self.dirty = false;
+    }
+
+    fn push_history(&mut self, next: &str) {
+        if self.history_lock {
+            self.history_lock = false;
+            return;
+        }
+        if self.selected_path.is_empty() || self.selected_path == next {
+            return;
+        }
+        self.history_back.push(self.selected_path.clone());
+        self.history_forward.clear();
+    }
+
     fn begin_cat(&mut self, id: String) -> Option<Effect<Action>> {
         if self.is_busy() {
             self.pending = Pending::Cat(id);
             return None;
         }
+        self.push_history(&id);
+        self.place_in_tab(&id);
         self.selected_path = id.clone();
+        self.expand_ancestors(&id);
         self.status = "Opening…".into();
         self.spawn(cat_cmd(self.vault_path.trim(), &id), IoKind::Cat)
     }
@@ -289,19 +513,7 @@ impl Gloss {
             Pending::List => self.open_list(),
             Pending::Cat(path) => self.begin_cat(path),
             Pending::Undo => self.undo(),
+            Pending::Backlinks => self.scan_backlinks(),
         }
     }
-}
-
-fn unique_inbox_path(existing: &[String]) -> String {
-    if !existing.iter().any(|p| p == "10-Inbox/Untitled.md") {
-        return "10-Inbox/Untitled.md".into();
-    }
-    for i in 2..1000 {
-        let p = format!("10-Inbox/Untitled-{i}.md");
-        if !existing.iter().any(|e| e == &p) {
-            return p;
-        }
-    }
-    "10-Inbox/Untitled-new.md".into()
 }

@@ -281,6 +281,7 @@ pub fn is_catalog_element(name: &str) -> bool {
             | "Search"
             | "Textarea"
             | "ListItem"
+            | "Markdown"
             | "Spacer"
             | "Separator"
             | "Frames"

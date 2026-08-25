@@ -157,12 +157,26 @@ pub enum ViewNode {
         /// dispatched by right-click; typically opens a `<ContextMenu>`.
         on_menu: Option<String>,
         on_menu_arg: Option<String>,
+        /// Leading indent in logical px (tree depth). Default 0.
+        inset: f32,
         test_id: Option<String>,
     },
-    /// `<Textarea>` (§10.1, PLAN-TEXTAREA stage 1): multi-line
+    /// `<Textarea>` (§10.1, PLAN-TEXTAREA stage 4 wrap): multi-line
     /// controlled text entry on the same pure editing core as Input.
-    /// Hard newlines only (no soft wrap yet); grows to fill its column.
+    /// Soft-wraps to the laid-out width; Up/Down stay hard-line.
     Textarea { value: String, placeholder: String, on_change: String, test_id: String },
+    /// `<Markdown source={…} skipTitle?={…} onWikilink?={…} />` —
+    /// display-only CommonMark (§24). Layout expands the source into
+    /// Heading/Text/Separator children. `on_wikilink` is a String-payload
+    /// action; each `[[target]]` run dispatches the target. Both engines
+    /// keep this node so interp≡codegen compares the source, not the
+    /// expanded tree.
+    Markdown {
+        source: String,
+        skip_title: String,
+        test_id: Option<String>,
+        on_wikilink: Option<String>,
+    },
     /// `<Spacer/>` (§7.1 Layout, PLAN-CATALOG wave 1): pure layout —
     /// `size: Some(px)` takes fixed room on the parent's main axis,
     /// `None` is a flex spring (`grow`) pushing siblings apart. Paints
@@ -408,7 +422,7 @@ pub enum ItemKind {
     Box, // Column/Row/Spacer (no visual; containers are transparent)
     /// `<Separator>` — paints a `theme.hairline` rect over its rect.
     Separator,
-    Text { content: String, px: f32, style: FontStyle, color: Color, wrap: bool },
+    Text { content: String, px: f32, style: FontStyle, color: Color, wrap: bool, strike: bool },
     Button { label: String, px: f32, variant: Variant },
     /// Status pill — `tone` picks a `theme.<tone>_bg`/`_fg` pair.
     Badge { label: String, tone: Tone, px: f32 },
@@ -436,6 +450,7 @@ pub enum ItemKind {
         selected: bool,
         px_md: f32,
         px_sm: f32,
+        inset: f32,
         /// M7 right-click handler `(name, optional item-scoped arg)`.
         on_menu: Option<(String, Option<String>)>,
     },
@@ -585,8 +600,8 @@ impl LaidTree {
             else {
                 continue;
             };
-            let dx = anchor.0.min(self.width - panel.w).max(0.0) - panel.x;
-            let dy = anchor.1.min(self.height - panel.h).max(0.0) - panel.y;
+            let dx = anchor.0.min(self.width - panel.w).max(0.0).floor() - panel.x;
+            let dy = anchor.1.min(self.height - panel.h).max(0.0).floor() - panel.y;
             if dx == 0.0 && dy == 0.0 {
                 continue;
             }

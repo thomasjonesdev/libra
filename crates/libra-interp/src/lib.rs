@@ -1554,6 +1554,7 @@ fn element(
             let mut selected = false;
             let mut on_press: Option<(String, Option<String>, Span)> = None;
             let mut on_menu: Option<(String, Option<String>, Span)> = None;
+            let mut inset = 0.0f32;
             let mut test_id = None;
             let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
                 (scope.field)(path)
@@ -1576,6 +1577,13 @@ fn element(
                     ("onMenu", AttrValue::Ident(m)) => on_menu = Some((m.clone(), None, a.span)),
                     ("onMenu", AttrValue::Call { name: m, arg }) => {
                         on_menu = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("inset", AttrValue::Num(v)) => inset = (*v).max(0.0),
+                    ("inset", AttrValue::Ident(p)) => {
+                        let s = resolve(p, a.span)?;
+                        inset = s.parse::<f32>().map_err(|_| {
+                            err(a.span, format!("field '{p}' is not a number — <ListItem inset> expects px"))
+                        })?;
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -1646,6 +1654,7 @@ fn element(
                 on_press_arg,
                 on_menu,
                 on_menu_arg,
+                inset,
                 test_id,
             })
         }
@@ -1798,13 +1807,54 @@ fn element(
             Ok(ViewNode::SourceStream { id: id_value, on_event: msg })
         }
 
+        "Markdown" => {
+            let mut source: Option<String> = None;
+            let mut skip_title = String::new();
+            let mut test_id = None;
+            let mut on_wikilink = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("source", AttrValue::Str(s)) => source = Some(s.clone()),
+                    ("source", AttrValue::Ident(p)) => {
+                        source = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
+                    ("skipTitle", AttrValue::Str(s)) => skip_title = s.clone(),
+                    ("skipTitle", AttrValue::Ident(p)) => {
+                        skip_title = (scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?;
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    ("onWikilink", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_str_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("'{m}' is not a String-payload Action variant (need `{m}(String)`)"),
+                            ));
+                        }
+                        on_wikilink = Some(m.clone());
+                    }
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let source = source
+                .ok_or_else(|| err(*span, "<Markdown> requires source={someField} or source=\"…\""))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Markdown> takes no children"));
+            }
+            Ok(ViewNode::Markdown { source, skip_title, test_id, on_wikilink })
+        }
+
         "for" => Err(err(*span, "<for> is only allowed as a direct child of <Column>/<Row>")),
         "if" => Err(err(*span, "<if> is only allowed as a direct child of <Column>/<Row>")),
         "else" => Err(err(*span, "<else> is only allowed as a direct child of <if>")),
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

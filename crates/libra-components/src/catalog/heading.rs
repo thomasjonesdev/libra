@@ -28,12 +28,13 @@ pub(crate) fn build(
     let (w, h) = cx.m.measure(content, px, FontStyle::Bold);
     let id = cx.tree.new_leaf(Style {
         size: Size { width: length(w), height: length(h) },
-        flex_shrink: 0.0,
+        flex_shrink: 1.0,
+        min_size: Size { width: length(0.0), height: length(h) },
         ..Default::default()
     })?;
     cx.meta.push((
         id,
-        ItemKind::Text { content: content.to_string(), px, style: FontStyle::Bold, color: theme.text, wrap: false },
+        ItemKind::Text { content: content.to_string(), px, style: FontStyle::Bold, color: theme.text, wrap: false, strike: false },
         Semantics { role: Role::Text, text: content.to_string(), test_id: test_id.clone() },
         None,
     ));

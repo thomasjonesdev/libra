@@ -27,6 +27,7 @@ pub(crate) mod drawer;
 pub(crate) mod heading;
 pub(crate) mod input;
 pub(crate) mod list_item;
+pub(crate) mod markdown;
 pub(crate) mod pagination;
 pub(crate) mod progress;
 pub(crate) mod scroll;

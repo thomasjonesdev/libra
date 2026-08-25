@@ -10,7 +10,10 @@ mod model;
 mod state;
 
 pub use actions::{reduce, Action};
-pub use model::{journal_path, note_snippet, note_title, parse_list, IoKind, Pending, STORE_KEY};
+pub use model::{
+    default_daily_note_path, file_stem, journal_path, note_snippet, note_title, parse_list,
+    project_file_rows, project_preview, resolve_daily_note, resolve_wikilink, vault_name, IoKind, Pending, STORE_KEY,
+};
 pub use state::Gloss;
 
 libra::app! {

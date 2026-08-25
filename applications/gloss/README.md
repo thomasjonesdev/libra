@@ -11,9 +11,11 @@ Docs live in `docs/`. Architecture note: `architecture/sections/27.2-gloss.md`.
 cargo run -p gloss
 ```
 
-Click Browse to pick a vault folder, or paste a path and click Open.
-New notes land in `10-Inbox/`. Edits autosave through `gloss apply`.
-Undo reverts the last journaled run.
+Click Browse to pick a vault folder. New notes land in `10-Inbox/`. Edits
+autosave through `gloss apply`. Undo reverts the last journaled run.
+
+Rail: **C** quick-open, **D** daily note, **G** links/backlinks drawer.
+Function map: `docs/09-app-functions.md`.
 
 CLI, same binary or `gloss-cli`:
 
@@ -32,5 +34,5 @@ cargo test -p gloss
 
 ## What this is not yet
 
-Index, embeddings, MCP, review surface, Tab, audio. Those stay on the
-roadmap in `docs/04-roadmap.md`.
+Index, embeddings, MCP, review surface, Tab ghost-text, audio, full graph viz.
+Those stay on the roadmap in `docs/04-roadmap.md`.

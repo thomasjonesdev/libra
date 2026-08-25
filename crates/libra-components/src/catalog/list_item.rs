@@ -21,20 +21,24 @@ pub(crate) fn build(
     on_press_arg: &Option<String>,
     on_menu: &Option<String>,
     on_menu_arg: &Option<String>,
+    inset: f32,
     test_id: &Option<String>,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
     let px_md = theme.type_md;
     let px_sm = theme.type_sm;
-    let (_, th_md) = cx.m.measure("Ag", px_md, FontStyle::Regular);
+    let (tw, th_md) = cx.m.measure(title, px_md, FontStyle::Regular);
     let (_, th_sm) = cx.m.measure("Ag", px_sm, FontStyle::Regular);
     let lines = 1 + usize::from(!subtitle.is_empty()) + usize::from(!meta_line.is_empty());
     let h = 2.0 * theme.btn_pad_y
         + th_md
         + if lines > 1 { (lines - 1) as f32 * (th_sm + 2.0) } else { 0.0 };
+    let inset = inset.max(0.0);
+    let preferred_w = tw + 2.0 * theme.btn_pad_x + inset;
     let id = cx.tree.new_leaf(Style {
-        size: Size { width: auto(), height: length(h) },
-        flex_shrink: 0.0,
+        size: Size { width: length(preferred_w), height: length(h) },
+        flex_shrink: 1.0,
+        min_size: Size { width: length(0.0), height: length(h) },
         ..Default::default()
     })?;
     cx.meta.push((
@@ -46,6 +50,7 @@ pub(crate) fn build(
             selected,
             px_md,
             px_sm,
+            inset,
             on_menu: on_menu.as_ref().map(|m| (m.clone(), on_menu_arg.clone())),
         },
         Semantics { role: Role::Button, text: title.to_string(), test_id: test_id.clone() },
@@ -64,8 +69,10 @@ pub(crate) fn paint(
     selected: bool,
     px_md: f32,
     px_sm: f32,
+    inset: f32,
 ) {
     let theme = cx.theme;
+    cx.cmds.push(DrawCmd::PushClip { rect: item.rect });
     let hovered = cx.hover.is_some_and(|(hx, hy)| item.rect.contains(hx, hy));
     let wash = if selected {
         Some(theme.selection)
@@ -81,7 +88,10 @@ pub(crate) fn paint(
             color,
         });
     }
-    let (tx, mut ty) = (item.rect.x + theme.btn_pad_x, item.rect.y + theme.btn_pad_y);
+    let (tx, mut ty) = (
+        item.rect.x + theme.btn_pad_x + inset.max(0.0),
+        item.rect.y + theme.btn_pad_y,
+    );
     let (_, th_md) = cx.measurer.measure("Ag", px_md, FontStyle::Regular);
     let (_, th_sm) = cx.measurer.measure("Ag", px_sm, FontStyle::Regular);
     cx.cmds.push(DrawCmd::Text {
@@ -107,4 +117,5 @@ pub(crate) fn paint(
         });
         ty += th_sm + 2.0;
     }
+    cx.cmds.push(DrawCmd::PopClip);
 }

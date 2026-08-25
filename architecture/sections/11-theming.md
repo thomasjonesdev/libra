@@ -90,8 +90,9 @@ Libra diverges from Geist Sans/Mono to two open (OFL) families:
 
 - **Work Sans** — the sans family for all UI and prose (replaces Liberation Sans).
   Renderer bundles **Medium (500)** as [`FontStyle::Regular`] and **Bold (700)** as
-  [`FontStyle::Bold`] — the closed `FontStyle` set. Medium reads closer to Geist's
-  button weight than Regular 400.
+  [`FontStyle::Bold`] — the UI weight pair (PLAN-GEIST). [`FontStyle::Italic`] is
+  the display-only third face (Work Sans Italic) for markdown emphasis.
+  Medium reads closer to Geist's button weight than Regular 400.
 - **Space Mono** — the monospaced family for code/data/tabular figures, wired to
   the future `type.mono.*` tokens. Inert until a mono-consuming component or type
   token lands (no component uses mono today).
@@ -121,7 +122,7 @@ Space Mono wiring to `type.mono.*` is [[PLAN-GEIST]] G4 (when a mono consumer la
   (canonical dark values), `Density`, `from_toml_str`
 - `crates/libra-raster/src/lib.rs` — bundled fonts (`include_bytes!`); the
   Geist swap re-points these at Work Sans / Space Mono ([[PLAN-GEIST]])
-- `assets/fonts/` — Work Sans (Medium + Bold), Space Mono (Regular + Bold)
+- `assets/fonts/` — Work Sans (Medium + Bold + Italic), Space Mono (Regular + Bold)
 - `themes/` — TOML theme tables (e.g. `themes/solarized.toml`)
 - `crates/libra-components/tests/tokens_only.rs` — the tokens-only guard (T3)
 

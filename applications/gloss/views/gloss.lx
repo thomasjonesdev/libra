@@ -1,41 +1,139 @@
-<Column gap={0}>
-  <Row gap={8} padding={8} cross="center">
-    <Input value={vault_path} placeholder="vault path…" onChange={vaultPathChanged} testId="vault-path" />
-    <Button variant="primary" onPress={browseVault} testId="browse-vault">Browse</Button>
-    <Button variant="secondary" onPress={openVault} testId="open-vault">Open</Button>
-    <Button variant="secondary" onPress={newNote} testId="new-note">New</Button>
-    <Button variant="secondary" onPress={undo} testId="undo">Undo</Button>
-    <Text size="sm" muted testId="status">{status}</Text>
+<Column grow gap={0}>
+  <Row grow>
+    <Column width={48} padding={4} gap={4}>
+      <Tooltip text="New note">
+        <Button variant="ghost" onPress={newNote} testId="new-note">+</Button>
+      </Tooltip>
+      <Tooltip text="Quick open">
+        <Button variant="ghost" onPress={openCommandPalette} testId="command-palette">C</Button>
+      </Tooltip>
+      <Tooltip text="Daily note">
+        <Button variant="ghost" onPress={openDailyNote} testId="daily-note">D</Button>
+      </Tooltip>
+      <Tooltip text="Links and backlinks">
+        <Button variant="ghost" onPress={openGraph} testId="graph">G</Button>
+      </Tooltip>
+      <Tooltip text="Undo">
+        <Button variant="ghost" onPress={undo} testId="undo">U</Button>
+      </Tooltip>
+      <Spacer />
+      <Tooltip text="Settings">
+        <Button variant="ghost" onPress={openSettings} testId="settings">S</Button>
+      </Tooltip>
+    </Column>
+    <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
+      <Column grow gap={4} padding={8}>
+        <Row gap={4} cross="center">
+          <Button variant="ghost" onPress={newFolder} testId="new-folder">+/</Button>
+          <Button variant="ghost" onPress={toggleSort} testId="sort-notes">A</Button>
+          <Button variant="ghost" onPress={collapseAll} testId="collapse-all">-</Button>
+        </Row>
+        <Row gap={6} cross="center">
+          <Input value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
+          <Button variant="ghost" onPress={clearQuery} testId="clear-search">x</Button>
+        </Row>
+        <Separator />
+        <Scroll testId="note-scroll">
+          <Column gap={2}>
+            <if test={file_rows.isEmpty}>
+              <Text muted testId="empty">{empty_message}</Text>
+            </if>
+            <for each={file_rows} as="n" key={n.id}>
+              <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={openInNewTab(n.id)} />
+            </for>
+          </Column>
+        </Scroll>
+        <Row gap={6} cross="center">
+          <Text muted grow wrap testId="vault-name">{vault_name}</Text>
+          <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
+        </Row>
+      </Column>
+      <Column grow gap={4} padding={8}>
+        <if test={has_vault}>
+          <Row gap={4} cross="center">
+            <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
+            <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
+            <Row grow>
+              <for each={tab_rows} as="t" key={t.id}>
+                <Row gap={2} cross="center">
+                  <ListItem title={t.title} selected={t.selected} onPress={selectNote(t.id)} />
+                  <Button variant="ghost" onPress={closeTab(t.id)}>x</Button>
+                </Row>
+              </for>
+            </Row>
+            <Tooltip text="Open next note in a new tab">
+              <Button variant="ghost" onPress={newTab} testId="new-tab">+</Button>
+            </Tooltip>
+          </Row>
+        </if>
+        <if test={has_selected}>
+          <Row gap={8} cross="center">
+            <Heading level={2} testId="note-title">{selected_title}</Heading>
+            <Spacer />
+            <Button variant="ghost" onPress={togglePreview} testId="toggle-preview">{preview_label}</Button>
+          </Row>
+          <if test={show_preview}>
+            <Scroll testId="preview-scroll">
+              <Markdown source={editor_body} skipTitle={selected_title} testId="preview-body" onWikilink={followWikilink} />
+            </Scroll>
+            <else>
+              <Scroll testId="editor-scroll">
+                <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
+              </Scroll>
+            </else>
+          </if>
+          <else>
+            <Text muted testId="editor-empty">Select a note</Text>
+          </else>
+        </if>
+      </Column>
+    </Split>
   </Row>
   <Separator />
-  <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
-    <Column gap={4} padding={12}>
-      <Row gap={6} cross="center">
-        <Input value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
-        <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
-      </Row>
-      <Separator />
-      <if test={note_rows.isEmpty}>
-        <Text muted testId="empty">{empty_message}</Text>
-        <else>
-          <Scroll testId="note-scroll">
-            <Column gap={4}>
-              <for each={note_rows} as="n" key={n.id}>
-                <ListItem title={n.title} subtitle={n.snippet} selected={n.selected} onPress={selectNote(n.id)} />
-              </for>
-            </Column>
-          </Scroll>
-        </else>
+  <Row gap={8} padding={8} cross="center">
+    <Text size="sm" muted grow wrap testId="status">{status}</Text>
+    <Text size="sm" muted testId="word-count">{word_count}</Text>
+    <Text size="sm" muted testId="char-count">{char_count}</Text>
+    <Text size="sm" muted testId="save-label">{save_label}</Text>
+  </Row>
+  <if test={show_settings}>
+    <Drawer side="right" onDismiss={closeSettings} testId="settings-drawer">
+      <Text bold>Vault</Text>
+      <Text testId="settings-vault-name">{vault_name}</Text>
+      <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
+      <Button variant="secondary" onPress={browseVault} testId="settings-browse">Browse</Button>
+    </Drawer>
+  </if>
+  <if test={show_command_palette}>
+    <Dialog title="Open note" onDismiss={closeCommandPalette} testId="palette-dialog">
+      <Search value={palette_query} placeholder="note name…" onChange={paletteQueryChanged} testId="palette-search" />
+      <Scroll testId="palette-scroll" height={280}>
+        <Column gap={2}>
+          <for each={palette_rows} as="n" key={n.id}>
+            <ListItem title={n.title} subtitle={n.snippet} onPress={palettePick(n.id)} />
+          </for>
+        </Column>
+      </Scroll>
+    </Dialog>
+  </if>
+  <if test={show_graph}>
+    <Drawer side="right" onDismiss={closeGraph} testId="graph-drawer">
+      <Heading level={3} testId="graph-title">Links</Heading>
+      <Text bold testId="graph-out-label">Outgoing</Text>
+      <Column gap={2}>
+        <for each={outgoing_rows} as="o" key={o.id}>
+          <ListItem title={o.title} subtitle={o.snippet} onPress={graphPick(o.id)} />
+        </for>
+      </Column>
+      <Text bold testId="graph-in-label">Backlinks</Text>
+      <if test={graph_loading}>
+        <Text muted testId="graph-loading">Scanning…</Text>
       </if>
-    </Column>
-    <Column gap={8} padding={12}>
-      <if test={has_selected}>
-        <Text bold testId="note-title">{selected_title}</Text>
-        <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
-        <else>
-          <Text muted testId="editor-empty">Select a note</Text>
-        </else>
-      </if>
-    </Column>
-  </Split>
+      <Column gap={2}>
+        <for each={backlink_rows} as="b" key={b.id}>
+          <ListItem title={b.title} subtitle={b.snippet} onPress={graphPick(b.id)} />
+        </for>
+      </Column>
+    </Drawer>
+  </if>
 </Column>

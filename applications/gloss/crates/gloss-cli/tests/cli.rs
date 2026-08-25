@@ -184,3 +184,24 @@ fn apply_patch_json_replace_then_undo() {
     );
     assert_eq!(fs::read(&atlas_path).unwrap(), old);
 }
+
+#[test]
+fn backlinks_lists_inbound_wikilinks() {
+    let tmp = tempdir().unwrap();
+    let vault = tmp.path().join("mini");
+    copy_dir(&fixture(), &vault);
+
+    let out = gloss()
+        .args(["backlinks", "--root"])
+        .arg(&vault)
+        .args(["--path", "Atlas.md"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let listed = String::from_utf8(out.stdout).unwrap();
+    assert!(listed.contains("10-Inbox/Welcome.md"));
+}

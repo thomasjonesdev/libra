@@ -88,6 +88,9 @@ pub(crate) fn paint_scrim(cx: &mut PaintCx, rect: Rect) {
 }
 
 pub(crate) fn paint_panel(cx: &mut PaintCx, rect: Rect) {
+    // Floor the origin: a 1px hairline at a fractional x/y trips tiny-skia's
+    // AA hairline scan (same class of bug as Split/Tooltip).
+    let rect = Rect::new(rect.x.floor(), rect.y.floor(), rect.w, rect.h);
     cx.cmds.push(DrawCmd::RRect { rect, radius: cx.theme.radius_lg, color: cx.theme.surface_raised });
     // Hairline frame: four 1px edges (no stroked rrect in the display list).
     let c = cx.theme.hairline;

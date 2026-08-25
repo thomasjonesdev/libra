@@ -128,9 +128,46 @@ pub(crate) fn build(
             style: font,
             color,
             wrap,
+            strike: false,
         },
         Semantics { role: Role::Text, text: content.to_string(), test_id: test_id.clone() },
         None,
+    ));
+    Ok(id)
+}
+
+/// A single-line colored run. Used by `<Markdown>` to paint inline spans
+/// (bold, italic, strike, code, links) as real Text items without a new
+/// grammar element. `press` turns a wikilink into a Button with a target
+/// payload.
+pub(crate) fn build_run(
+    cx: &mut BuildCx,
+    content: &str,
+    px: f32,
+    style: FontStyle,
+    color: Color,
+    strike: bool,
+    press: Option<(String, Option<String>)>,
+) -> Result<NodeId, taffy::TaffyError> {
+    let (w, h) = cx.m.measure(content, px, style);
+    let id = cx.tree.new_leaf(Style {
+        size: Size { width: length(w), height: length(h) },
+        flex_shrink: 0.0,
+        ..Default::default()
+    })?;
+    let role = if press.is_some() { Role::Button } else { Role::Text };
+    cx.meta.push((
+        id,
+        ItemKind::Text {
+            content: content.to_string(),
+            px,
+            style,
+            color,
+            wrap: false,
+            strike,
+        },
+        Semantics { role, text: content.to_string(), test_id: None },
+        press,
     ));
     Ok(id)
 }
@@ -143,27 +180,61 @@ pub(crate) fn paint(
     style: FontStyle,
     color: Color,
     wrap: bool,
+    strike: bool,
 ) {
     if !wrap || item.rect.w <= 0.0 {
-        cx.cmds.push(DrawCmd::Text {
-            x: item.rect.x,
-            y: item.rect.y,
-            content: content.to_string(),
-            px,
-            style,
-            color,
-        });
+        let (tw, _) = cx.measurer.measure(content, px, style);
+        let clip = item.rect.w > 0.0 && tw > item.rect.w;
+        if clip {
+            cx.cmds.push(DrawCmd::PushClip { rect: item.rect });
+        }
+        paint_run(cx, item.rect.x, item.rect.y, content, px, style, color, item.rect.w, strike);
+        if clip {
+            cx.cmds.push(DrawCmd::PopClip);
+        }
         return;
     }
     let lines = wrap_lines(content, item.rect.w, px, style, cx.measurer);
     let (_, lh) = cx.measurer.measure("Ag", px, style);
     for (i, line) in lines.iter().enumerate() {
-        cx.cmds.push(DrawCmd::Text {
-            x: item.rect.x,
-            y: item.rect.y + i as f32 * lh,
-            content: line.clone(),
+        let (lw, _) = cx.measurer.measure(line, px, style);
+        paint_run(
+            cx,
+            item.rect.x,
+            item.rect.y + i as f32 * lh,
+            line,
             px,
             style,
+            color,
+            lw,
+            strike,
+        );
+    }
+}
+
+fn paint_run(
+    cx: &mut PaintCx,
+    x: f32,
+    y: f32,
+    content: &str,
+    px: f32,
+    style: FontStyle,
+    color: Color,
+    width: f32,
+    strike: bool,
+) {
+    cx.cmds.push(DrawCmd::Text {
+        x,
+        y,
+        content: content.to_string(),
+        px,
+        style,
+        color,
+    });
+    if strike && width > 0.0 {
+        let (_, h) = cx.measurer.measure("Ag", px, style);
+        cx.cmds.push(DrawCmd::Rect {
+            rect: libra_draw::Rect::new(x, y + (h * 0.5).round(), width.max(1.0), 1.0),
             color,
         });
     }

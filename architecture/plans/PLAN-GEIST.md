@@ -45,8 +45,9 @@ snapshot** plus the counter README hashes. Do it **once, deliberately**, with
 - **In-place retheme** of the built-in `libra-dark` / `libra-light` — Libra UI
   becomes *the* built-in look (not an additive `geist-*` theme pair; the themes
   stay named `libra-*`, since the deliverable is Libra UI, not a Geist clone).
-- **Two weights only**: Work Sans **Medium (500)** as [`FontStyle::Regular`] + **Bold (700)** — the closed
-  `FontStyle` set is unchanged; matches Geist's "≤ two weights per view". *(Regular 400 was not bundled;
+- **Two UI weights only**: Work Sans **Medium (500)** as [`FontStyle::Regular`] + **Bold (700)** — the
+  closed UI pair; matches Geist's "≤ two weights per view". [`FontStyle::Italic`] is markdown
+  emphasis only (Work Sans Italic), not a third UI weight. *(Regular 400 was not bundled;
   Medium reads closer to Geist button weight.)*
 - **sRGB only**: Geist's `*-p3` `oklch()` wide-gamut variants are out of scope — the
   CPU raster path is sRGB and byte-deterministic (Appendix A).
@@ -59,7 +60,7 @@ Each stage lands green (`cargo test --workspace`) and updates this status line.
 
 | Stage | Deliverable | Notes |
 |---|---|---|
-| **G1 — done** | `WorkSans-Medium.ttf` / `WorkSans-Bold.ttf` + `SpaceMono-Regular.ttf` under `assets/fonts/`; `libra-raster` repointed from Liberation Sans | fontdue advance-layout unchanged; every text snapshot re-validated |
+| **G1 — done** | `WorkSans-Medium.ttf` / `WorkSans-Bold.ttf` / `WorkSans-Italic.ttf` + `SpaceMono-Regular.ttf` under `assets/fonts/`; `libra-raster` repointed from Liberation Sans | fontdue advance-layout unchanged; every text snapshot re-validated |
 | **G2 — done** | `Theme::dark()` + `Theme::light()` remapped to Libra UI (Geist-inspired) hex; radii 4/6/12; Geist 4px spacing scale; control heights 32/40/48 | Flat `Theme` shape unchanged |
 | **G3 — done** | `LIBRA_VALIDATE=1 cargo test --workspace`; whole snapshot set re-recorded; counter README hashes updated | Deliberate whole-suite re-baseline |
 | **G4 — mono wiring** *(optional/later)* | Wire Space Mono to `type.mono.*` when a mono-consuming component or type token first needs it (tabular figures, code/log views). Inert until then | Ties [[PLAN-CATALOG]] LogView/Table |
@@ -72,7 +73,7 @@ Each stage lands green (`cargo test --workspace`) and updates this status line.
    a loosening of the contract (Appendix A).
 2. **fontdue advance-layout only** — no shaping/kerning; Work Sans / Space Mono lay
    out exactly as Liberation Sans does today (§9, README spike note).
-3. **Closed `FontStyle`** — Regular + Bold only; a third weight would be a new closed-set
+3. **Closed `FontStyle`** — Regular + Bold for UI; Italic is markdown emphasis only. A new UI weight would be a new closed-set
    member with its own bundle + measurer arm, not an ad-hoc lookup.
 4. **Tokens-only paint survives** — no component gains a raw literal; the C3 guard
    (`tests/tokens_only.rs`) stays green.

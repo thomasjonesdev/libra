@@ -1,7 +1,9 @@
 //! Unit tests: title/snippet helpers and boot reduce.
 
 use gloss::{
-    journal_path, note_snippet, note_title, parse_list, reduce, Action, Gloss, IoKind, Pending,
+    default_daily_note_path, file_stem, journal_path, note_snippet, note_title, parse_list,
+    project_file_rows, project_preview, reduce, resolve_daily_note, resolve_wikilink, vault_name,
+    Action, Gloss, IoKind, Pending,
 };
 use libra_core::{ProcessResult, ProcessStatus};
 
@@ -15,7 +17,8 @@ fn boot() -> Gloss {
 #[test]
 fn fresh_state_asks_for_a_vault() {
     let s = boot();
-    assert_eq!(s.empty_message, "Open a vault folder to begin");
+    assert_eq!(s.empty_message, "Browse a vault folder to begin");
+    assert_eq!(s.vault_name, "No vault");
     assert!(!s.has_selected);
     assert!(s.note_rows.is_empty());
 }
@@ -119,6 +122,66 @@ fn select_while_dirty_saves_before_cat() {
 }
 
 #[test]
+fn vault_name_is_the_last_segment() {
+    assert_eq!(vault_name("/Users/ada/MiVault"), "MiVault");
+    assert_eq!(vault_name("/tmp/v/"), "v");
+    assert_eq!(vault_name(""), "No vault");
+}
+
+#[test]
+fn sidebar_label_is_the_file_stem() {
+    assert_eq!(file_stem("10-Inbox/Welcome.md"), "Welcome");
+    assert_eq!(file_stem("Atlas.md"), "Atlas");
+    let mut expanded = std::collections::HashSet::new();
+    expanded.insert("10-Inbox".into());
+    let rows = project_file_rows(
+        &["10-Inbox/Welcome.md".into()],
+        "",
+        "10-Inbox/Welcome.md",
+        &expanded,
+        false,
+    );
+    assert_eq!(rows[1].id, "10-Inbox/Welcome.md");
+    assert_eq!(rows[1].title, "Welcome");
+    assert!(rows[1].selected);
+}
+
+#[test]
+fn file_rows_project_folders_from_prefixes() {
+    let rows = project_file_rows(
+        &["Atlas.md".into(), "10-Inbox/Welcome.md".into()],
+        "",
+        "Atlas.md",
+        &Default::default(),
+        false,
+    );
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].id, "10-Inbox");
+    assert_eq!(rows[0].title, "+ 10-Inbox");
+    assert_eq!(rows[0].inset, 0.0);
+    assert_eq!(rows[1].id, "Atlas.md");
+}
+
+#[test]
+fn expanding_a_folder_reveals_its_notes() {
+    let mut expanded = std::collections::HashSet::new();
+    expanded.insert("10-Inbox".into());
+    let rows = project_file_rows(
+        &["Atlas.md".into(), "10-Inbox/Welcome.md".into()],
+        "",
+        "",
+        &expanded,
+        false,
+    );
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].id, "10-Inbox");
+    assert_eq!(rows[0].title, "- 10-Inbox");
+    assert_eq!(rows[1].id, "10-Inbox/Welcome.md");
+    assert_eq!(rows[1].inset, 16.0);
+    assert_eq!(rows[2].id, "Atlas.md");
+}
+
+#[test]
 fn changing_vault_path_clears_can_undo() {
     let mut s = boot();
     s.opened_root = "/tmp/a".into();
@@ -145,4 +208,137 @@ fn failed_apply_does_not_mark_clean() {
     assert_eq!(s.io, IoKind::Idle);
     assert!(s.save_pending);
     assert_eq!(s.editor_body, "hello!");
+}
+
+#[test]
+fn opening_a_note_reuses_the_current_tab() {
+    let mut s = editing("Atlas.md", "hello");
+    s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
+    s.open_tabs = vec!["Atlas.md".into()];
+    reduce(&mut s, Action::SelectNote("Welcome.md".into()));
+    assert_eq!(s.open_tabs, vec!["Welcome.md"]);
+    assert_eq!(s.selected_path, "Welcome.md");
+}
+
+#[test]
+fn opening_an_already_open_note_does_not_duplicate_tabs() {
+    let mut s = editing("Atlas.md", "hello");
+    s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
+    s.open_tabs = vec!["Atlas.md".into(), "Welcome.md".into()];
+    reduce(&mut s, Action::SelectNote("Welcome.md".into()));
+    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+    assert_eq!(s.selected_path, "Welcome.md");
+}
+
+#[test]
+fn new_tab_then_select_appends() {
+    let mut s = editing("Atlas.md", "hello");
+    s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
+    s.open_tabs = vec!["Atlas.md".into()];
+    reduce(&mut s, Action::NewTab);
+    reduce(&mut s, Action::SelectNote("Welcome.md".into()));
+    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+}
+
+#[test]
+fn open_in_new_tab_appends() {
+    let mut s = editing("Atlas.md", "hello");
+    s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
+    s.open_tabs = vec!["Atlas.md".into()];
+    reduce(&mut s, Action::OpenInNewTab("Welcome.md".into()));
+    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+}
+
+#[test]
+fn close_tab_selects_the_remaining_tab() {
+    let mut s = editing("Atlas.md", "hello");
+    s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
+    s.open_tabs = vec!["Atlas.md".into(), "Welcome.md".into()];
+    reduce(&mut s, Action::CloseTab("Atlas.md".into()));
+    assert_eq!(s.selected_path, "Welcome.md");
+    assert_eq!(s.open_tabs, vec!["Welcome.md"]);
+    assert_eq!(s.io, IoKind::Cat);
+}
+
+#[test]
+fn close_inactive_tab_keeps_the_current_note() {
+    let mut s = editing("Atlas.md", "hello");
+    s.open_tabs = vec!["Atlas.md".into(), "Welcome.md".into()];
+    reduce(&mut s, Action::CloseTab("Welcome.md".into()));
+    assert_eq!(s.selected_path, "Atlas.md");
+    assert_eq!(s.open_tabs, vec!["Atlas.md"]);
+    assert_eq!(s.io, IoKind::Idle);
+}
+
+#[test]
+fn folder_click_toggles_expand_without_io() {
+    let mut s = boot();
+    s.note_paths = vec!["10-Inbox/Welcome.md".into()];
+    s.rebuild_rows();
+    assert!(s.expanded.is_empty());
+    reduce(&mut s, Action::SelectFile("10-Inbox".into()));
+    assert!(s.expanded.contains("10-Inbox"));
+    assert_eq!(s.io, IoKind::Idle);
+    reduce(&mut s, Action::SelectFile("10-Inbox".into()));
+    assert!(!s.expanded.contains("10-Inbox"));
+}
+
+#[test]
+fn preview_skips_frontmatter_and_duplicate_title() {
+    let text = project_preview(
+        "---\ntitle: Atlas\n---\n\n# Atlas\n\nThe atlas.\n\n## More\n\nbody",
+        "Atlas",
+    );
+    assert_eq!(text, "The atlas.\n\nMore\n\nbody");
+}
+
+#[test]
+fn wikilink_resolves_exact_stem_and_case() {
+    let paths = vec!["Atlas.md".into(), "10-Inbox/Welcome.md".into()];
+    assert_eq!(resolve_wikilink("Atlas", &paths).as_deref(), Some("Atlas.md"));
+    assert_eq!(
+        resolve_wikilink("Welcome", &paths).as_deref(),
+        Some("10-Inbox/Welcome.md")
+    );
+    assert_eq!(
+        resolve_wikilink("welcome#Heading", &paths).as_deref(),
+        Some("10-Inbox/Welcome.md")
+    );
+    assert_eq!(
+        resolve_wikilink("10-Inbox/Welcome.md", &paths).as_deref(),
+        Some("10-Inbox/Welcome.md")
+    );
+    assert_eq!(resolve_wikilink("Missing", &paths), None);
+}
+
+#[test]
+fn follow_wikilink_opens_the_resolved_note() {
+    let mut s = editing("Atlas.md", "see [[Welcome]]");
+    s.note_paths = vec!["Atlas.md".into(), "10-Inbox/Welcome.md".into()];
+    reduce(&mut s, Action::FollowWikilink("Welcome".into()));
+    assert_eq!(s.selected_path, "10-Inbox/Welcome.md");
+    assert_eq!(s.io, IoKind::Cat);
+}
+
+#[test]
+fn daily_note_paths_prefer_existing_locations() {
+    let paths = vec![
+        "10-Inbox/2026-08-25.md".into(),
+        "Atlas.md".into(),
+    ];
+    assert_eq!(
+        resolve_daily_note("2026-08-25", &paths).as_deref(),
+        Some("10-Inbox/2026-08-25.md")
+    );
+    assert_eq!(default_daily_note_path("2026-08-25"), "Daily/2026-08-25.md");
+}
+
+#[test]
+fn open_daily_note_creates_when_missing() {
+    let mut s = editing("Atlas.md", "body");
+    s.note_paths = vec!["Atlas.md".into()];
+    s.daily_date_override = Some("2026-08-25".into());
+    reduce(&mut s, Action::OpenDailyNote);
+    assert_eq!(s.selected_path, "Daily/2026-08-25.md");
+    assert_eq!(s.io, IoKind::Apply);
 }

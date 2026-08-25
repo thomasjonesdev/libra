@@ -18,6 +18,8 @@ use taffy::prelude::*;
 
 /// Divider gutter width (logical px) — the pointer grab target.
 pub const GUTTER: f32 = 5.0;
+/// Floor so a pane cannot collapse under a narrow window.
+pub const PANE_MIN: f32 = 160.0;
 
 pub(crate) fn build(
     cx: &mut BuildCx,
@@ -42,12 +44,14 @@ pub(crate) fn build(
     let mut ls = cx.tree.style(left)?.clone();
     ls.size.width = percent(fraction);
     ls.flex_grow = 0.0;
-    ls.flex_shrink = 0.0;
+    ls.flex_shrink = 1.0;
+    ls.min_size.width = length(PANE_MIN);
     cx.tree.set_style(left, ls)?;
     let mut rs = cx.tree.style(right)?.clone();
     rs.size.width = auto();
     rs.flex_grow = 1.0;
     rs.flex_shrink = 1.0;
+    rs.min_size.width = length(PANE_MIN);
     cx.tree.set_style(right, rs)?;
 
     let divider = cx.tree.new_leaf(Style {

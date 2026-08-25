@@ -19,6 +19,8 @@ pub struct Renderer {
     regular: fontdue::Font,
     /// Work Sans Bold (700) — [`FontStyle::Bold`].
     bold: fontdue::Font,
+    /// Work Sans Italic — [`FontStyle::Italic`], markdown emphasis only.
+    italic: fontdue::Font,
     /// Space Mono Regular — reserved for future `type.mono.*` (PLAN-GEIST G4); parsed
     /// at init so a bad bundle fails fast, not on first mono draw.
     #[allow(dead_code)]
@@ -27,6 +29,7 @@ pub struct Renderer {
 
 const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Medium.ttf");
 const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Bold.ttf");
+const FONT_ITALIC: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Italic.ttf");
 const FONT_MONO: &[u8] = include_bytes!("../../../assets/fonts/SpaceMono-Regular.ttf");
 
 impl Renderer {
@@ -37,6 +40,8 @@ impl Renderer {
                 .expect("bundled Work Sans Medium parses"),
             bold: fontdue::Font::from_bytes(FONT_BOLD, settings.clone())
                 .expect("bundled Work Sans Bold parses"),
+            italic: fontdue::Font::from_bytes(FONT_ITALIC, settings.clone())
+                .expect("bundled Work Sans Italic parses"),
             mono: fontdue::Font::from_bytes(FONT_MONO, settings)
                 .expect("bundled Space Mono Regular parses"),
         }
@@ -46,6 +51,7 @@ impl Renderer {
         match style {
             FontStyle::Regular => &self.regular,
             FontStyle::Bold => &self.bold,
+            FontStyle::Italic => &self.italic,
         }
     }
 

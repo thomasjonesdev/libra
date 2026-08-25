@@ -3,7 +3,7 @@
 use libra_core::FolderPick;
 use libra_test::{by, fx};
 
-use crate::common::{harness, ok_stdout, open_first_note};
+use crate::common::{enter_edit, harness, ok_stdout, open_first_note};
 
 mod common;
 
@@ -38,6 +38,7 @@ fn browse_cancel_leaves_the_path_empty() {
 fn save_apply_uses_the_gloss_cli() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "hello");
+    enter_edit(&mut h);
     h.type_text(by::test_id("editor-body"), "!");
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
@@ -56,6 +57,7 @@ fn save_apply_uses_the_gloss_cli() {
 fn undo_last_save_emits_gloss_undo() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "hello");
+    enter_edit(&mut h);
     h.type_text(by::test_id("editor-body"), "!");
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
@@ -87,11 +89,13 @@ fn undo_last_save_emits_gloss_undo() {
 fn select_during_save_does_not_treat_apply_as_cat() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n\nindex");
+    enter_edit(&mut h);
     h.type_text(by::test_id("editor-body"), "!");
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
     let apply = h.expect_effect(fx::process_program("gloss"));
-    h.click(by::text("Welcome.md"));
+    h.click(by::text("+ 10-Inbox"));
+    h.click(by::text("Welcome"));
     let extra = h
         .pending_effects()
         .filter(|e| matches!(e, libra_core::Effect::Process { .. }))
@@ -114,8 +118,9 @@ fn select_during_save_does_not_treat_apply_as_cat() {
 #[test]
 fn new_note_emits_create_apply() {
     let mut h = harness();
-    h.type_text(by::test_id("vault-path"), "/tmp/gloss-fixture");
-    h.click(by::test_id("open-vault"));
+    h.click(by::test_id("browse-vault"));
+    let pick = h.expect_effect(fx::pick_folder());
+    h.resolve_folder_pick(pick, libra_core::FolderPick::Picked("/tmp/gloss-fixture".into()));
     let kv = h.expect_effect(fx::kv_set(gloss::STORE_KEY));
     h.resolve_kv_set(kv, libra_core::KvResult::Ok);
     let list = h.expect_effect(fx::process_program("gloss"));
@@ -128,4 +133,168 @@ fn new_note_emits_create_apply() {
     assert!(command.args.iter().any(|a| a == "apply"));
     h.resolve_process(create, ok_stdout(""));
     assert_eq!(h.state().selected_path, "10-Inbox/Untitled.md");
+}
+
+#[test]
+fn tree_collapse_hides_nested_notes() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
+    assert_eq!(h.state().file_rows.len(), 2);
+    h.click(by::text("+ 10-Inbox"));
+    assert_eq!(h.state().file_rows.len(), 3);
+    h.click(by::text("- 10-Inbox"));
+    assert_eq!(h.state().file_rows.len(), 2);
+}
+
+#[test]
+fn right_click_opens_in_a_new_tab() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
+    h.click(by::text("+ 10-Inbox"));
+    h.right_click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    assert_eq!(
+        h.state().open_tabs,
+        vec!["Atlas.md".to_string(), "10-Inbox/Welcome.md".to_string()]
+    );
+}
+
+#[test]
+fn tree_click_reuses_the_current_tab() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
+    h.click(by::text("+ 10-Inbox"));
+    h.click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    assert_eq!(h.state().open_tabs, vec!["10-Inbox/Welcome.md".to_string()]);
+}
+
+#[test]
+fn close_tab_leaves_the_other_note() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
+    h.click(by::text("+ 10-Inbox"));
+    h.click(by::test_id("new-tab"));
+    h.click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    assert_eq!(h.state().open_tabs.len(), 2);
+    h.dispatch(gloss::Action::CloseTab("10-Inbox/Welcome.md".into()));
+    assert_eq!(h.state().open_tabs, vec!["Atlas.md"]);
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Atlas\n"));
+    assert_eq!(h.state().selected_path, "Atlas.md");
+}
+
+#[test]
+fn preview_paints_bold_and_wikilink_text() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n",
+        "# Atlas\n\nsee **bold** and [[Atlas|the atlas]]\n",
+    );
+    h.query(by::test_id("preview-body"))
+        .assert_text("see bold and the atlas");
+    h.query(by::text("bold"));
+    h.query(by::text("the atlas"));
+}
+
+#[test]
+fn preview_wikilink_click_opens_the_target() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n",
+        "# Atlas\n\nsee [[Welcome|the welcome note]]\n",
+    );
+    h.click(by::text("the welcome note"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+}
+
+#[test]
+fn preview_renders_table_math_strike_and_italic() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n",
+        "# Atlas\n\n*emph* ~~old~~\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$x^2$\n",
+    );
+    h.query(by::test_id("preview-body"))
+        .assert_text("emph old\n\na | b\n1 | 2\n\nx^2");
+    h.query(by::text("emph"));
+    h.query(by::text("old"));
+    h.query(by::text("$x^2$"));
+}
+
+#[test]
+fn preview_renders_headings_and_paragraphs() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n",
+        "# Atlas\n\nThe atlas.\n\n## More\n\nbody",
+    );
+    h.query(by::test_id("preview-body"))
+        .assert_text("The atlas.\n\nMore\n\nbody");
+    h.query(by::text("The atlas."));
+    h.query(by::text("More"));
+}
+
+#[test]
+fn preview_toggle_swaps_the_editor_for_wrapped_text() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nbody");
+    h.query(by::test_id("preview-body")).assert_text("body");
+    h.click(by::test_id("toggle-preview"));
+    h.query(by::test_id("editor-body"));
+    h.click(by::test_id("toggle-preview"));
+    h.query(by::test_id("preview-body")).assert_text("body");
+}
+
+#[test]
+fn settings_drawer_shows_the_path_and_browse() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n", "# Atlas\n");
+    h.click(by::test_id("settings"));
+    h.query(by::test_id("settings-vault-name")).assert_text("gloss-fixture");
+    h.query(by::test_id("settings-vault-path")).assert_text("/tmp/gloss-fixture");
+    h.query(by::test_id("settings-browse")).assert_text("Browse");
+}
+
+#[test]
+fn command_palette_opens_a_note() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n",
+        "# Atlas\n",
+    );
+    h.dispatch(gloss::Action::OpenCommandPalette);
+    h.query(by::test_id("palette-dialog"));
+    h.dispatch(gloss::Action::PaletteQueryChanged("Welcome".into()));
+    h.dispatch(gloss::Action::PalettePick("10-Inbox/Welcome.md".into()));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+}
+
+#[test]
+fn graph_drawer_lists_backlinks() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n",
+        "# Atlas\n\nsee [[Welcome]]\n",
+    );
+    h.dispatch(gloss::Action::OpenGraph);
+    h.query(by::test_id("graph-drawer"));
+    h.query(by::text("Welcome"));
+    let scan = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(scan, ok_stdout("10-Inbox/Welcome.md\n"));
+    assert_eq!(h.state().backlink_rows.len(), 1);
 }
