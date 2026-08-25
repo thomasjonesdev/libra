@@ -202,6 +202,11 @@ mod tests {
 
     #[test]
     fn jail_rejects_escaped_join() {
+        assert_eq!(RelPath::parse(".."), Err(PathError::Escape));
+        assert_eq!(RelPath::parse("../x.md"), Err(PathError::Escape));
+        assert_eq!(RelPath::parse("../outside.md"), Err(PathError::Escape));
+        assert_eq!(RelPath::parse("/outside.md"), Err(PathError::Absolute));
+
         let dir = tempdir().unwrap();
         let root = Root::open(RootId(1), "t", dir.path()).unwrap();
         let rel = RelPath::parse("ok.md").unwrap();

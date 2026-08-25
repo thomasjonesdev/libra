@@ -3,7 +3,7 @@
 use libra_core::{Effect, ProcessId};
 
 use crate::actions::Action;
-use crate::model::{list_cmd, IoKind, NoteRow, STORE_KEY};
+use crate::model::{list_cmd, IoKind, NoteRow, Pending, STORE_KEY};
 
 #[derive(Default)]
 #[libra::state]
@@ -28,6 +28,10 @@ pub struct Gloss {
     #[libra(skip)]
     pub io: IoKind,
     #[libra(skip)]
+    pub pending: Pending,
+    #[libra(skip)]
+    pub opened_root: String,
+    #[libra(skip)]
     pub next_process_id: u64,
     #[libra(skip)]
     pub dirty: bool,
@@ -44,10 +48,17 @@ impl Gloss {
         ProcessId(id)
     }
 
-    pub fn spawn(&mut self, command: libra_core::CommandSpec, kind: IoKind) -> Effect<Action> {
+    pub fn is_busy(&self) -> bool {
+        self.io != IoKind::Idle
+    }
+
+    pub fn spawn(&mut self, command: libra_core::CommandSpec, kind: IoKind) -> Option<Effect<Action>> {
+        if self.is_busy() {
+            return None;
+        }
         self.io = kind;
         let id = self.alloc_process();
-        Effect::process_id(id, command, Action::IoDone)
+        Some(Effect::process_id(id, command, Action::IoDone))
     }
 
     pub fn rebuild_rows(&mut self) {
@@ -113,7 +124,11 @@ impl Gloss {
             self.status = "Vault path is empty".into();
             return None;
         }
+        if self.is_busy() {
+            self.pending = Pending::List;
+            return None;
+        }
         self.status = "Listing…".into();
-        Some(self.spawn(list_cmd(root), IoKind::List))
+        self.spawn(list_cmd(root), IoKind::List)
     }
 }

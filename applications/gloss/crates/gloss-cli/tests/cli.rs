@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use gloss_core::{hash_bytes, NoteId, Op, Patch, PatchId, RelPath, RootId, RunId};
 use tempfile::tempdir;
 
 fn gloss() -> Command {
@@ -127,4 +128,59 @@ fn list_and_apply_undo_round_trip() {
     );
     assert!(!vault.join("Inbox/from-cli.md").exists());
     assert_eq!(fs::read_to_string(&atlas_path).unwrap(), atlas);
+}
+
+#[test]
+fn apply_patch_json_replace_then_undo() {
+    let tmp = tempdir().unwrap();
+    let vault = tmp.path().join("mini");
+    copy_dir(&fixture(), &vault);
+    let journal = tmp.path().join("journal.json");
+    let atlas_path = vault.join("Atlas.md");
+    let old = fs::read(&atlas_path).unwrap();
+
+    let patch = Patch {
+        id: PatchId("p-json".into()),
+        run: RunId("r-json".into()),
+        ops: vec![Op::ReplaceSpan {
+            note: NoteId::new(RootId(1), RelPath::parse("Atlas.md").unwrap()),
+            start: 0,
+            end: old.len(),
+            text: "from-json".into(),
+            expect_hash: hash_bytes(&old),
+        }],
+        rationale: "patch-json test".into(),
+        provenance: None,
+    };
+    let json = serde_json::to_string(&patch).unwrap();
+
+    let apply = gloss()
+        .args(["apply", "--root"])
+        .arg(&vault)
+        .arg("--patch-json")
+        .arg(&json)
+        .arg("--journal")
+        .arg(&journal)
+        .output()
+        .unwrap();
+    assert!(
+        apply.status.success(),
+        "{}",
+        String::from_utf8_lossy(&apply.stderr)
+    );
+    assert_eq!(fs::read(&atlas_path).unwrap(), b"from-json");
+
+    let undo = gloss()
+        .args(["undo", "--root"])
+        .arg(&vault)
+        .arg("--journal")
+        .arg(&journal)
+        .output()
+        .unwrap();
+    assert!(
+        undo.status.success(),
+        "{}",
+        String::from_utf8_lossy(&undo.stderr)
+    );
+    assert_eq!(fs::read(&atlas_path).unwrap(), old);
 }

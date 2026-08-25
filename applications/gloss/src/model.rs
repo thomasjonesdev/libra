@@ -21,6 +21,15 @@ pub enum IoKind {
     Undo,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Pending {
+    #[default]
+    None,
+    List,
+    Cat(String),
+    Undo,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
 pub struct NoteRow {
     pub id: String,

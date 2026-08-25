@@ -47,11 +47,40 @@ fn undo_last_save_emits_gloss_undo() {
     assert!(command.args.iter().any(|a| a == "undo"));
     assert!(command.args.iter().any(|a| a == "--journal"));
     h.resolve_process(undo, ok_stdout(""));
+    let list = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(list, ok_stdout("Atlas.md\n"));
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("hello"));
-    assert!(h.state().status == "Undone" || h.state().status == "Atlas.md");
     assert_eq!(h.state().editor_body, "hello");
     assert!(!h.state().can_undo);
+}
+
+#[test]
+fn select_during_save_does_not_treat_apply_as_cat() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n\nindex");
+    h.type_text(by::test_id("editor-body"), "!");
+    let t = h.expect_effect(fx::timer());
+    h.fire_timer(t);
+    let apply = h.expect_effect(fx::process_program("gloss"));
+    h.click(by::text("Welcome.md"));
+    let extra = h
+        .pending_effects()
+        .filter(|e| matches!(e, libra_core::Effect::Process { .. }))
+        .count();
+    assert_eq!(extra, 0, "select must not spawn a second process");
+    assert_eq!(h.state().io, gloss::IoKind::Apply);
+    assert_eq!(
+        h.state().pending,
+        gloss::Pending::Cat("10-Inbox/Welcome.md".into())
+    );
+    assert_eq!(h.state().editor_body, "# Atlas\n\nindex!");
+    h.resolve_process(apply, ok_stdout(""));
+    assert_eq!(h.state().editor_body, "# Atlas\n\nindex!");
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Welcome\n\nhi"));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+    assert_eq!(h.state().editor_body, "# Welcome\n\nhi");
 }
 
 #[test]

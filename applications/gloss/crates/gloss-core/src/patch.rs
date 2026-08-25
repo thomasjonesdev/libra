@@ -104,7 +104,7 @@ impl fmt::Display for ApplyError {
 
 impl std::error::Error for ApplyError {}
 
-/// Apply one op on an in-memory buffer. Used by the Libra app so reduce stays pure.
+/// Apply one op on an in-memory buffer.
 pub fn apply_in_memory(bytes: &[u8], op: &Op) -> Result<(Vec<u8>, Op), ApplyError> {
     match op {
         Op::ReplaceSpan {
@@ -153,12 +153,12 @@ pub fn apply_in_memory(bytes: &[u8], op: &Op) -> Result<(Vec<u8>, Op), ApplyErro
                 });
             }
             let src = std::str::from_utf8(bytes).map_err(|_| ApplyError::Range)?;
-            let (next, old_value, range) = set_frontmatter_bytes(src, key, value)?;
+            let (next, old_raw, range) = set_frontmatter_bytes(src, key, value)?;
             let inverse = Op::ReplaceSpan {
                 note: note.clone(),
                 start: range.start,
-                end: range.start + value.len(),
-                text: old_value,
+                end: range.end,
+                text: old_raw,
                 expect_hash: hash_bytes(next.as_bytes()),
             };
             Ok((next.into_bytes(), inverse))
@@ -286,36 +286,39 @@ fn set_frontmatter_bytes(
     value: &str,
 ) -> Result<(String, String, ByteRange), ApplyError> {
     let split = crate::parse::split_frontmatter(src).ok_or(ApplyError::Frontmatter)?;
+    let yaml = split.yaml;
+    let yaml_start = split.yaml_range.start;
     let prefix = format!("{key}:");
-    for line in split.yaml.split_inclusive('\n') {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix(&prefix) {
-            let old = rest.trim().trim_matches('"').to_string();
-            let line_start = src[split.yaml_range.start..]
-                .find(line.trim_end_matches(['\n', '\r']))
-                .map(|i| split.yaml_range.start + i)
-                .ok_or(ApplyError::Frontmatter)?;
-            let value_start = src[line_start..]
-                .find(rest.trim())
-                .map(|i| line_start + i)
-                .ok_or(ApplyError::Frontmatter)?;
-            let value_end = value_start + rest.trim().len();
-            if !src.is_char_boundary(value_start) || !src.is_char_boundary(value_end) {
-                return Err(ApplyError::Range);
+    let mut cursor = 0;
+    while cursor < yaml.len() {
+        let rest = &yaml[cursor..];
+        let line_len = rest.find('\n').map(|i| i + 1).unwrap_or(rest.len());
+        let content = rest[..line_len].trim_end_matches(['\n', '\r']);
+        let indent = content.len() - content.trim_start().len();
+        let trimmed = &content[indent..];
+        if let Some(after_colon) = trimmed.strip_prefix(&prefix) {
+            let ws = after_colon.len() - after_colon.trim_start().len();
+            let value_off = indent + prefix.len() + ws;
+            if value_off > content.len() {
+                return Err(ApplyError::Frontmatter);
             }
+            let value_start = yaml_start + cursor + value_off;
+            let value_end = yaml_start + cursor + content.len();
+            let old_raw = src[value_start..value_end].to_string();
             let mut next = String::new();
             next.push_str(&src[..value_start]);
             next.push_str(value);
             next.push_str(&src[value_end..]);
             return Ok((
                 next,
-                old,
+                old_raw,
                 ByteRange {
                     start: value_start,
-                    end: value_end,
+                    end: value_start + value.len(),
                 },
             ));
         }
+        cursor += line_len;
     }
     let insert_at = split.yaml_range.end;
     let insertion = if split.yaml.ends_with('\n') {
@@ -332,7 +335,7 @@ fn set_frontmatter_bytes(
         String::new(),
         ByteRange {
             start: insert_at,
-            end: insert_at,
+            end: insert_at + insertion.len(),
         },
     ))
 }
@@ -458,5 +461,43 @@ mod tests {
         assert!(got.contains("title: New"));
         assert!(got.contains("weird: 1"));
         assert!(got.contains("body"));
+    }
+
+    fn frontmatter_op(key: &str, value: &str, src: &str) -> Op {
+        Op::SetFrontmatter {
+            note: NoteId::new(RootId(1), RelPath::parse("a.md").unwrap()),
+            key: key.into(),
+            value: value.into(),
+            expect_hash: hash_bytes(src.as_bytes()),
+        }
+    }
+
+    #[test]
+    fn set_frontmatter_insert_inverse_is_identity() {
+        let src = "---\ntitle: Hi\n---\n\nbody";
+        let (next, inv) = apply_in_memory(src.as_bytes(), &frontmatter_op("tags", "x", src)).unwrap();
+        let (restored, _) = apply_in_memory(&next, &inv).unwrap();
+        assert_eq!(restored, src.as_bytes());
+    }
+
+    #[test]
+    fn set_frontmatter_quoted_value_inverse_keeps_quotes() {
+        let src = "---\ntitle: \"Old\"\n---\n\nbody\n";
+        let (next, inv) =
+            apply_in_memory(src.as_bytes(), &frontmatter_op("title", "New", src)).unwrap();
+        assert!(
+            String::from_utf8_lossy(&next).contains("title: New"),
+            "{}",
+            String::from_utf8_lossy(&next)
+        );
+        let (restored, _) = apply_in_memory(&next, &inv).unwrap();
+        assert_eq!(restored, src.as_bytes());
+    }
+
+    #[test]
+    fn set_frontmatter_value_does_not_collide_with_key() {
+        let src = "---\ntitle: t\n---\n\n";
+        let (next, _) = apply_in_memory(src.as_bytes(), &frontmatter_op("title", "Z", src)).unwrap();
+        assert_eq!(next, b"---\ntitle: Z\n---\n\n");
     }
 }

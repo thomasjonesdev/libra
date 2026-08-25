@@ -3,8 +3,8 @@
 use libra_core::{Effect, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, undo_cmd, IoKind, AUTOSAVE_MS,
-    STORE_KEY,
+    apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, undo_cmd, IoKind, Pending,
+    AUTOSAVE_MS, STORE_KEY,
 };
 use crate::state::Gloss;
 
@@ -21,6 +21,7 @@ impl Gloss {
                 let path = path.trim().to_string();
                 if !path.is_empty() {
                     self.vault_path = path;
+                    self.opened_root = self.vault_path.clone();
                     return self.open_list();
                 }
             }
@@ -30,9 +31,14 @@ impl Gloss {
 
     pub fn vault_path_changed(&mut self, text: String) {
         self.vault_path = text;
+        if self.vault_path.trim() != self.opened_root {
+            self.can_undo = false;
+        }
     }
 
     pub fn open_vault(&mut self) -> Vec<Effect<Action>> {
+        self.opened_root = self.vault_path.trim().to_string();
+        self.can_undo = false;
         let mut out = Vec::new();
         out.push(Effect::kv_set(
             STORE_KEY,
@@ -56,9 +62,14 @@ impl Gloss {
         if id.is_empty() {
             return None;
         }
-        self.selected_path = id.clone();
-        self.status = "Opening…".into();
-        Some(self.spawn(cat_cmd(self.vault_path.trim(), &id), IoKind::Cat))
+        if id == self.selected_path && self.io != IoKind::Cat {
+            return None;
+        }
+        if self.dirty && !self.selected_path.is_empty() && id != self.selected_path {
+            self.pending = Pending::Cat(id);
+            return self.flush_save();
+        }
+        self.begin_cat(id)
     }
 
     pub fn body_changed(&mut self, text: String) -> Option<Effect<Action>> {
@@ -73,6 +84,9 @@ impl Gloss {
 
     pub fn flush_save(&mut self) -> Option<Effect<Action>> {
         if !self.save_pending || !self.dirty {
+            return None;
+        }
+        if self.is_busy() {
             return None;
         }
         self.save_pending = false;
@@ -91,7 +105,7 @@ impl Gloss {
             }
         };
         self.status = "Saving…".into();
-        Some(self.spawn(cmd, IoKind::Apply))
+        self.spawn(cmd, IoKind::Apply)
     }
 
     pub fn new_note(&mut self) -> Option<Effect<Action>> {
@@ -108,12 +122,18 @@ impl Gloss {
                 return None;
             }
         };
+        if self.is_busy() {
+            self.status = "Wait for the current save".into();
+            return None;
+        }
         self.selected_path = path;
         self.loaded_body = content.into();
         self.editor_body = content.into();
         self.in_flight_body = self.editor_body.clone();
+        self.dirty = false;
+        self.save_pending = false;
         self.status = "Creating…".into();
-        Some(self.spawn(cmd, IoKind::Apply))
+        self.spawn(cmd, IoKind::Apply)
     }
 
     pub fn undo(&mut self) -> Option<Effect<Action>> {
@@ -121,12 +141,21 @@ impl Gloss {
             self.status = "Open a vault first".into();
             return None;
         }
+        if self.vault_path.trim() != self.opened_root {
+            self.can_undo = false;
+            self.status = "Open this vault first".into();
+            return None;
+        }
         if !self.can_undo {
             self.status = "Nothing to undo".into();
             return None;
         }
+        if self.is_busy() {
+            self.pending = Pending::Undo;
+            return None;
+        }
         self.status = "Undoing…".into();
-        Some(self.spawn(undo_cmd(self.vault_path.trim()), IoKind::Undo))
+        self.spawn(undo_cmd(self.vault_path.trim()), IoKind::Undo)
     }
 
     pub fn list_split_changed(&mut self, value: String) {
@@ -145,24 +174,53 @@ impl Gloss {
             } else {
                 err.trim().to_string()
             };
+            if kind == IoKind::Apply {
+                self.save_pending = true;
+                if matches!(self.pending, Pending::Cat(_)) {
+                    self.pending = Pending::None;
+                }
+            }
             return None;
         }
-        match kind {
+        let follow = match kind {
             IoKind::List => {
                 self.note_paths = parse_list(&result.stdout);
                 self.status = format!("{} notes", self.note_paths.len());
-                if self.selected_path.is_empty() {
-                    if let Some(first) = self.note_paths.first().cloned() {
-                        return self.select_note(first);
+                if let Pending::Cat(ref path) = self.pending {
+                    if !self.note_paths.iter().any(|p| p == path) {
+                        if self.selected_path == *path {
+                            self.selected_path.clear();
+                            self.editor_body.clear();
+                            self.loaded_body.clear();
+                            self.dirty = false;
+                        }
+                        self.pending = Pending::None;
                     }
                 }
-                None
+                if !self.selected_path.is_empty()
+                    && !self.note_paths.iter().any(|p| p == &self.selected_path)
+                {
+                    self.selected_path.clear();
+                    self.editor_body.clear();
+                    self.loaded_body.clear();
+                    self.dirty = false;
+                }
+                if self.selected_path.is_empty() {
+                    if let Some(first) = self.note_paths.first().cloned() {
+                        self.begin_cat(first)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             }
             IoKind::Cat => {
                 let body = String::from_utf8_lossy(&result.stdout).into_owned();
                 self.loaded_body = body.clone();
                 self.editor_body = body;
                 self.dirty = false;
+                self.save_pending = false;
                 self.status = self.selected_path.clone();
                 None
             }
@@ -180,12 +238,43 @@ impl Gloss {
             IoKind::Undo => {
                 self.can_undo = false;
                 self.status = "Undone".into();
-                if self.selected_path.is_empty() {
-                    return None;
+                if !self.selected_path.is_empty() {
+                    self.pending = Pending::Cat(self.selected_path.clone());
                 }
-                self.select_note(self.selected_path.clone())
+                self.open_list()
             }
             IoKind::Idle => None,
+        };
+        if follow.is_some() {
+            return follow;
+        }
+        self.after_io()
+    }
+}
+
+impl Gloss {
+    fn begin_cat(&mut self, id: String) -> Option<Effect<Action>> {
+        if self.is_busy() {
+            self.pending = Pending::Cat(id);
+            return None;
+        }
+        self.selected_path = id.clone();
+        self.status = "Opening…".into();
+        self.spawn(cat_cmd(self.vault_path.trim(), &id), IoKind::Cat)
+    }
+
+    fn after_io(&mut self) -> Option<Effect<Action>> {
+        match std::mem::take(&mut self.pending) {
+            Pending::None => {
+                if self.save_pending && self.dirty {
+                    self.flush_save()
+                } else {
+                    None
+                }
+            }
+            Pending::List => self.open_list(),
+            Pending::Cat(path) => self.begin_cat(path),
+            Pending::Undo => self.undo(),
         }
     }
 }
