@@ -66,6 +66,18 @@ impl fmt::Display for FileRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
+pub struct FrontmatterField {
+    pub key: String,
+    pub value: String,
+}
+
+impl fmt::Display for FrontmatterField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.key)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
 pub struct TabRow {
     pub id: String,
     pub title: String,
@@ -226,6 +238,82 @@ pub fn expand_ancestors_into(expanded: &mut std::collections::HashSet<String>, p
 
 pub fn project_preview(body: &str, skip_title: &str) -> String {
     libra_markdown::flatten(&libra_markdown::parse_preview(body, skip_title))
+}
+
+/// Split a note into `(yaml, body, has_frontmatter)`.
+pub fn split_note(full: &str) -> (String, String, bool) {
+    match gloss_core::split_frontmatter(full) {
+        Some(split) => (
+            split.yaml.to_string(),
+            split.body.trim_start_matches('\n').to_string(),
+            true,
+        ),
+        None => (String::new(), full.to_string(), false),
+    }
+}
+
+/// Rebuild file bytes from YAML (without fences) and body.
+pub fn assemble_note(yaml: &str, body: &str) -> String {
+    if yaml.trim().is_empty() {
+        return body.to_string();
+    }
+    format!("---\n{}\n---\n{}", yaml.trim_end(), body)
+}
+
+pub fn parse_frontmatter_fields(yaml: &str) -> Vec<FrontmatterField> {
+    yaml.lines()
+        .filter_map(|line| {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with('#') {
+                return None;
+            }
+            let (key, rest) = t.split_once(':')?;
+            let key = key.trim();
+            if key.is_empty() {
+                return None;
+            }
+            let value = rest.trim().trim_matches('"').to_string();
+            Some(FrontmatterField {
+                key: key.to_string(),
+                value,
+            })
+        })
+        .collect()
+}
+
+pub fn frontmatter_title(yaml: &str) -> String {
+    parse_frontmatter_fields(yaml)
+        .into_iter()
+        .find(|f| f.key == "title")
+        .map(|f| f.value)
+        .unwrap_or_default()
+}
+
+/// Single-line `key: value` rows for the reader properties scan list.
+pub fn frontmatter_scan_rows(yaml: &str) -> Vec<FrontmatterField> {
+    parse_frontmatter_fields(yaml)
+        .into_iter()
+        .filter(|f| !f.value.is_empty() && !f.value.contains('\n'))
+        .collect()
+}
+
+pub fn full_note_text(reader_mode: bool, has_frontmatter: bool, yaml: &str, editor: &str) -> String {
+    if reader_mode && has_frontmatter {
+        assemble_note(yaml, editor)
+    } else {
+        editor.to_string()
+    }
+}
+
+pub fn apply_loaded_note(
+    reader_mode: bool,
+    full: &str,
+) -> (String, String, bool, String, Vec<FrontmatterField>) {
+    let (yaml, body, has) = split_note(full);
+    let title = frontmatter_title(&yaml);
+    let fields = frontmatter_scan_rows(&yaml);
+    let editor = if reader_mode { body } else { full.to_string() };
+    (yaml, editor, has, title, fields)
 }
 
 fn leaf_name(path: &str) -> &str {

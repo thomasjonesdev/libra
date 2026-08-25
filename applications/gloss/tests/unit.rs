@@ -2,8 +2,8 @@
 
 use gloss::{
     default_daily_note_path, file_stem, journal_path, note_snippet, note_title, parse_list,
-    project_file_rows, project_preview, reduce, resolve_daily_note, resolve_wikilink, vault_name,
-    Action, Gloss, IoKind, Pending,
+    project_file_rows, reduce, resolve_daily_note, resolve_wikilink, vault_name, Action, Gloss,
+    IoKind, Pending,
 };
 use libra_core::{ProcessResult, ProcessStatus};
 
@@ -284,12 +284,26 @@ fn folder_click_toggles_expand_without_io() {
 }
 
 #[test]
-fn preview_skips_frontmatter_and_duplicate_title() {
-    let text = project_preview(
-        "---\ntitle: Atlas\n---\n\n# Atlas\n\nThe atlas.\n\n## More\n\nbody",
-        "Atlas",
-    );
-    assert_eq!(text, "The atlas.\n\nMore\n\nbody");
+fn split_note_separates_frontmatter() {
+    use gloss::{assemble_note, split_note};
+    let full = "---\ntitle: Atlas\n---\n\nbody\n";
+    let (yaml, body, has) = split_note(full);
+    assert!(has);
+    assert_eq!(yaml, "title: Atlas");
+    assert_eq!(body, "body\n");
+    assert_eq!(assemble_note(&yaml, &body), full);
+}
+
+#[test]
+fn toggle_reader_mode_round_trips_full_file() {
+    let mut s = editing("Atlas.md", "---\ntitle: Atlas\n---\n\nhello");
+    reduce(&mut s, Action::ToggleReaderMode);
+    assert!(!s.reader_mode);
+    assert_eq!(s.editor_body, "---\ntitle: Atlas\n---\n\nhello");
+    reduce(&mut s, Action::ToggleReaderMode);
+    assert!(s.reader_mode);
+    assert_eq!(s.frontmatter_yaml, "title: Atlas");
+    assert_eq!(s.editor_body, "hello");
 }
 
 #[test]

@@ -41,8 +41,7 @@ fn browse_cancel_leaves_the_path_empty() {
 fn save_apply_uses_the_gloss_cli() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "hello");
-    enter_edit(&mut h);
-    h.type_text(by::test_id("editor-body"), "!");
+    h.type_text(by::test_id("reader-body"), "!");
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
     let apply = h.expect_effect(fx::process_program("gloss"));
@@ -60,8 +59,7 @@ fn save_apply_uses_the_gloss_cli() {
 fn undo_last_save_emits_gloss_undo() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "hello");
-    enter_edit(&mut h);
-    h.type_text(by::test_id("editor-body"), "!");
+    h.type_text(by::test_id("reader-body"), "!");
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
     let apply = h.expect_effect(fx::process_program("gloss"));
@@ -195,71 +193,55 @@ fn close_tab_leaves_the_other_note() {
 }
 
 #[test]
-fn preview_paints_bold_and_wikilink_text() {
+fn reader_mode_shows_body_without_frontmatter_fences() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n",
+        "---\ntitle: Atlas\n---\n\nThe atlas.\n\n## More\n\nbody",
+    );
+    assert!(h.state().has_frontmatter);
+    assert_eq!(h.state().frontmatter_title, "Atlas");
+    h.query(by::test_id("frontmatter-title")).assert_text("Atlas");
+    h.query(by::test_id("reader-body")).assert_text("The atlas.\n\n## More\n\nbody");
+}
+
+#[test]
+fn raw_mode_shows_the_full_file_bytes() {
     let mut h = harness();
     open_first_note(
         &mut h,
         "Atlas.md\n",
         "# Atlas\n\nsee **bold** and [[Atlas|the atlas]]\n",
     );
-    h.query(by::test_id("preview-body"))
-        .assert_text("see bold and the atlas");
-    h.query(by::text("bold"));
-    h.query(by::text("the atlas"));
+    h.click(by::test_id("toggle-mode"));
+    h.query(by::test_id("editor-body"))
+        .assert_text("# Atlas\n\nsee **bold** and [[Atlas|the atlas]]\n");
 }
 
 #[test]
-fn preview_wikilink_click_opens_the_target() {
+fn follow_wikilink_opens_the_target_note() {
     let mut h = harness();
     open_first_note(
         &mut h,
         "Atlas.md\n10-Inbox/Welcome.md\n",
         "# Atlas\n\nsee [[Welcome|the welcome note]]\n",
     );
-    h.click(by::text("the welcome note"));
+    h.dispatch(gloss::Action::FollowWikilink("Welcome".into()));
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("# Welcome\n"));
     assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
 }
 
 #[test]
-fn preview_renders_table_math_strike_and_italic() {
-    let mut h = harness();
-    open_first_note(
-        &mut h,
-        "Atlas.md\n",
-        "# Atlas\n\n*emph* ~~old~~\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n$x^2$\n",
-    );
-    h.query(by::test_id("preview-body"))
-        .assert_text("emph old\n\na | b\n1 | 2\n\nx^2");
-    h.query(by::text("emph"));
-    h.query(by::text("old"));
-    h.query(by::text("$x^2$"));
-}
-
-#[test]
-fn preview_renders_headings_and_paragraphs() {
-    let mut h = harness();
-    open_first_note(
-        &mut h,
-        "Atlas.md\n",
-        "# Atlas\n\nThe atlas.\n\n## More\n\nbody",
-    );
-    h.query(by::test_id("preview-body"))
-        .assert_text("The atlas.\n\nMore\n\nbody");
-    h.query(by::text("The atlas."));
-    h.query(by::text("More"));
-}
-
-#[test]
-fn preview_toggle_swaps_the_editor_for_wrapped_text() {
+fn mode_toggle_swaps_reader_and_raw_editors() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nbody");
-    h.query(by::test_id("preview-body")).assert_text("body");
-    h.click(by::test_id("toggle-preview"));
+    h.query(by::test_id("reader-body")).assert_text("# Atlas\n\nbody");
+    h.click(by::test_id("toggle-mode"));
     h.query(by::test_id("editor-body"));
-    h.click(by::test_id("toggle-preview"));
-    h.query(by::test_id("preview-body")).assert_text("body");
+    h.click(by::test_id("toggle-mode"));
+    h.query(by::test_id("reader-body")).assert_text("# Atlas\n\nbody");
 }
 
 #[test]
@@ -307,8 +289,7 @@ fn mention_dialog_opens_while_typing() {
         "Atlas.md\n10-Inbox/Welcome.md\n",
         "# Atlas\n\n",
     );
-    enter_edit(&mut h);
-    h.type_text(by::test_id("editor-body"), "@Wel");
+    h.type_text(by::test_id("reader-body"), "@Wel");
     h.query(by::test_id("mention-dialog"));
     h.dispatch(gloss::Action::MentionPick("10-Inbox/Welcome.md".into()));
     assert_eq!(h.state().editor_body, "# Atlas\n\n[[Welcome]]");

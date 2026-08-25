@@ -22,7 +22,7 @@
       </Tooltip>
     </Toolbar>
     <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
-      <Column grow gap={4} padding={8}>
+      <Panel grow gap={4} padding={8} raised>
         <Toolbar testId="list-toolbar">
           <Button variant="ghost" icon="folder" onPress={newFolder} testId="new-folder" />
           <Button variant="ghost" icon="sort" onPress={toggleSort} testId="sort-notes" />
@@ -47,7 +47,7 @@
           <Text muted grow wrap testId="vault-name">{vault_name}</Text>
           <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
         </Row>
-      </Column>
+      </Panel>
       <Column grow gap={4} padding={8}>
         <if test={has_vault}>
           <Toolbar testId="editor-toolbar">
@@ -67,18 +67,34 @@
           <Row gap={8} cross="center">
             <Heading level={2} testId="note-title">{selected_title}</Heading>
             <Spacer />
-            <Button variant="ghost" onPress={togglePreview} testId="toggle-preview">{preview_label}</Button>
+            <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
           </Row>
-          <if test={show_preview}>
-            <Scroll testId="preview-scroll">
-              <Markdown source={editor_body} skipTitle={selected_title} testId="preview-body" onWikilink={followWikilink} />
-            </Scroll>
-            <else>
-              <Scroll testId="editor-scroll">
+          <Scroll testId="editor-scroll">
+            <if test={reader_mode}>
+              <Column grow padding={48} gap={16}>
+                <if test={has_frontmatter}>
+                  <Column gap={10}>
+                    <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
+                    <if test={has_frontmatter_title}>
+                      <Heading level={2} testId="frontmatter-title">{frontmatter_title}</Heading>
+                    </if>
+                    <for each={frontmatter_fields} as="f" key={f.key}>
+                      <Row gap={12} cross="center">
+                        <Text muted size="sm">{f.key}</Text>
+                        <Text grow wrap size="sm">{f.value}</Text>
+                      </Row>
+                    </for>
+                    <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
+                  </Column>
+                  <Separator />
+                </if>
+                <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
+              </Column>
+              <else>
                 <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
-              </Scroll>
-            </else>
-          </if>
+              </else>
+            </if>
+          </Scroll>
           <else>
             <Text muted testId="editor-empty">Select a note</Text>
           </else>

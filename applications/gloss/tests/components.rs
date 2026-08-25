@@ -3,7 +3,7 @@
 use libra_core::Effect;
 use libra_test::{by, fx};
 
-use crate::common::{enter_edit, harness, ok_stdout, open_and_list, open_first_note, resolve_rules};
+use crate::common::{harness, ok_stdout, open_and_list, open_first_note, resolve_rules};
 
 mod common;
 
@@ -35,8 +35,7 @@ fn opening_a_vault_lists_notes() {
 fn typing_in_the_editor_marks_dirty_and_schedules_save() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nindex");
-    enter_edit(&mut h);
-    h.type_text(by::test_id("editor-body"), " more");
+    h.type_text(by::test_id("reader-body"), " more");
     assert!(h
         .pending_effects()
         .any(|e| matches!(e, Effect::Timer { .. })));

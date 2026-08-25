@@ -5,8 +5,8 @@ use libra_core::{Effect, FolderPick, ProcessResult, ProcessStatus};
 use crate::model::{
     apply_create_cmd, apply_replace_cmd, backlinks_cmd, cat_cmd, daily_note_content,
     default_daily_note_path, insert_wikilink_mention, is_folder_id, mention_trigger, parse_list,
-    resolve_daily_note, rules_cmd, today_local_iso, unique_folder_note, unique_inbox_path, undo_cmd,
-    IoKind, NoteRow, Pending, AUTOSAVE_MS, STORE_KEY, TOAST_MS,
+    resolve_daily_note, rules_cmd, split_note, today_local_iso, unique_folder_note,
+    unique_inbox_path, undo_cmd, IoKind, NoteRow, Pending, AUTOSAVE_MS, STORE_KEY, TOAST_MS,
 };
 use crate::state::Gloss;
 
@@ -121,7 +121,7 @@ impl Gloss {
         }
         self.editor_body = text;
         self.sync_mention();
-        self.dirty = true;
+        self.dirty = self.full_note_text() != self.loaded_body;
         self.save_pending = true;
         Some(Effect::timer(AUTOSAVE_MS, Action::FlushSave))
     }
@@ -190,13 +190,13 @@ impl Gloss {
             return None;
         }
         self.save_pending = false;
-        self.in_flight_body = self.editor_body.clone();
+        self.in_flight_body = self.full_note_text();
         let root = self.vault_path.trim();
         let cmd = match apply_replace_cmd(
             root,
             &self.selected_path,
             &self.loaded_body,
-            &self.editor_body,
+            &self.in_flight_body,
         ) {
             Ok(c) => c,
             Err(e) => {
@@ -311,8 +311,33 @@ impl Gloss {
         self.expanded.clear();
     }
 
-    pub fn toggle_preview(&mut self) {
-        self.show_preview = !self.show_preview;
+    pub fn frontmatter_changed(&mut self, text: String) -> Option<Effect<Action>> {
+        if self.selected_path.is_empty() || !self.reader_mode {
+            return None;
+        }
+        self.frontmatter_yaml = text;
+        self.has_frontmatter = !self.frontmatter_yaml.trim().is_empty();
+        self.dirty = self.full_note_text() != self.loaded_body;
+        self.save_pending = true;
+        Some(Effect::timer(AUTOSAVE_MS, Action::FlushSave))
+    }
+
+    pub fn toggle_reader_mode(&mut self) {
+        if self.reader_mode {
+            self.editor_body = self.full_note_text();
+            self.has_frontmatter = false;
+            self.frontmatter_yaml.clear();
+            self.frontmatter_fields.clear();
+            self.frontmatter_title.clear();
+            self.has_frontmatter_title = false;
+            self.reader_mode = false;
+            return;
+        }
+        let (yaml, body, has) = split_note(&self.editor_body);
+        self.frontmatter_yaml = yaml;
+        self.has_frontmatter = has;
+        self.editor_body = body;
+        self.reader_mode = true;
     }
 
     pub fn open_settings(&mut self) {
@@ -446,7 +471,7 @@ impl Gloss {
             IoKind::Cat => {
                 let body = String::from_utf8_lossy(&result.stdout).into_owned();
                 self.loaded_body = body.clone();
-                self.editor_body = body;
+                self.set_note_text(&body);
                 self.dirty = false;
                 self.save_pending = false;
                 self.sync_mention();
@@ -454,8 +479,10 @@ impl Gloss {
                 self.begin_load_rules()
             }
             IoKind::Apply => {
-                self.loaded_body = self.in_flight_body.clone();
-                self.dirty = self.editor_body != self.loaded_body;
+                let saved = self.in_flight_body.clone();
+                self.loaded_body = saved.clone();
+                self.set_note_text(&saved);
+                self.dirty = false;
                 self.can_undo = true;
                 self.status = "Saved".into();
                 toast_fx = self.flash_toast(true, "Saved");
@@ -566,8 +593,8 @@ impl Gloss {
         self.place_in_tab(&path);
         self.selected_path = path.clone();
         self.loaded_body = content.clone();
-        self.editor_body = content;
-        self.in_flight_body = self.editor_body.clone();
+        self.set_note_text(&content);
+        self.in_flight_body = self.full_note_text();
         self.dirty = false;
         self.save_pending = false;
         self.expand_ancestors(&path);
@@ -579,6 +606,11 @@ impl Gloss {
         self.selected_path.clear();
         self.editor_body.clear();
         self.loaded_body.clear();
+        self.frontmatter_yaml.clear();
+        self.frontmatter_fields.clear();
+        self.frontmatter_title.clear();
+        self.has_frontmatter = false;
+        self.has_frontmatter_title = false;
         self.dirty = false;
     }
 

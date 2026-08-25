@@ -46,8 +46,7 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 | --- | --- | --- |
 | Back / Fwd | `goBack` / `goForward` — note history | **Shipped** |
 | Tab row | `<Tabs>` / `<Tab>` → `selectNote` / `closeTab` / `newTab` | **Shipped** |
-| Preview / Edit | `togglePreview` — `<Markdown>` vs `<Textarea>` | **Shipped** |
-| Preview wikilink click | `followWikilink` — resolve + open | **Shipped** |
+| Reader / Raw | `toggleReaderMode` — reader column vs full-file source | **Shipped** |
 | `@mention` completion | Type `@note` → dialog → `[[wikilink]]` insert | **Shipped** |
 
 ## Modals
@@ -70,7 +69,7 @@ text control owns the chord:
 | ⌘D | `openDailyNote` |
 | ⌘N | `newNote` |
 | ⌘G | `openGraph` |
-| ⌘E | `togglePreview` |
+| ⌘E | `toggleReaderMode` |
 | Escape | `dismiss` — close top overlay / toast |
 
 Cmd+K **inline edit** (review-surface patch return) stays blocked on M3; ⌘K/⌘P

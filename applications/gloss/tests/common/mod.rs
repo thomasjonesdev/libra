@@ -53,11 +53,15 @@ pub fn open_first_note(h: &mut Harness<Gloss>, listing: &str, body: &str) {
     resolve_rules(h, "");
 }
 
+pub fn enter_raw(h: &mut Harness<Gloss>) {
+    if h.state().reader_mode {
+        h.click(by::test_id("toggle-mode"));
+    }
+}
+
 #[allow(dead_code)]
 pub fn enter_edit(h: &mut Harness<Gloss>) {
-    if h.state().show_preview {
-        h.click(by::test_id("toggle-preview"));
-    }
+    enter_raw(h);
 }
 
 pub fn assert_no_overflow(h: &Harness<Gloss>) {

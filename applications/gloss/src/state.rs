@@ -6,9 +6,9 @@ use libra_core::{Effect, ProcessId};
 
 use crate::actions::Action;
 use crate::model::{
-    char_count_label, list_cmd, project_file_rows, project_link_rows, project_mention_rows,
-    project_palette_rows, project_preview, rules_preview, save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending,
-    TabRow, STORE_KEY,
+    char_count_label, frontmatter_scan_rows, frontmatter_title, full_note_text, list_cmd,
+    project_file_rows, project_link_rows, project_mention_rows, project_palette_rows, rules_preview,
+    save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending, TabRow, STORE_KEY,
 };
 
 #[derive(Default)]
@@ -25,14 +25,19 @@ pub struct Gloss {
     pub word_count: String,
     pub char_count: String,
     pub save_label: String,
-    pub preview_label: String,
+    pub mode_label: String,
     pub has_vault: bool,
     pub has_selected: bool,
     pub has_tabs: bool,
     pub can_undo: bool,
     pub can_go_back: bool,
     pub can_go_forward: bool,
-    pub show_preview: bool,
+    pub reader_mode: bool,
+    pub has_frontmatter: bool,
+    pub has_frontmatter_title: bool,
+    pub frontmatter_title: String,
+    pub frontmatter_yaml: String,
+    pub frontmatter_fields: Vec<crate::model::FrontmatterField>,
     pub show_settings: bool,
     pub show_command_palette: bool,
     pub palette_query: String,
@@ -53,7 +58,6 @@ pub struct Gloss {
     pub note_rows: Vec<NoteRow>,
     pub file_rows: Vec<FileRow>,
     pub tab_rows: Vec<TabRow>,
-    pub preview_body: String,
 
     #[libra(skip)]
     pub loaded_body: String,
@@ -117,7 +121,28 @@ impl Gloss {
         Some(Effect::process_id(id, command, Action::IoDone))
     }
 
+    pub fn full_note_text(&self) -> String {
+        full_note_text(
+            self.reader_mode,
+            self.has_frontmatter,
+            &self.frontmatter_yaml,
+            &self.editor_body,
+        )
+    }
+
+    pub fn set_note_text(&mut self, full: &str) {
+        let (yaml, editor, has, title, fields) =
+            crate::model::apply_loaded_note(self.reader_mode, full);
+        self.frontmatter_yaml = yaml;
+        self.editor_body = editor;
+        self.has_frontmatter = has;
+        self.frontmatter_title = title.clone();
+        self.has_frontmatter_title = !title.is_empty();
+        self.frontmatter_fields = fields;
+    }
+
     pub fn rebuild_rows(&mut self) {
+        let full = self.full_note_text();
         let q = self.query.to_ascii_lowercase();
         self.note_rows = self
             .note_paths
@@ -125,11 +150,7 @@ impl Gloss {
             .filter(|p| q.is_empty() || p.to_ascii_lowercase().contains(&q))
             .map(|p| {
                 let selected = p == &self.selected_path;
-                let body = if selected {
-                    self.editor_body.as_str()
-                } else {
-                    ""
-                };
+                let body = if selected { full.as_str() } else { "" };
                 NoteRow {
                     id: p.clone(),
                     title: crate::model::note_title(p, body),
@@ -169,7 +190,7 @@ impl Gloss {
         self.selected_title = if self.selected_path.is_empty() {
             String::new()
         } else {
-            crate::model::note_title(&self.selected_path, &self.editor_body)
+            crate::model::note_title(&self.selected_path, &full)
         };
         self.empty_message = if self.vault_path.trim().is_empty() {
             "Browse a vault folder to begin".into()
@@ -178,11 +199,15 @@ impl Gloss {
         } else {
             String::new()
         };
-        self.word_count = word_count_label(&self.editor_body);
-        self.char_count = char_count_label(&self.editor_body);
+        self.word_count = word_count_label(&full);
+        self.char_count = char_count_label(&full);
         self.save_label = save_label(self.dirty, &self.status);
-        self.preview_label = if self.show_preview { "Edit" } else { "Preview" }.into();
-        self.preview_body = project_preview(&self.editor_body, &self.selected_title);
+        self.mode_label = if self.reader_mode { "Raw" } else { "Reader" }.into();
+        if self.reader_mode {
+            self.frontmatter_title = frontmatter_title(&self.frontmatter_yaml);
+            self.has_frontmatter_title = !self.frontmatter_title.is_empty();
+            self.frontmatter_fields = frontmatter_scan_rows(&self.frontmatter_yaml);
+        }
         self.palette_rows = if self.show_command_palette {
             project_palette_rows(&self.note_paths, &self.palette_query, 50)
         } else {
@@ -197,7 +222,7 @@ impl Gloss {
         self.rules_excerpt = rules_preview(&self.rules_body, 480);
         if self.show_graph && self.has_selected {
             self.outgoing_rows =
-                project_link_rows(&self.editor_body, &self.note_paths, &self.selected_path);
+                project_link_rows(&full, &self.note_paths, &self.selected_path);
         } else if !self.show_graph {
             self.outgoing_rows.clear();
             self.backlink_rows.clear();
@@ -235,7 +260,7 @@ impl Gloss {
     pub fn init() -> (Gloss, Vec<Effect<Action>>) {
         let mut state = Gloss::default();
         state.split_list = 0.32;
-        state.show_preview = true;
+        state.reader_mode = true;
         state.status = "Browse a vault folder".into();
         state.rebuild_rows();
         (
@@ -271,7 +296,7 @@ impl Gloss {
             Shortcut::action("cmd+d", "openDailyNote"),
             Shortcut::action("cmd+n", "newNote"),
             Shortcut::action("cmd+g", "openGraph"),
-            Shortcut::action("cmd+e", "togglePreview"),
+            Shortcut::action("cmd+e", "toggleReaderMode"),
             Shortcut::action("escape", "dismiss"),
         ]
     }
