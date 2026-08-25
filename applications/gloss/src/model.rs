@@ -18,6 +18,7 @@ pub enum IoKind {
     List,
     Cat,
     Apply,
+    Undo,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
@@ -78,6 +79,11 @@ pub fn note_snippet(body: &str) -> String {
     }
 }
 
+pub fn journal_path(root: &str) -> String {
+    let root = root.trim().trim_end_matches('/');
+    format!("{root}/.gloss/journal.json")
+}
+
 pub fn list_cmd(root: &str) -> CommandSpec {
     CommandSpec::new(GLOSS_BIN)
         .args(["list", "--root", root])
@@ -111,9 +117,7 @@ pub fn apply_replace_cmd(
         provenance: None,
     };
     let json = serde_json::to_string(&patch).map_err(|e| e.to_string())?;
-    Ok(CommandSpec::new(GLOSS_BIN)
-        .args(["apply", "--root", root, "--patch-json", &json])
-        .timeout_ms(15_000))
+    Ok(apply_cmd(root, &json))
 }
 
 pub fn apply_create_cmd(root: &str, path: &str, content: &str) -> Result<CommandSpec, String> {
@@ -130,9 +134,27 @@ pub fn apply_create_cmd(root: &str, path: &str, content: &str) -> Result<Command
         provenance: None,
     };
     let json = serde_json::to_string(&patch).map_err(|e| e.to_string())?;
-    Ok(CommandSpec::new(GLOSS_BIN)
-        .args(["apply", "--root", root, "--patch-json", &json])
-        .timeout_ms(15_000))
+    Ok(apply_cmd(root, &json))
+}
+
+pub fn undo_cmd(root: &str) -> CommandSpec {
+    CommandSpec::new(GLOSS_BIN)
+        .args(["undo", "--root", root, "--journal", &journal_path(root)])
+        .timeout_ms(15_000)
+}
+
+fn apply_cmd(root: &str, json: &str) -> CommandSpec {
+    CommandSpec::new(GLOSS_BIN)
+        .args([
+            "apply",
+            "--root",
+            root,
+            "--patch-json",
+            json,
+            "--journal",
+            &journal_path(root),
+        ])
+        .timeout_ms(15_000)
 }
 
 pub fn parse_list(stdout: &[u8]) -> Vec<String> {

@@ -1,8 +1,21 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-/// blake3 of the file's exact bytes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// blake3 of the file's exact bytes. JSON form is a 64-char hex string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContentHash(pub [u8; 32]);
+
+impl Serialize for ContentHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        ContentHash::from_hex(&s).ok_or_else(|| serde::de::Error::custom("invalid content hash"))
+    }
+}
 
 impl ContentHash {
     pub fn to_hex(self) -> String {
@@ -61,6 +74,14 @@ mod tests {
     fn hex_roundtrip() {
         let h = hash_bytes(b"hello");
         assert_eq!(ContentHash::from_hex(&h.to_hex()), Some(h));
+    }
+
+    #[test]
+    fn json_is_hex_string() {
+        let h = hash_bytes(b"hello");
+        let raw = serde_json::to_string(&h).unwrap();
+        assert_eq!(raw, format!("\"{}\"", h.to_hex()));
+        assert_eq!(serde_json::from_str::<ContentHash>(&raw).unwrap(), h);
     }
 
     #[test]

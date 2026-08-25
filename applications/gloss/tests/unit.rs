@@ -1,6 +1,6 @@
 //! Unit tests: title/snippet helpers and boot reduce.
 
-use gloss::{note_snippet, note_title, parse_list, reduce, Action, Gloss};
+use gloss::{journal_path, note_snippet, note_title, parse_list, reduce, Action, Gloss};
 
 fn boot() -> Gloss {
     let (mut s, fx) = Gloss::init();
@@ -39,6 +39,14 @@ fn snippet_skips_frontmatter() {
 #[test]
 fn parse_list_drops_blank_lines() {
     assert_eq!(parse_list(b"a.md\n\nb.md\n"), vec!["a.md", "b.md"]);
+}
+
+#[test]
+fn journal_lives_under_gloss_dir() {
+    assert_eq!(
+        journal_path("/tmp/vault/"),
+        "/tmp/vault/.gloss/journal.json"
+    );
 }
 
 #[test]

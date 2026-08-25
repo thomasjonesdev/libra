@@ -58,6 +58,7 @@ cargo run -p dashboard --release       # Phase 2: 16 live charts @ 10 kHz throug
 cargo run -p dashboard --release -- bench   # §22 budget check (headless, deterministic feed)
 cargo run -p notes                     # Phase 3: text entry (Input + editing core + keyboard)
 cargo run -p todos                     # §6.2 item fields: per-row toggle/delete via t.id / t.text
+cargo run -p gloss                     # first-party Markdown vault editor (§27.2)
 cargo run -p libra-cli -- check .      # parse/validate all .lx markup (microseconds)
 cargo install --path cli/libra --force # install libra CLI (check, dev, build, package)
 libra dev -p counter                   # debug run with view hot reload

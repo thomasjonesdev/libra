@@ -51,6 +51,8 @@ fn list_and_apply_undo_round_trip() {
     assert!(listed.contains("Atlas.md"));
     assert!(listed.contains("10-Inbox/Welcome.md"));
 
+    let atlas_path = vault.join("Atlas.md");
+    let atlas = fs::read_to_string(&atlas_path).unwrap();
     let hash = gloss()
         .args(["hash", "--root"])
         .arg(&vault)
@@ -65,18 +67,30 @@ fn list_and_apply_undo_round_trip() {
         r#"{{
           "id": "p1",
           "run": "r1",
-          "ops": [{{
-            "CreateNote": {{
-              "root": 1,
-              "path": "Inbox/from-cli.md",
-              "content": "hello from cli"
+          "ops": [
+            {{
+              "CreateNote": {{
+                "root": 1,
+                "path": "Inbox/from-cli.md",
+                "content": "hello from cli"
+              }}
+            }},
+            {{
+              "ReplaceSpan": {{
+                "note": {{ "root": 1, "path": "Atlas.md" }},
+                "start": 0,
+                "end": {},
+                "text": "changed",
+                "expect_hash": "{}"
+              }}
             }}
-          }}],
+          ],
           "rationale": "cli test",
           "provenance": null
-        }}"#
+        }}"#,
+        atlas.len(),
+        expect
     );
-    let _ = expect;
     fs::write(&patch_path, patch).unwrap();
 
     let apply = gloss()
@@ -97,6 +111,7 @@ fn list_and_apply_undo_round_trip() {
         fs::read_to_string(vault.join("Inbox/from-cli.md")).unwrap(),
         "hello from cli"
     );
+    assert_eq!(fs::read_to_string(&atlas_path).unwrap(), "changed");
 
     let undo = gloss()
         .args(["undo", "--root"])
@@ -111,4 +126,5 @@ fn list_and_apply_undo_round_trip() {
         String::from_utf8_lossy(&undo.stderr)
     );
     assert!(!vault.join("Inbox/from-cli.md").exists());
+    assert_eq!(fs::read_to_string(&atlas_path).unwrap(), atlas);
 }

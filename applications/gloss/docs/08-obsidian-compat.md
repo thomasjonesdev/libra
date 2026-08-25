@@ -23,6 +23,10 @@ Three rules, in priority order:
 
 ## Syntax that must parse
 
+The byte scanner in `parse.rs` currently handles wikilinks, embeds, `%%`
+comments, and a raw YAML split. The rest of this table is the compatibility
+target, not the shipped parser.
+
 | Construct | Forms |
 | --- | --- |
 | Wikilinks | `[[note]]`, `[[note\|alias]]`, `[[note#Heading]]`, `[[note#^blockid]]` |

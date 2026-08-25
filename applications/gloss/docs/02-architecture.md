@@ -63,11 +63,11 @@ types so the CLI and a later MCP server stay mechanical. See
 
 | Concern | Choice | Notes |
 | --- | --- | --- |
-| File watching | `notify` | Debounce 250ms; coalesce rename pairs |
-| Markdown parse | `comrak` + custom wikilink extension | CommonMark + GFM; wikilinks aren't standard |
-| Frontmatter | `serde_yaml` | Preserve unknown keys on round-trip |
+| File watching | none yet | Open lists notes. A `notify` watcher is still open. |
+| Markdown parse | byte scanner in `parse.rs` | Wikilinks, embeds, `%%` comments. Not comrak. |
+| Frontmatter | raw YAML span | Unknown keys stay as bytes. No `serde_yaml` rewrite. |
 | Path safety | Vault-scoped jail | Reject any resolved path outside a root |
-| Git backing | `gix` | Checkpoints; the vault may already be a repo |
+| Undo log | `.gloss/journal.json` | Inverse ops from `apply`. `gix` checkpoints are still open. |
 
 **Multi-root from commit #1.** Every path is `(RootId, RelPath)`, never a bare
 `PathBuf`. Retrofitting this means rewriting every query, cache key, and path

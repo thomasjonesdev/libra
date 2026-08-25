@@ -30,13 +30,13 @@ existing solution in v1).
 
 ## M0 — Vault core
 
-**Landed (usable).** Watcher and git checkpoints are still open. Parser, patch
-layer, and multi-root path types are in `gloss-core`.
+**Landed (usable).** Watcher and git checkpoints are still open. The byte
+scanner, patch layer, and multi-root path types are in `gloss-core`.
 
-- `notify` watcher with debounce and rename coalescing
-- comrak + wikilink extension; frontmatter round-trips losslessly
-- Patch layer with `expect_hash`, inverse-patch generation, run checkpoints
+- Byte scanner for wikilinks, embeds, comments, and a raw YAML split
+- Patch layer with `expect_hash`, inverse ops, and `.gloss/journal.json`
 - Path jail; `(RootId, RelPath)` is the only path type
+- Still open: `notify` watcher, `gix` checkpoints
 
 **Exit:** a CLI can apply and undo a multi-op patch against my real vault
 without losing a byte. Property tests prove round-trip and inverse correctness.
@@ -97,8 +97,8 @@ filed note via M3's review surface. Diarization is post-v1.
 
 ## M4 — Editor shell
 
-**Started.** Libra app with vault path, note list, `<Textarea>`, save through
-the patch layer. Still missing `@`-mentions, Cmd+K, and a rules file.
+**Started.** Libra app with vault path, note list, `<Textarea>`, save and undo
+through the patch journal. Still missing `@`-mentions, Cmd+K, and a rules file.
 
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.

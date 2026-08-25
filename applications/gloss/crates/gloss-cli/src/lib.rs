@@ -240,6 +240,9 @@ fn load_journal(path: &str) -> Journal {
 }
 
 fn save_journal(path: &str, journal: &Journal) -> Result<(), String> {
+    if let Some(parent) = Path::new(path).parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let raw = serde_json::to_string_pretty(journal).map_err(|e| e.to_string())?;
     fs::write(path, raw).map_err(|e| e.to_string())
 }

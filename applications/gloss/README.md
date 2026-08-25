@@ -12,7 +12,7 @@ cargo run -p gloss
 ```
 
 Paste a vault path and click Open. New notes land in `10-Inbox/`. Edits
-autosave through `gloss apply`.
+autosave through `gloss apply`. Undo reverts the last journaled run.
 
 CLI, same binary or `gloss-cli`:
 

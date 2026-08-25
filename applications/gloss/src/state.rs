@@ -17,6 +17,7 @@ pub struct Gloss {
     pub empty_message: String,
     pub has_vault: bool,
     pub has_selected: bool,
+    pub can_undo: bool,
     pub split_list: f32,
     pub note_rows: Vec<NoteRow>,
 
@@ -32,6 +33,8 @@ pub struct Gloss {
     pub dirty: bool,
     #[libra(skip)]
     pub save_pending: bool,
+    #[libra(skip)]
+    pub in_flight_body: String,
 }
 
 impl Gloss {

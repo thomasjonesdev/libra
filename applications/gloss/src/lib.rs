@@ -10,7 +10,7 @@ mod model;
 mod state;
 
 pub use actions::{reduce, Action};
-pub use model::{note_snippet, note_title, parse_list, STORE_KEY};
+pub use model::{journal_path, note_snippet, note_title, parse_list, STORE_KEY};
 pub use state::Gloss;
 
 libra::app! {

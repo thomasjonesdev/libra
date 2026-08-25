@@ -3,7 +3,8 @@
 use libra_core::{Effect, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, IoKind, AUTOSAVE_MS, STORE_KEY,
+    apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, undo_cmd, IoKind, AUTOSAVE_MS,
+    STORE_KEY,
 };
 use crate::state::Gloss;
 
@@ -75,6 +76,7 @@ impl Gloss {
             return None;
         }
         self.save_pending = false;
+        self.in_flight_body = self.editor_body.clone();
         let root = self.vault_path.trim();
         let cmd = match apply_replace_cmd(
             root,
@@ -109,8 +111,22 @@ impl Gloss {
         self.selected_path = path;
         self.loaded_body = content.into();
         self.editor_body = content.into();
+        self.in_flight_body = self.editor_body.clone();
         self.status = "Creating…".into();
         Some(self.spawn(cmd, IoKind::Apply))
+    }
+
+    pub fn undo(&mut self) -> Option<Effect<Action>> {
+        if self.vault_path.trim().is_empty() {
+            self.status = "Open a vault first".into();
+            return None;
+        }
+        if !self.can_undo {
+            self.status = "Nothing to undo".into();
+            return None;
+        }
+        self.status = "Undoing…".into();
+        Some(self.spawn(undo_cmd(self.vault_path.trim()), IoKind::Undo))
     }
 
     pub fn list_split_changed(&mut self, value: String) {
@@ -151,14 +167,23 @@ impl Gloss {
                 None
             }
             IoKind::Apply => {
-                self.loaded_body = self.editor_body.clone();
-                self.dirty = false;
+                self.loaded_body = self.in_flight_body.clone();
+                self.dirty = self.editor_body != self.loaded_body;
+                self.can_undo = true;
                 self.status = "Saved".into();
                 if !self.note_paths.iter().any(|p| p == &self.selected_path) {
                     self.note_paths.push(self.selected_path.clone());
                     self.note_paths.sort();
                 }
                 None
+            }
+            IoKind::Undo => {
+                self.can_undo = false;
+                self.status = "Undone".into();
+                if self.selected_path.is_empty() {
+                    return None;
+                }
+                self.select_note(self.selected_path.clone())
             }
             IoKind::Idle => None,
         }

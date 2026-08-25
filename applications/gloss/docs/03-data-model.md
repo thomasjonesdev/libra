@@ -10,17 +10,21 @@ tags: [gloss, architecture]
 
 ## Where things live
 
+M0 keeps the undo log in the vault so apply/undo works without an app-data
+layout. Later milestones move derived stores out.
+
 ```
-~/Library/Application Support/com.gloss.app/
+<vault-root>/.gloss/
+  journal.json        M0 inverse-ops log (opaque to note listing)
+  rules.md            user-authored agent rules — committed
+  ignore              gitignore syntax — committed
+
+~/Library/Application Support/com.gloss.app/   # M1+
   workspaces/<workspace-id>/
     index.db          SQLite: notes, chunks, links, vectors, FTS
     journal.db        SQLite: patch journal, cost ledger, rejections
     models/           downloaded embedding + whisper weights
   settings.json       workspace list, provider prefs (no secrets)
-
-<vault-root>/.gloss/
-  rules.md            user-authored agent rules — committed
-  ignore              gitignore syntax — committed
 ```
 
 Nothing derived is stored in the vault. The index must be rebuildable from the
@@ -104,9 +108,9 @@ Rules that make this safe:
   generated, the op fails rather than clobbering. This is the whole answer to
   concurrent human/agent editing, and it must be there from the first commit.
 - **Ops are individually reversible.** Apply produces an inverse patch, stored in
-  the journal.
-- **A run is a checkpoint.** One git commit per agent run, tagged with the
-  `RunId`. Undo reverts the run, not the file.
+  `.gloss/journal.json`.
+- **A run is a checkpoint.** Undo reverts the last run. `gix` commits per
+  `RunId` are still open.
 - **Provenance travels with the patch** — which model, which prompt version,
   which retrieved notes. When a suggestion is wrong six months later you need to
   know why it was made.

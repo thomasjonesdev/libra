@@ -33,17 +33,18 @@ lets M2 ship without a UI.
 | Frontend | Libra `.lx` + `<Textarea>` |
 | Lint/format | `clippy -D warnings`, `rustfmt` |
 | Shell | `libra-platform` |
-| Swift | SwiftPM, macOS 14.2 deployment target |
-| Task runner | `just` |
+| Check | `applications/gloss/scripts/check-usable.sh` |
 
-Given the [[oxc-rolldown-adoption|oxc/Rolldown]] work already underway, use
-oxlint here from the start — a greenfield repo is the cheapest possible place to
-validate that toolchain before it goes near anything at work.
+A later Swift sidecar owns audio capture (R2). It is not part of the M0
+toolchain.
 
 ## Testing strategy
 
-Five tiers, mirroring the [[libra-ui-framework|Libra]] architecture, because the
-failure mode here is identical: silent, compounding corruption of state the user
+Shipped today: T1 (parser, paths, reduce), T2 (`patch_props`), T3 (mini
+fixture, noop byte identity), plus the Libra harness ladder on the editor
+shell. T4 and a windowed T5 are still open.
+
+Five tiers, because the failure mode is silent corruption of state the user
 can't easily inspect.
 
 **T1 — Unit.** Parser, chunker, path resolution, ranker scoring.

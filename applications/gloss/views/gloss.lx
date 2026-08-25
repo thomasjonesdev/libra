@@ -3,6 +3,7 @@
     <Input value={vault_path} placeholder="vault path…" onChange={vaultPathChanged} testId="vault-path" />
     <Button variant="primary" onPress={openVault} testId="open-vault">Open</Button>
     <Button variant="secondary" onPress={newNote} testId="new-note">New</Button>
+    <Button variant="secondary" onPress={undo} testId="undo">Undo</Button>
     <Text size="sm" muted testId="status">{status}</Text>
   </Row>
   <Separator />
