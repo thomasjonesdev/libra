@@ -1,0 +1,5 @@
+<props children: slot />
+
+<Card padding={12}>
+  <slot/>
+</Card>

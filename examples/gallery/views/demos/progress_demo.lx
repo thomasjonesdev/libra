@@ -1,0 +1,9 @@
+<props ctl_progress: Num />
+
+<Text bold muted>Variants</Text>
+<Row><Progress value={0.0} /></Row>
+<Row><Progress value={0.25} /></Row>
+<Row><Progress value={0.6} testId="pg-progress" /></Row>
+<Row><Progress value={1.0} /></Row>
+<Text bold muted>Playground (bound to state)</Text>
+<Row><Progress value={ctl_progress} testId="pg-progress-bound" /></Row>

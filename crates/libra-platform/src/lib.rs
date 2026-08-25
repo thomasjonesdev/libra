@@ -13,6 +13,7 @@
 //! snapshots), §17 (accessibility), §12.5 (sources).
 
 pub mod a11y;
+pub mod icon;
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -29,13 +30,13 @@ use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::{Damage, Renderer};
 use tiny_skia::Pixmap;
-use libra_components::{InputFocus, ItemKind, LaidTree, Role, SourceDecl};
+use libra_components::{Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, Window, WindowId};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -100,6 +101,9 @@ fn report_frame_stats(intervals_ms: &mut Vec<f64>, present_ms: &mut Vec<f64>) {
     present_ms.clear();
 }
 
+/// Environment variable set by `libra dev` when `libra.toml` declares an icon.
+pub const ICON_PATH_ENV: &str = "LIBRA_ICON_PATH";
+
 /// How to run an app in a window.
 pub struct Options {
     pub title: String,
@@ -112,11 +116,23 @@ pub struct Options {
     pub watch: Option<PathBuf>,
     /// §11: load (and hot-reload) a TOML theme table from this path.
     pub theme_file: Option<PathBuf>,
+    /// §12.6: programs the effects runtime may spawn for this app.
+    pub process_allowlist: Vec<String>,
+    /// Window / title-bar icon (PNG). Also read from [`ICON_PATH_ENV`] when unset.
+    pub icon: Option<PathBuf>,
 }
 
 impl Options {
     pub fn new(title: &str, logical_size: (f32, f32)) -> Self {
-        Options { title: title.into(), logical_size, app_id: None, watch: None, theme_file: None }
+        Options {
+            title: title.into(),
+            logical_size,
+            app_id: None,
+            watch: None,
+            theme_file: None,
+            process_allowlist: vec![],
+            icon: None,
+        }
     }
     pub fn app_id(mut self, id: &str) -> Self {
         self.app_id = Some(id.into());
@@ -130,29 +146,93 @@ impl Options {
         self.theme_file = Some(path.into());
         self
     }
+    pub fn process_allowlist(mut self, programs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.process_allowlist = programs.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn icon(mut self, path: impl Into<PathBuf>) -> Self {
+        self.icon = Some(path.into());
+        self
+    }
+}
+
+/// How the shell obtains a [`ViewNode`] from app state (PLAN-PACKAGE P0).
+///
+/// Debug builds always interpret the embedded `.lx` string. Release builds
+/// compiled with `libra_has_view_codegen` (set by the app's `build.rs`) call
+/// the generated `build_view` fn; release builds without that cfg fall back to
+/// the interpreter (transitional — e.g. integration-test fixtures).
+pub struct ViewDriver<A: 'static> {
+    lx: &'static str,
+    #[cfg(not(debug_assertions))]
+    build: Option<fn(&A) -> libra_components::ViewNode>,
+    _marker: std::marker::PhantomData<A>,
+}
+
+impl<A> ViewDriver<A> {
+    /// Interpret `lx` at runtime (debug always; release when no codegen).
+    pub const fn new(lx: &'static str) -> Self {
+        Self {
+            lx,
+            #[cfg(not(debug_assertions))]
+            build: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Release-only: use the `build.rs`-generated view fn.
+    #[cfg(not(debug_assertions))]
+    pub const fn with_codegen(lx: &'static str, build: fn(&A) -> libra_components::ViewNode) -> Self {
+        Self {
+            lx,
+            build: Some(build),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn lx(&self) -> &'static str {
+        self.lx
+    }
+
+    fn build_fn(&self) -> Option<fn(&A) -> libra_components::ViewNode> {
+        #[cfg(not(debug_assertions))]
+        {
+            self.build
+        }
+        #[cfg(debug_assertions)]
+        {
+            None
+        }
+    }
+}
+
+impl<A> From<&'static str> for ViewDriver<A> {
+    fn from(lx: &'static str) -> Self {
+        ViewDriver::new(lx)
+    }
 }
 
 /// Run an app in a native window until it is closed (embedded view,
 /// no persistence) — the Phase 0 signature, kept for simple apps.
 pub fn run<A: App + 'static>(
-    lx_source: &str,
+    view: ViewDriver<A>,
     title: &str,
     logical_size: (f32, f32),
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A::Msg: Send + 'static,
 {
-    run_with::<A>(lx_source, Options::new(title, logical_size))
+    run_with::<A>(view, Options::new(title, logical_size))
 }
 
 pub fn run_with<A: App + 'static>(
-    lx_source: &str,
+    view: impl Into<ViewDriver<A>>,
     opts: Options,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A::Msg: Send + 'static,
 {
-    run_inner::<A>(lx_source, opts, None, None)
+    run_inner::<A>(view.into(), opts, None, None)
 }
 
 /// `run_with` plus §18.2 model rehydration: on exit the model snapshots
@@ -162,13 +242,14 @@ where
 /// is discarded with a note — defaults win, the session doesn't crash.
 /// Requires `app_id` (for the snapshot location).
 pub fn run_rehydrating<A>(
-    lx_source: &str,
+    view: impl Into<ViewDriver<A>>,
     opts: Options,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     A: App + serde::Serialize + serde::de::DeserializeOwned + 'static,
     A::Msg: Send + 'static,
 {
+    let view = view.into();
     let app_id = opts.app_id.clone().ok_or("run_rehydrating requires Options::app_id")?;
     let path = snapshot_path(&app_id).ok_or("no home directory for model snapshot")?;
 
@@ -196,7 +277,7 @@ where
         Err(e) => eprintln!("[libra] model snapshot failed to serialize: {e}"),
     });
 
-    run_inner::<A>(lx_source, opts, rehydrated, Some(save_hook))
+    run_inner::<A>(view, opts, rehydrated, Some(save_hook))
 }
 
 fn snapshot_path(app_id: &str) -> Option<std::path::PathBuf> {
@@ -206,7 +287,7 @@ fn snapshot_path(app_id: &str) -> Option<std::path::PathBuf> {
 type SaveHook<A> = Box<dyn Fn(&A)>;
 
 fn run_inner<A: App + 'static>(
-    lx_source: &str,
+    view: ViewDriver<A>,
     opts: Options,
     rehydrated: Option<A>,
     save_hook: Option<SaveHook<A>>,
@@ -214,7 +295,38 @@ fn run_inner<A: App + 'static>(
 where
     A::Msg: Send + 'static,
 {
-    let ast = libra_markup::parse(lx_source).map_err(|e| format!("markup parse error: {e}"))?;
+    let mut opts = opts;
+    if opts.icon.is_none() {
+        if let Ok(path) = std::env::var(ICON_PATH_ENV) {
+            if !path.is_empty() {
+                opts.icon = Some(PathBuf::from(path));
+            }
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    let use_codegen = view.build_fn().is_some();
+    #[cfg(debug_assertions)]
+    let use_codegen = false;
+
+    let (ast, registry, view_build) = if use_codegen {
+        (
+            None,
+            libra_markup::ComponentRegistry::default(),
+            view.build_fn(),
+        )
+    } else {
+        let ast = Some(
+            libra_markup::parse(view.lx()).map_err(|e| format!("markup parse error: {e}"))?,
+        );
+        let registry = opts
+            .watch
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|dir| libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default())
+            .unwrap_or_default();
+        (ast, registry, None)
+    };
     let (app, init_cmds) = A::init();
     let app = match rehydrated {
         Some(model) => {
@@ -241,7 +353,7 @@ where
         None => None,
     };
     let a11y_sink = Arc::clone(&sink);
-    let effects = Effects::new(sink, kv);
+    let effects = Effects::new(sink, kv).with_process_allowlist(opts.process_allowlist.clone());
     effects.execute_all(init_cmds);
 
     let watch_mtime = opts.watch.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
@@ -268,11 +380,14 @@ where
         opts,
         app,
         ast,
+        registry,
+        view_build,
         effects,
         renderer: Renderer::new(),
         laid: None,
         overlay: None,
         cursor: (0.0, 0.0),
+        cursor_icon: Cursor::Default,
         scroll_state: libra_components::ScrollState::new(),
         shortcut_table,
         drag: None,
@@ -327,10 +442,28 @@ enum DragTarget {
     Slider(String),
 }
 
+/// §19: Libra's closed `Cursor` set → winit's icon vocabulary. The
+/// translation lives in the shell so `libra-components` can derive the
+/// affordance (`LaidTree::cursor_at`) without knowing about winit — the
+/// same split the rest of the presentation layer keeps.
+fn cursor_icon(cursor: Cursor) -> CursorIcon {
+    match cursor {
+        Cursor::Default => CursorIcon::Default,
+        Cursor::Pointer => CursorIcon::Pointer,
+        Cursor::Text => CursorIcon::Text,
+        Cursor::ColResize => CursorIcon::ColResize,
+        Cursor::NotAllowed => CursorIcon::NotAllowed,
+    }
+}
+
 struct Shell<A: App> {
     opts: Options,
     app: A,
-    ast: Node,
+    ast: Option<Node>,
+    /// §7.2 composed components discovered alongside the root view file.
+    registry: libra_markup::ComponentRegistry,
+    /// Release codegen entry (PLAN-PACKAGE P0). `None` ⇒ interpret `ast`.
+    view_build: Option<fn(&A) -> libra_components::ViewNode>,
     effects: Effects<A::Msg>,
     renderer: Renderer,
     laid: Option<LaidTree>,
@@ -338,6 +471,10 @@ struct Shell<A: App> {
     overlay: Option<String>,
     /// Last cursor position, physical pixels.
     cursor: (f64, f64),
+    /// §19: the pointer shape currently set on the window. Cached so a
+    /// pointer sweep only calls into the platform when the affordance
+    /// under it actually changes.
+    cursor_icon: Cursor,
     /// PLAN-SCROLL: scroll positions by `<Scroll>` test_id, driven by the
     /// wheel. Applied to the laid tree in `relayout` (like the harness's
     /// `scroll()`); empty = every viewport at the top.
@@ -439,8 +576,18 @@ where
             collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
             has_instant_action: &has_instant_action,
+            binding_ctx: "State",
         };
-        match libra_interp::resolve(&self.ast, &scope) {
+        let view_result = if let Some(build) = self.view_build {
+            Ok(build(&self.app))
+        } else {
+            libra_interp::resolve(
+                self.ast.as_ref().expect("ast or codegen build fn"),
+                &scope,
+                &self.registry,
+            )
+        };
+        match view_result {
             Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
@@ -491,6 +638,11 @@ where
                     // After markup sources are known — never before.
                     // (A prior sync on empty handlers left frames idle forever.)
                     self.sync_subscriptions();
+                    // §19: the tree moved under a possibly-still pointer —
+                    // a dispatch that opens a dialog, deletes the hovered
+                    // row, or disables a control changes the affordance
+                    // without any pointer motion to notice it.
+                    self.sync_cursor();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
             },
@@ -759,6 +911,33 @@ where
     fn request_redraw(&self) {
         if let Some(gfx) = &self.gfx {
             gfx.window.request_redraw();
+        }
+    }
+
+    /// §19: point the OS pointer at the affordance under it. Called after
+    /// anything that can change either term — the pointer moved, or the
+    /// tree under a still pointer was rebuilt.
+    ///
+    /// A live drag pins its shape: the pointer routinely leaves the divider
+    /// gutter mid-resize, and a cursor that flickers back to an arrow there
+    /// reads as a dropped grab. Purely presentational — the OS draws the
+    /// pointer, so nothing here touches the display list (§21).
+    fn sync_cursor(&mut self) {
+        let want = match &self.drag {
+            Some(DragTarget::Split(_)) => Cursor::ColResize,
+            Some(DragTarget::Slider(_)) => Cursor::Pointer,
+            None => {
+                let scale = self.scale();
+                let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+                self.laid.as_ref().map_or(Cursor::Default, |laid| laid.cursor_at(lx, ly))
+            }
+        };
+        if want == self.cursor_icon {
+            return;
+        }
+        self.cursor_icon = want;
+        if let Some(gfx) = &self.gfx {
+            gfx.window.set_cursor(cursor_icon(want));
         }
     }
 
@@ -1049,7 +1228,11 @@ where
         };
         match libra_markup::parse(&source) {
             Ok(ast) => {
-                self.ast = ast;
+                self.ast = Some(ast);
+                if let Some(dir) = path.parent() {
+                    self.registry =
+                        libra_markup::ComponentRegistry::load_from_dir(dir).unwrap_or_default();
+                }
                 self.relayout(); // model state untouched — that's the point
                 eprintln!("[libra] hot-reloaded {}", path.display());
             }
@@ -1206,19 +1389,28 @@ where
         if self.gfx.is_some() {
             return;
         }
+        let mut attrs = Window::default_attributes()
+            .with_title(self.opts.title.clone())
+            // Created hidden: the AccessKit adapter must
+            // attach before first show.
+            .with_visible(false)
+            .with_inner_size(LogicalSize::new(
+                self.opts.logical_size.0 as f64,
+                self.opts.logical_size.1 as f64,
+            ));
+        if let Some(path) = self.opts.icon.as_deref() {
+            if let Some(icon) = icon::load_png(path) {
+                attrs = attrs.with_window_icon(Some(icon));
+            } else {
+                eprintln!(
+                    "[libra] window icon not loaded from {} (expected a square PNG)",
+                    path.display()
+                );
+            }
+        }
         let window = Arc::new(
             event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title(self.opts.title.clone())
-                        // Created hidden: the AccessKit adapter must
-                        // attach before first show.
-                        .with_visible(false)
-                        .with_inner_size(LogicalSize::new(
-                            self.opts.logical_size.0 as f64,
-                            self.opts.logical_size.1 as f64,
-                        )),
-                )
+                .create_window(attrs)
                 .expect("create window"),
         );
         let context = softbuffer::Context::new(window.clone()).expect("softbuffer context");
@@ -1283,6 +1475,8 @@ where
                 if self.drag.is_some() {
                     self.drag_move();
                 }
+                // §19: the pointer shape follows what's under it.
+                self.sync_cursor();
                 // Hover is a paint input (ListItem washes); damage
                 // tracking absorbs the repaint cost when nothing under
                 // the pointer actually changes.
@@ -1300,7 +1494,11 @@ where
                 state: ElementState::Released,
                 button: MouseButton::Left,
                 ..
-            } => self.drag = None,
+            } => {
+                self.drag = None;
+                // Releasing a drag un-pins the shape (§19).
+                self.sync_cursor();
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button: MouseButton::Right,

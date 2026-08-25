@@ -1,0 +1,6 @@
+<props />
+
+<Text bold muted>Plain surface</Text>
+<Panel>
+  <Text size="sm">Panels are the unframed sibling of Card.</Text>
+</Panel>

@@ -1,0 +1,12 @@
+<props ctl_label: String, noop: Action />
+
+<Text bold muted>Variants</Text>
+<Row gap={8} cross="center">
+  <Button variant="primary" onPress={noop}>Primary</Button>
+  <Button variant="secondary" onPress={noop}>Secondary</Button>
+  <Button variant="ghost" onPress={noop}>Ghost</Button>
+</Row>
+<Text bold muted>Playground</Text>
+<Row gap={8}>
+  <Button variant="secondary" onPress={noop} testId="pg-button">{ctl_label}</Button>
+</Row>

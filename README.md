@@ -99,6 +99,8 @@ now run on (completed rename/ergonomics plans live under
   — see its doc comment)
 - `cli/libra` — `libra check`: parse+validate every .lx in microseconds;
   `libra dev`: run an app crate in debug with view hot reload (§18.2)
+- `editors/vscode` — TextMate grammar for `.lx` (§18.6 Day 1); run
+  `./editors/vscode/install.sh` then reload Cursor/VS Code
 - `examples/counter` — the Phase 0 reference app; §5.8's "counter in
   ~10 lines" made real
 - `examples/fetcher` — the Phase 1 reference app: fetches (GitHub zen)
@@ -129,8 +131,15 @@ now run on (completed rename/ergonomics plans live under
     cargo run -p gallery                         # component gallery; theme toggle
     cargo run -p gallery -- themes/solarized.toml   # custom TOML theme, hot-reloaded
     cargo run -p libra-cli -- check .   # validate all markup
-    libra dev examples/counter          # after `cargo install --path cli/libra`
+    cargo install --path cli/libra --force   # install libra CLI (check, dev, build, package)
+    libra dev examples/counter          # debug + view hot reload
+    libra dev -p aws-login              # app with libra.toml icon in dev
+    libra build -p aws-login            # release binary (codegen + LTO)
+    libra package -p aws-login          # macOS .app + DMG (needs cargo-packager)
     libra dev -- themes/solarized.toml  # from examples/gallery, forward args
+
+See `architecture/sections/20-packaging.md` and `applications/aws-login/README.md`
+for install-path docs (DMG → Applications) and a sample `libra.toml`.
 
 Requires Rust >= 1.75. The test suite never needs a display.
 

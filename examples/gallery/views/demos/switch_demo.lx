@@ -1,0 +1,12 @@
+<props switch_on: Bool, toggleSwitch: Action, noop: Action />
+
+<Text bold muted>Playground (model-owned — click it)</Text>
+<Row gap={8} cross="center">
+  <Switch checked={switch_on} onToggle={toggleSwitch} testId="pg-switch" />
+  <Text size="sm" muted>bound to state</Text>
+</Row>
+<Text bold muted>States</Text>
+<Row gap={8} cross="center">
+  <Switch checked onToggle={noop} />
+  <Switch onToggle={noop} />
+</Row>

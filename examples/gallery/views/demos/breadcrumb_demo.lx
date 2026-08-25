@@ -1,0 +1,8 @@
+<props noop: Action />
+
+<Text bold muted>Trail (last crumb is current, non-pressable)</Text>
+<Breadcrumb>
+  <BreadcrumbItem label="Home" onPress={noop} />
+  <BreadcrumbItem label="Settings" onPress={noop} testId="pg-crumb-mid" />
+  <BreadcrumbItem label="Profile" current testId="pg-crumb-current" />
+</Breadcrumb>

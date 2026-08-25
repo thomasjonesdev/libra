@@ -1,0 +1,7 @@
+<props />
+
+<Text bold muted>Static placeholders (shimmer waits on §9.6)</Text>
+<Skeleton width={220} height={24} />
+<Skeleton />
+<Skeleton width={320} />
+<Skeleton width={180} />

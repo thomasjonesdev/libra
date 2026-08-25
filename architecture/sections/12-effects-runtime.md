@@ -20,6 +20,7 @@ type: architecture
 - [[12.3-execution-model]]
 - [[12.4-effects-as-data]]
 - [[12.5-declarative-subscriptions]]
+- [[12.6-the-process-effect]]
 
 ## In code
 

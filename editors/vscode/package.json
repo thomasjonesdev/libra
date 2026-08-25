@@ -1,0 +1,45 @@
+{
+  "name": "libra-lx",
+  "displayName": "Libra Markup (.lx)",
+  "description": "Syntax highlighting for Libra .lx view files (§18.6 Day 1).",
+  "version": "0.1.0",
+  "publisher": "libra",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "libra",
+    "lx",
+    "markup",
+    "syntax"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lx",
+        "aliases": [
+          "Libra Markup",
+          "lx"
+        ],
+        "extensions": [
+          ".lx"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/lx-light.svg",
+          "dark": "./icons/lx-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lx",
+        "scopeName": "source.lx",
+        "path": "./syntaxes/lx.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+[package]
+name = "libra-build"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Build-time view codegen for Libra apps (ARCHITECTURE.md §6.4, PLAN-PACKAGE P0)"
+
+[dependencies]
+libra-markup.workspace = true
+libra-codegen.workspace = true

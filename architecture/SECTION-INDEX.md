@@ -57,6 +57,7 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 12.3 | `sections/12.3-execution-model.md` |
 | 12.4 | `sections/12.4-effects-as-data.md` |
 | 12.5 | `sections/12.5-declarative-subscriptions.md` |
+| 12.6 | `sections/12.6-the-process-effect.md` |
 | 13 | `sections/13-persistence.md` |
 | 13.1 | `sections/13.1-kv-store.md` |
 | 13.2 | `sections/13.2-state-snapshots.md` |
@@ -95,6 +96,8 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 24 | `sections/24-non-goals.md` |
 | 25 | `sections/25-risks.md` |
 | 26 | `sections/26-open-questions.md` |
+| 27 | `sections/27-first-party-applications.md` |
+| 27.1 | `sections/27.1-aws-sso-session-manager.md` |
 | Appendix A | `appendices/appendix-a-determinism-checklist.md` |
 | Appendix B | `appendices/appendix-b-glossary.md` |
 | Appendix C | `appendices/appendix-c-react-borrowings.md` |

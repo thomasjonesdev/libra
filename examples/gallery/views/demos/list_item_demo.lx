@@ -1,0 +1,8 @@
+<props noop: Action, openMenu: Action />
+
+<Text bold muted>Variants (right-click the plain row for a menu)</Text>
+<Column gap={2}>
+  <ListItem title="Selected row" subtitle="subtitle line" meta="meta line" selected onPress={noop} testId="pg-row-selected" />
+  <ListItem title="Plain row (right-click me)" subtitle="subtitle line" onPress={noop} onMenu={openMenu} testId="pg-row-menu" />
+  <ListItem title="Title only" onPress={noop} />
+</Column>

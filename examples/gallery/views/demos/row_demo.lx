@@ -1,0 +1,8 @@
+<props />
+
+<Text bold muted>Row — horizontal flex</Text>
+<Row gap={6} cross="center">
+  <Text>one</Text>
+  <Text>two</Text>
+  <Text>three</Text>
+</Row>

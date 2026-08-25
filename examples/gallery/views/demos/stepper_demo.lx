@@ -1,0 +1,8 @@
+<props ctl_page: Num />
+
+<Text bold muted>Playground (status follows the shared page index)</Text>
+<Stepper current={ctl_page}>
+  <StepperItem label="Cart" testId="pg-step-0" />
+  <StepperItem label="Shipping" testId="pg-step-1" />
+  <StepperItem label="Payment" testId="pg-step-2" />
+</Stepper>

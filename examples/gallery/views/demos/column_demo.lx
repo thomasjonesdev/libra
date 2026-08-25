@@ -1,0 +1,8 @@
+<props />
+
+<Text bold muted>Column — vertical flex</Text>
+<Column gap={6}>
+  <Text>one</Text>
+  <Text>two</Text>
+  <Text>three</Text>
+</Column>

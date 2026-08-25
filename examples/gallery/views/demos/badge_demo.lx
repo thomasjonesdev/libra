@@ -1,0 +1,14 @@
+<props ctl_label: String />
+
+<Text bold muted>Variants</Text>
+<Row gap={8} cross="center">
+  <Badge>neutral</Badge>
+  <Badge tone="success">success</Badge>
+  <Badge tone="danger">danger</Badge>
+  <Badge tone="warning">warning</Badge>
+  <Badge tone="info">info</Badge>
+</Row>
+<Text bold muted>Playground</Text>
+<Row gap={8}>
+  <Badge tone="info">{ctl_label}</Badge>
+</Row>

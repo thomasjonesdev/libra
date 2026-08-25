@@ -2,6 +2,7 @@
 //! tree — folder/note selection, search filtering, trash flow, the
 //! editor's controlled `Textarea`.
 
+use libra_components::Cursor;
 use libra_core::{Effect, KvResult};
 use libra_test::{by, fx, Harness};
 use notes::{Action, Notes, STORE_KEY, VIEW};
@@ -59,6 +60,20 @@ fn typing_in_the_editor_updates_the_derived_title_live() {
     assert_eq!(h.state().note_rows[0].title, "Hello world");
     assert_eq!(h.state().editor_body, "Hello world");
     settle_save(&mut h);
+}
+
+/// §19: the pointer shape is derived from the laid tree, so what the OS
+/// cursor becomes over a control is assertable headlessly — a pressable
+/// row is a hand, the search field and editor are I-beams, static chrome
+/// stays a plain arrow.
+#[test]
+fn pointer_affordances_follow_interactivity() {
+    let mut h = harness();
+    add_note(&mut h, "Alpha");
+    assert_eq!(h.cursor_over(by::test_id("new-note")), Cursor::Pointer);
+    assert_eq!(h.cursor_over(by::test_id("search")), Cursor::Text);
+    assert_eq!(h.cursor_over(by::test_id("editor-body")), Cursor::Text);
+    assert_eq!(h.cursor_over(by::test_id("status")), Cursor::Default);
 }
 
 #[test]

@@ -11,14 +11,10 @@
             "id": "987e4302a8c3c601",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "architecture/sections/04.1-layer-diagram.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "04.1-layer-diagram"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ]
@@ -185,18 +181,23 @@
   },
   "active": "987e4302a8c3c601",
   "lastOpenFiles": [
+    "architecture/sections/07.3-rust-components.md",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/work-products.bin",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/query-cache.bin",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/dh2l1kterx4si9sl9q4je5m9p.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/dep-graph.bin",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/b36u3znkq4250ew5e2uv3omty.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/aalsjr39dt5didgkm6rh5clsu.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/9z9bovklay0kjbho44mwdjg3a.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/9yx2ft1dq7xe6l5k2pduktagj.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/3cyq4bqdwczfccjj1ans9su90.o",
+    "target/debug/incremental/aws_login-0sry3782n847j/s-hksohl394g-0senyem-9yjl08l4801csfldtyxzlircx/0meljr74e9d9qxj1nmouii8fg.o",
+    "architecture/sections/07.4-canvas.md",
+    "architecture/sections/05.1-core-declarations.md",
+    "architecture/sections/05-state-and-actions.md",
+    "architecture/sections/04.1-layer-diagram.md",
     "architecture/sections/04.2-frame-lifecycle.md",
     "architecture/appendices/appendix-a-determinism-checklist.md",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/work-products.bin",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/e1w60etw2hkejdld9flxvlkpj.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/query-cache.bin",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dq7zi9394egv5iua16wjbc5pr.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dn687rui4ussdne0saqz6fro1.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dep-graph.bin",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/dbvu7jwk5q6fg28d9hxti0bs1.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/cp8ofbei03r0jxtnfvbd8jllf.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/b0t1zl6btqtedg1woo4ha5h46.o",
-    "target/debug/incremental/gallery-34ll1bwgl9v0l/s-hkm2savchq-0seydtr-4r4kvma5imxmm2sdsydpz9u7p/a2m0vhu5ji5idxlo0ieb0s1uq.o",
     "examples/gallery/tests/snapshots/workbench_tooltip_hover_dark.diff.png",
     "examples/gallery/tests/snapshots/workbench_textarea_light.diff.png",
     "examples/gallery/tests/snapshots/workbench_tooltip_hover_light.diff.png",

@@ -1,0 +1,8 @@
+<props ctl_slider: Num, sliderChanged: Action(String) />
+
+<Text bold muted>Playground (model-owned — click or drag the track)</Text>
+<Row gap={8} cross="center">
+  <Slider value={ctl_slider} onChange={sliderChanged} testId="pg-slider" />
+</Row>
+<Text bold muted>Bound elsewhere: the same value drives a Progress</Text>
+<Row><Progress value={ctl_slider} /></Row>

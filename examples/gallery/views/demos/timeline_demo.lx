@@ -1,0 +1,8 @@
+<props />
+
+<Text bold muted>Ledger (done fills the indicator)</Text>
+<Timeline>
+  <TimelineItem title="Order placed" meta="2m ago" done testId="pg-tl-0" />
+  <TimelineItem title="Shipped" meta="1m ago" done testId="pg-tl-1" />
+  <TimelineItem title="Out for delivery" meta="pending" testId="pg-tl-2" />
+</Timeline>

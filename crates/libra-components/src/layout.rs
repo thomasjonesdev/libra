@@ -187,6 +187,7 @@ pub fn layout(
     .map_err(|e| LayoutError(format!("{e:?}")))?;
 
     reflow_wrapped_text(&mut tree, root, &meta, measurer, viewport)?;
+    reflow_alert_heights(&mut tree, root, &meta, measurer, theme, viewport)?;
 
     // Flatten with accumulated absolute positions, in paint (pre-)order.
     let mut items = Vec::with_capacity(meta.len());
@@ -264,6 +265,50 @@ fn reflow_wrapped_text(
         }
     }
     if changed {
+        tree.compute_layout(root, space).map_err(|e| LayoutError(format!("{e:?}")))?;
+    }
+    Ok(())
+}
+
+/// After the first layout pass, `<Alert>` nodes get a height from their
+/// assigned width so wrapped title/body copy doesn't clip.
+fn reflow_alert_heights(
+    tree: &mut TaffyTree<()>,
+    root: NodeId,
+    meta: &Meta,
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+    viewport: (f32, f32),
+) -> Result<(), LayoutError> {
+    let space = Size {
+        width: AvailableSpace::Definite(viewport.0),
+        height: AvailableSpace::Definite(viewport.1),
+    };
+    let pad = theme.space(4);
+    let line_gap = theme.space(1);
+    for _ in 0..4 {
+        let mut changed = false;
+        for (id, kind, _, _) in meta {
+            let ItemKind::Alert { title, body, px_md, px_sm, .. } = kind else {
+                continue;
+            };
+            let laid = tree.layout(*id).map_err(|e| LayoutError(format!("{e:?}")))?;
+            let max_w = laid.size.width;
+            if max_w <= 0.0 {
+                continue;
+            }
+            let h =
+                catalog::surface::alert_height(title, body, max_w, *px_md, *px_sm, pad, line_gap, measurer);
+            if (laid.size.height - h).abs() > 0.5 {
+                let mut st = tree.style(*id).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
+                st.size.height = length(h);
+                tree.set_style(*id, st).map_err(|e| LayoutError(format!("{e:?}")))?;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
         tree.compute_layout(root, space).map_err(|e| LayoutError(format!("{e:?}")))?;
     }
     Ok(())

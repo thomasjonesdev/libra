@@ -214,4 +214,157 @@ impl LaidTree {
         }
         None
     }
+
+    /// The pointer affordance at a point (§19) — the CSS `cursor:` analog,
+    /// derived from the tree rather than authored in markup (see [`Cursor`]).
+    ///
+    /// Deliberately the same topmost-first walk as [`LaidTree::hit`], with the
+    /// same clip and modal-barrier rules, so the shape can never promise an
+    /// interaction the click path won't perform. It reports two extra targets
+    /// that are pointer-interactive without living in the press slot: a
+    /// `<Split>` divider gutter (drag → `ColResize`) and a `<Slider>` track
+    /// (drag-to-set → `Pointer`).
+    ///
+    /// Static text is `Default`, not `Text`: Libra text isn't selectable, so
+    /// an I-beam would advertise a gesture that does nothing.
+    pub fn cursor_at(&self, x: f32, y: f32) -> Cursor {
+        for i in self.items.iter().rev() {
+            let contains = i.rect.contains(x, y) && i.clip.map_or(true, |c| c.contains(x, y));
+            if !contains {
+                continue;
+            }
+            match &i.kind {
+                ItemKind::SplitDivider { .. } => return Cursor::ColResize,
+                ItemKind::SliderCtl { .. } => return Cursor::Pointer,
+                ItemKind::PageButton { enabled: false, .. } => return Cursor::NotAllowed,
+                _ => {}
+            }
+            if i.on_press.is_some() {
+                return match i.semantics.role {
+                    Role::TextInput => Cursor::Text,
+                    _ => Cursor::Pointer,
+                };
+            }
+            if matches!(
+                i.kind,
+                ItemKind::Scrim | ItemKind::DialogPanel | ItemKind::MenuBarrier | ItemKind::MenuPanel
+            ) {
+                return Cursor::Default; // modal barrier: nothing beneath is reachable
+            }
+        }
+        Cursor::Default
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libra_draw::{FontStyle, Rect};
+
+    fn item(kind: ItemKind, rect: Rect, role: Role, on_press: Option<&str>) -> Item {
+        Item {
+            kind,
+            rect,
+            semantics: Semantics { role, text: String::new(), test_id: None },
+            on_press: on_press.map(str::to_string),
+            on_press_arg: None,
+            clip: None,
+            scroll: None,
+            menu: None,
+        }
+    }
+
+    fn tree(items: Vec<Item>) -> LaidTree {
+        LaidTree { items, width: 200.0, height: 100.0 }
+    }
+
+    #[test]
+    fn pressable_items_get_the_hand_and_inert_ones_do_not() {
+        let laid = tree(vec![
+            item(
+                ItemKind::Text {
+                    content: "label".into(),
+                    px: 14.0,
+                    style: FontStyle::Regular,
+                    color: libra_draw::Color::rgb(255, 255, 255),
+                    wrap: false,
+                },
+                Rect::new(0.0, 0.0, 100.0, 20.0),
+                Role::Text,
+                None,
+            ),
+            item(
+                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+                Rect::new(0.0, 30.0, 100.0, 20.0),
+                Role::Button,
+                Some("press"),
+            ),
+            item(
+                ItemKind::Input { value: String::new(), placeholder: String::new(), px: 14.0 },
+                Rect::new(0.0, 60.0, 100.0, 20.0),
+                Role::TextInput,
+                Some("changed"),
+            ),
+        ]);
+        assert_eq!(laid.cursor_at(10.0, 10.0), Cursor::Default);
+        assert_eq!(laid.cursor_at(10.0, 40.0), Cursor::Pointer);
+        assert_eq!(laid.cursor_at(10.0, 70.0), Cursor::Text);
+        assert_eq!(laid.cursor_at(150.0, 90.0), Cursor::Default);
+    }
+
+    #[test]
+    fn drag_targets_and_disabled_controls_report_their_own_shapes() {
+        let laid = tree(vec![
+            item(
+                ItemKind::SplitDivider { split: "s".into() },
+                Rect::new(100.0, 0.0, 6.0, 100.0),
+                Role::Separator,
+                None,
+            ),
+            item(
+                ItemKind::SliderCtl { value: 0.5, on_change: "moved".into() },
+                Rect::new(0.0, 0.0, 80.0, 20.0),
+                Role::Container,
+                None,
+            ),
+            item(
+                ItemKind::PageButton { label: "‹".into(), active: false, enabled: false },
+                Rect::new(0.0, 40.0, 20.0, 20.0),
+                Role::Button,
+                None,
+            ),
+        ]);
+        assert_eq!(laid.cursor_at(102.0, 50.0), Cursor::ColResize);
+        assert_eq!(laid.cursor_at(40.0, 10.0), Cursor::Pointer);
+        assert_eq!(laid.cursor_at(10.0, 50.0), Cursor::NotAllowed);
+    }
+
+    /// The affordance must agree with `hit` on the two cases where a
+    /// pressable rect is unreachable: scrolled out of its viewport, and
+    /// behind a modal barrier.
+    #[test]
+    fn unreachable_presses_do_not_advertise_themselves() {
+        let mut row = item(
+            ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+            Rect::new(0.0, 0.0, 100.0, 20.0),
+            Role::Button,
+            Some("press"),
+        );
+        row.clip = Some(Rect::new(0.0, 50.0, 100.0, 50.0));
+        let scrolled = tree(vec![row]);
+        assert!(scrolled.hit(10.0, 10.0).is_none());
+        assert_eq!(scrolled.cursor_at(10.0, 10.0), Cursor::Default);
+
+        let behind = tree(vec![
+            item(
+                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+                Rect::new(0.0, 0.0, 100.0, 20.0),
+                Role::Button,
+                Some("press"),
+            ),
+            item(ItemKind::Scrim, Rect::new(0.0, 0.0, 200.0, 100.0), Role::Container, None),
+        ]);
+        assert!(behind.hit(10.0, 10.0).is_none());
+        assert_eq!(behind.cursor_at(10.0, 10.0), Cursor::Default);
+    }
 }

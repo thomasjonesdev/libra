@@ -1,0 +1,14 @@
+<props />
+
+<Text bold muted>Spring (bare — pushes siblings apart)</Text>
+<Row gap={8} cross="center">
+  <Text muted>left</Text>
+  <Spacer />
+  <Text muted>right</Text>
+</Row>
+<Text bold muted>Fixed (size=48)</Text>
+<Row gap={8} cross="center">
+  <Text muted>a</Text>
+  <Spacer size={48} />
+  <Text muted>b</Text>
+</Row>
