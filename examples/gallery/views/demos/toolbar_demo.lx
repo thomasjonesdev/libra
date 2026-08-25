@@ -1,0 +1,19 @@
+<props noop: Action />
+
+<Text bold muted>Playground (editor chrome row)</Text>
+<Toolbar testId="pg-toolbar">
+  <Button variant="ghost" onPress={noop} testId="pg-toolbar-back">Back</Button>
+  <Button variant="ghost" onPress={noop} testId="pg-toolbar-fwd">Fwd</Button>
+  <Spacer />
+  <Button variant="ghost" onPress={noop} testId="pg-toolbar-new">+</Button>
+</Toolbar>
+<Text bold muted>Vertical (Gloss left rail)</Text>
+<Row>
+  <Toolbar vertical testId="pg-toolbar-rail">
+    <Button variant="ghost" onPress={noop}>+</Button>
+    <Button variant="ghost" onPress={noop}>U</Button>
+    <Spacer size={32} />
+    <Button variant="ghost" onPress={noop}>S</Button>
+  </Toolbar>
+  <Text size="sm" muted>icon rail</Text>
+</Row>

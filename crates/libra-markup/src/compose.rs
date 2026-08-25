@@ -283,6 +283,7 @@ pub fn is_catalog_element(name: &str) -> bool {
             | "Tabs"
             | "Tab"
             | "Toast"
+            | "Toolbar"
             | "Textarea"
             | "ListItem"
             | "Spacer"

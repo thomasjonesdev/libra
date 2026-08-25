@@ -11,9 +11,9 @@ tags: [gloss, catalog]
 Libra catalog work on 2026-08-25 shipped the chrome Gloss is currently
 faking with `ListItem` + ghost buttons. **Do not reimplement these.**
 Wait until the catalog commits are on your branch (`catalog-search`,
-`catalog-chip`, `catalog-tabs`, `catalog-toast` — merge onto
-`gloss-usable` if they are not there yet), then swap the markup.
-Actions and `tab_rows` / `query` stay as they are.
+`catalog-chip`, `catalog-tabs`, `catalog-toast`, `catalog-toolbar` —
+merge onto `gloss-usable` if they are not there yet), then swap the
+markup. Actions and `tab_rows` / `query` stay as they are.
 
 Gallery PNG conflicts on merge: keep the catalog frames (the sidebar
 grew). Re-validate your own visual work after.
@@ -77,21 +77,53 @@ fall through — it is not a modal.
 Tone `danger` for a failed write. This is in-app chrome, not
 `Effect::Notify` (PLAN-NOTIFY / OS banners).
 
-## 4. Chip — later
+## 4. Toolbar — rail and chrome rows
+
+Once `catalog-toolbar` is on your branch, the left icon column, the
+list-header button row, and the Back/Fwd/`+` row become:
+
+```lx
+<Toolbar vertical>
+  <Tooltip text="New note">
+    <Button variant="ghost" onPress={newNote} testId="new-note">+</Button>
+  </Tooltip>
+  <!-- … -->
+  <Spacer />
+  <Tooltip text="Settings">
+    <Button variant="ghost" onPress={openSettings} testId="settings">S</Button>
+  </Tooltip>
+</Toolbar>
+```
+
+```lx
+<Toolbar>
+  <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
+  <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
+  <Tabs testId="editor-tabs">…</Tabs>
+  <Tooltip text="Open next note in a new tab">
+    <Button variant="ghost" onPress={newTab} testId="new-tab">+</Button>
+  </Tooltip>
+</Toolbar>
+```
+
+`vertical` paints the hairline on the right and fills the parent
+height so a `<Spacer />` between Undo and Settings still springs.
+
+## 5. Chip — later
 
 `<Chip selected onPress onRemove>` is the filter-pill. Use it when
 Gloss grows facet filters. Not blocking M4.
 
-## 5. Do not wait for
+## 6. Do not wait for
 
 | Thing | Why |
 |---|---|
 | `Image` | Blocked on a deterministic decode path |
 | `CommandPalette` | Still planned; the `C` rail button can stay `notYet` |
 | OS notifications | PLAN-NOTIFY, not `<Toast>` |
-| `Toolbar` / `StatusBar` | Landing next on the catalog branch. Keep `Row`/`Column` until they exist, then the left rail, list header, and footer are the adoption sites |
+| `StatusBar` | Landing next. Keep the footer `Row` until it exists |
 
-## 6. Merge hygiene
+## 7. Merge hygiene
 
 - Catalog work lives on `catalog-*` branches in the `libra-search` worktree. Do not edit those files in the dirty `gloss-usable` tree except when stash-merging.
 - After merge: `LIBRA_VALIDATE=1 cargo test -p gallery --test gallery` only if you changed catalog paint. Gloss snapshots are yours.

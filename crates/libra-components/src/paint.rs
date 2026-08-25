@@ -118,6 +118,7 @@ impl LaidTree {
                         catalog::chip::paint_remove(&mut cx, item, *selected)
                     }
                     ItemKind::TabsBox => catalog::tabs::paint_tabs(&mut cx, item),
+                    ItemKind::ToolbarBox { vertical } => catalog::toolbar::paint(&mut cx, item, *vertical),
                     ItemKind::TabBox { selected } => catalog::tabs::paint_box(&mut cx, item, *selected),
                     ItemKind::TabLabel { label, px, selected } => {
                         catalog::tabs::paint_label(&mut cx, item, label, *px, *selected)

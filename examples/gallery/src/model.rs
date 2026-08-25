@@ -51,6 +51,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("timeline", "Timeline"),
     ("tabs", "Tabs"),
     ("toast", "Toast"),
+    ("toolbar", "Toolbar"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),

@@ -285,6 +285,23 @@ fn toast_dismisses() {
     assert!(h.state().toast_dismissed, "× dispatched onDismiss");
 }
 
+#[test]
+fn snapshot_workbench_toolbar_dark() {
+    select("libra-dark", "toolbar").assert_snapshot("workbench_toolbar_dark");
+}
+
+#[test]
+fn snapshot_workbench_toolbar_light() {
+    select("libra-light", "toolbar").assert_snapshot("workbench_toolbar_light");
+}
+
+#[test]
+fn toolbar_presses_through_children() {
+    let mut h = select("libra-dark", "toolbar");
+    assert_eq!(h.cursor_over(by::test_id("pg-toolbar-back")), libra_components::Cursor::Pointer);
+    h.click(by::test_id("pg-toolbar-back"));
+}
+
 /// Select toggles the model; the trailing × fires onRemove.
 #[test]
 fn chip_selects_and_dismisses() {

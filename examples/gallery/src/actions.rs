@@ -185,6 +185,7 @@ impl Gallery {
         self.is_timeline = s == "timeline";
         self.is_tabs = s == "tabs";
         self.is_toast = s == "toast";
+        self.is_toolbar = s == "toolbar";
         self.tab_editor = self.tab_pick == "editor";
         self.tab_preview = self.tab_pick == "preview";
         self.tab_body = if self.tab_editor {

@@ -470,6 +470,28 @@ fn gen_node(
             ))
         }
 
+        "Toolbar" => {
+            let mut vertical = false;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("vertical", AttrValue::Flag) => vertical = true,
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Toolbar {{ {at}\n\
+                 {i}    vertical: {vertical},\n\
+                 {i}    children: {kids},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         "Tab" => {
             let mut selected = "false".to_string();
             let mut on_press: Option<(String, Option<String>, Span)> = None;

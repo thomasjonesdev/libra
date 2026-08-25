@@ -39,6 +39,7 @@ pub(crate) mod surface;
 pub(crate) mod tabs;
 pub(crate) mod toast;
 pub(crate) mod toggle;
+pub(crate) mod toolbar;
 pub(crate) mod tooltip;
 pub(crate) mod split;
 pub(crate) mod spacer;

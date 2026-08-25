@@ -748,6 +748,7 @@ const SEARCH: &str = include_str!("../fixtures/search.lx");
 const CHIP: &str = include_str!("../fixtures/chip.lx");
 const TABS: &str = include_str!("../fixtures/tabs.lx");
 const TOAST: &str = include_str!("../fixtures/toast.lx");
+const TOOLBAR: &str = include_str!("../fixtures/toolbar.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -936,6 +937,29 @@ fn toast_produces_identical_trees() {
         "{:?}",
         children[2]
     );
+}
+
+/// PLAN-CATALOG wave 7 — `<Toolbar>`: optional vertical, children.
+/// Both engines must agree. Gloss rail / editor chrome use this.
+#[test]
+fn toolbar_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TOOLBAR, &state, &fixture_registry());
+        let compiled = generated::build_toolbar(&state);
+        assert_eq!(interp, compiled, "engine drift on toolbar fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TOOLBAR, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Toolbar { vertical, children: items, test_id } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!((*vertical, test_id.as_deref(), items.len()), (false, Some("bar"), 2));
+    let ViewNode::Toolbar { vertical, test_id, .. } = &children[1] else { panic!("{:?}", children[1]) };
+    assert_eq!((*vertical, test_id.as_deref()), (true, Some("rail")));
 }
 
 #[test]

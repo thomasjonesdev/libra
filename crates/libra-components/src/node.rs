@@ -124,6 +124,11 @@ pub enum ViewNode {
     /// Children are `<Tab>` (and `<for>`/`<if>` that resolve to them).
     /// Gloss note tabs are the first consumer.
     Tabs { children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<Toolbar vertical?>` (§7.1, PLAN-CATALOG wave 7): chrome strip.
+    /// Horizontal default (full width, hairline bottom); `vertical` is
+    /// the Gloss left rail (fill height, hairline right). Children are
+    /// ordinary markup.
+    Toolbar { vertical: bool, children: Vec<ViewNode>, test_id: Option<String> },
     /// `<Tab selected? onPress? onClose?>Label</Tab>`: one tab. Child
     /// text is the label. `selected` is the `<if>` Display-"true" bool;
     /// `onPress` activates; optional `onClose` is a trailing ×. Both
@@ -462,6 +467,8 @@ pub enum ItemKind {
     ChipRemove { selected: bool },
     /// `<Tabs>` strip — paints a bottom hairline.
     TabsBox,
+    /// `<Toolbar>` — paints a trailing hairline (bottom or right).
+    ToolbarBox { vertical: bool },
     /// `<Tab>` chrome behind the label / optional ×.
     TabBox { selected: bool },
     /// Tab label text; `selected` picks body vs muted tokens.
