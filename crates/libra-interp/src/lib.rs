@@ -872,6 +872,20 @@ fn element(
             Ok(ViewNode::Toolbar { vertical, children: kids, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG wave 7): footer chrome. Children are
+        // ordinary markup (Gloss muted Text slots).
+        "StatusBar" => {
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            Ok(ViewNode::StatusBar { children: kids, test_id })
+        }
+
         // One tab. Child text is the label; selected / onPress /
         // onClose mirror Chip (onClose is the editor-chrome name).
         "Tab" => {
@@ -2020,7 +2034,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

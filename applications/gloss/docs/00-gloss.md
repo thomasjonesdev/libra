@@ -33,7 +33,7 @@ first-class artifact rather than a folder of dead files.
 | [[06-operations]] | Keys, cost accounting, recovery, telemetry, support |
 | [[07-risks]] | Risk register with triggers and mitigations |
 | [[08-obsidian-compat]] | What must parse, what must never be touched |
-| [[catalog-handoff]] | Catalog chrome to adopt (Tabs, Search, Toast) — UI agent |
+| [[catalog-handoff]] | Catalog chrome to adopt (Tabs, Search, Toast, Toolbar, StatusBar) — UI agent |
 | [[decisions/index\|Decisions]] | ADRs — the calls that are expensive to reverse |
 
 ## Locked decisions

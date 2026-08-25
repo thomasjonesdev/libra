@@ -302,6 +302,23 @@ fn toolbar_presses_through_children() {
     h.click(by::test_id("pg-toolbar-back"));
 }
 
+#[test]
+fn snapshot_workbench_statusbar_dark() {
+    select("libra-dark", "statusbar").assert_snapshot("workbench_statusbar_dark");
+}
+
+#[test]
+fn snapshot_workbench_statusbar_light() {
+    select("libra-light", "statusbar").assert_snapshot("workbench_statusbar_light");
+}
+
+#[test]
+fn statusbar_exposes_slots() {
+    let h = select("libra-dark", "statusbar");
+    h.query(by::test_id("pg-status")).assert_text("Atlas.md saved");
+    h.query(by::test_id("pg-words")).assert_text("42 words");
+}
+
 /// Select toggles the model; the trailing × fires onRemove.
 #[test]
 fn chip_selects_and_dismisses() {

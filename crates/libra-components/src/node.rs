@@ -129,6 +129,10 @@ pub enum ViewNode {
     /// the Gloss left rail (fill height, hairline right). Children are
     /// ordinary markup.
     Toolbar { vertical: bool, children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<StatusBar>` (§7.1, PLAN-CATALOG wave 7): footer chrome.
+    /// Full-width row, hairline on top. Children are ordinary markup
+    /// (Gloss: muted Text slots). Drops the homemade Separator+Row.
+    StatusBar { children: Vec<ViewNode>, test_id: Option<String> },
     /// `<Tab selected? onPress? onClose?>Label</Tab>`: one tab. Child
     /// text is the label. `selected` is the `<if>` Display-"true" bool;
     /// `onPress` activates; optional `onClose` is a trailing ×. Both
@@ -469,6 +473,8 @@ pub enum ItemKind {
     TabsBox,
     /// `<Toolbar>` — paints a trailing hairline (bottom or right).
     ToolbarBox { vertical: bool },
+    /// `<StatusBar>` — paints a top hairline.
+    StatusBarBox,
     /// `<Tab>` chrome behind the label / optional ×.
     TabBox { selected: bool },
     /// Tab label text; `selected` picks body vs muted tokens.

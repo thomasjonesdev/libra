@@ -47,6 +47,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | — | `Tabs` / `Tab` | **shipped** 2026-08-25 | Strip + model-owned `selected`; `onPress` activates, optional `onClose` is a trailing ×. Gloss note tabs: `<for each={tab_rows}>` inside `<Tabs>` |
 | — | `Toast` | **shipped** 2026-08-25 | Detached non-modal overlay; mount via `<if>`; optional `onDismiss`; timeout is an app Timer |
 | — | `Toolbar` | **shipped** 2026-08-25 | Chrome strip; `vertical` is the Gloss left rail. Children are ordinary markup |
+| — | `StatusBar` | **shipped** 2026-08-25 | Footer row, hairline on top. Gloss status / counts / save label |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
 | `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
@@ -114,7 +115,7 @@ never invents colors.
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
 | **5** | ✅ `Card`, `ListItem`, `Avatar` shipped 2026-07-19; ✅ `Chip` shipped 2026-08-25; `Image` blocked (decode path) | Composite / media |
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
-| **7** | ✅ `Tabs` / ✅ `Toast` / ✅ `Toolbar` shipped 2026-08-25; `StatusBar` | App chrome |
+| **7** | ✅ `Tabs` / ✅ `Toast` / ✅ `Toolbar` / ✅ `StatusBar` shipped 2026-08-25 | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
 | **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |

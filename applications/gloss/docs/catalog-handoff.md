@@ -11,9 +11,10 @@ tags: [gloss, catalog]
 Libra catalog work on 2026-08-25 shipped the chrome Gloss is currently
 faking with `ListItem` + ghost buttons. **Do not reimplement these.**
 Wait until the catalog commits are on your branch (`catalog-search`,
-`catalog-chip`, `catalog-tabs`, `catalog-toast`, `catalog-toolbar` —
-merge onto `gloss-usable` if they are not there yet), then swap the
-markup. Actions and `tab_rows` / `query` stay as they are.
+`catalog-chip`, `catalog-tabs`, `catalog-toast`, `catalog-toolbar`,
+`catalog-statusbar` — merge onto `gloss-usable` if they are not
+there yet), then swap the markup. Actions and `tab_rows` / `query`
+stay as they are.
 
 Gallery PNG conflicts on merge: keep the catalog frames (the sidebar
 grew). Re-validate your own visual work after.
@@ -109,21 +110,34 @@ list-header button row, and the Back/Fwd/`+` row become:
 `vertical` paints the hairline on the right and fills the parent
 height so a `<Spacer />` between Undo and Settings still springs.
 
-## 5. Chip — later
+## 5. StatusBar — footer
+
+Drop the `Separator` + footer `Row`. The bar paints its own top
+hairline. Keep the same `testId`s:
+
+```lx
+<StatusBar testId="status-bar">
+  <Text size="sm" muted grow wrap testId="status">{status}</Text>
+  <Text size="sm" muted testId="word-count">{word_count}</Text>
+  <Text size="sm" muted testId="char-count">{char_count}</Text>
+  <Text size="sm" muted testId="save-label">{save_label}</Text>
+</StatusBar>
+```
+
+## 6. Chip — later
 
 `<Chip selected onPress onRemove>` is the filter-pill. Use it when
 Gloss grows facet filters. Not blocking M4.
 
-## 6. Do not wait for
+## 7. Do not wait for
 
 | Thing | Why |
 |---|---|
 | `Image` | Blocked on a deterministic decode path |
 | `CommandPalette` | Still planned; the `C` rail button can stay `notYet` |
 | OS notifications | PLAN-NOTIFY, not `<Toast>` |
-| `StatusBar` | Landing next. Keep the footer `Row` until it exists |
 
-## 7. Merge hygiene
+## 8. Merge hygiene
 
 - Catalog work lives on `catalog-*` branches in the `libra-search` worktree. Do not edit those files in the dirty `gloss-usable` tree except when stash-merging.
 - After merge: `LIBRA_VALIDATE=1 cargo test -p gallery --test gallery` only if you changed catalog paint. Gloss snapshots are yours.

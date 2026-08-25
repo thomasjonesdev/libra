@@ -72,6 +72,9 @@
       <if test={is_toolbar}>
         <ToolbarDemo noop={noop} />
       </if>
+      <if test={is_statusbar}>
+        <StatusBarDemo />
+      </if>
       <if test={is_toast}>
         <Toast tone="success" title="Saved" onDismiss={dismissToast} testId="pg-toast">Atlas.md written</Toast>
       </if>

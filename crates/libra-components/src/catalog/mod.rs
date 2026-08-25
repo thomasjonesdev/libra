@@ -35,6 +35,7 @@ pub(crate) mod search;
 pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod source;
+pub(crate) mod statusbar;
 pub(crate) mod surface;
 pub(crate) mod tabs;
 pub(crate) mod toast;

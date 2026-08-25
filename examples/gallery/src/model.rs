@@ -52,6 +52,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("tabs", "Tabs"),
     ("toast", "Toast"),
     ("toolbar", "Toolbar"),
+    ("statusbar", "StatusBar"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),

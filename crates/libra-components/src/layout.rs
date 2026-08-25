@@ -72,6 +72,7 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Toolbar { vertical, children, test_id } => {
             catalog::toolbar::build(cx, *vertical, children, test_id)
         }
+        ViewNode::StatusBar { children, test_id } => catalog::statusbar::build(cx, children, test_id),
         ViewNode::Tab {
             label,
             selected,

@@ -1,0 +1,6 @@
+<Column gap={8} padding={12}>
+  <StatusBar testId="bar">
+    <Text size="sm" muted grow testId="status">{status}</Text>
+    <Text size="sm" muted testId="words">{name}</Text>
+  </StatusBar>
+</Column>

@@ -749,6 +749,7 @@ const CHIP: &str = include_str!("../fixtures/chip.lx");
 const TABS: &str = include_str!("../fixtures/tabs.lx");
 const TOAST: &str = include_str!("../fixtures/toast.lx");
 const TOOLBAR: &str = include_str!("../fixtures/toolbar.lx");
+const STATUSBAR: &str = include_str!("../fixtures/statusbar.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -960,6 +961,33 @@ fn toolbar_produces_identical_trees() {
     assert_eq!((*vertical, test_id.as_deref(), items.len()), (false, Some("bar"), 2));
     let ViewNode::Toolbar { vertical, test_id, .. } = &children[1] else { panic!("{:?}", children[1]) };
     assert_eq!((*vertical, test_id.as_deref()), (true, Some("rail")));
+}
+
+/// PLAN-CATALOG wave 7 — `<StatusBar>`: footer row, children.
+/// Both engines must agree. Gloss footer uses this.
+#[test]
+fn statusbar_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(STATUSBAR, &state, &fixture_registry());
+        let compiled = generated::build_statusbar(&state);
+        assert_eq!(interp, compiled, "engine drift on statusbar fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(STATUSBAR, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::StatusBar { children: items, test_id } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!(test_id.as_deref(), Some("bar"));
+    assert_eq!(items.len(), 2);
+    assert!(
+        matches!(&items[0], ViewNode::Text { content, muted: true, test_id: Some(id), .. } if content == "ok" && id == "status"),
+        "{:?}",
+        items[0]
+    );
 }
 
 #[test]
