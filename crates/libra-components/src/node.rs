@@ -36,6 +36,87 @@ pub enum Variant {
     Ghost,
 }
 
+/// Closed icon registry for `<Icon name="…">` and `Button icon="…"`
+/// (§7.1, PLAN-CATALOG). Painted as polylines / full-radius RRects —
+/// no path/arc `DrawCmd`, no icon font, no files (Appendix A).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconName {
+    Plus,
+    Minus,
+    Close,
+    Check,
+    Search,
+    Settings,
+    Undo,
+    Calendar,
+    Graph,
+    Folder,
+    Sort,
+    Back,
+    Forward,
+    Command,
+}
+
+impl IconName {
+    pub fn from_markup(s: &str) -> Option<Self> {
+        Some(match s {
+            "plus" => Self::Plus,
+            "minus" => Self::Minus,
+            "close" => Self::Close,
+            "check" => Self::Check,
+            "search" => Self::Search,
+            "settings" => Self::Settings,
+            "undo" => Self::Undo,
+            "calendar" => Self::Calendar,
+            "graph" => Self::Graph,
+            "folder" => Self::Folder,
+            "sort" => Self::Sort,
+            "back" => Self::Back,
+            "forward" => Self::Forward,
+            "command" => Self::Command,
+            _ => return None,
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Plus => "plus",
+            Self::Minus => "minus",
+            Self::Close => "close",
+            Self::Check => "check",
+            Self::Search => "search",
+            Self::Settings => "settings",
+            Self::Undo => "undo",
+            Self::Calendar => "calendar",
+            Self::Graph => "graph",
+            Self::Folder => "folder",
+            Self::Sort => "sort",
+            Self::Back => "back",
+            Self::Forward => "forward",
+            Self::Command => "command",
+        }
+    }
+
+    pub fn variant_name(self) -> &'static str {
+        match self {
+            Self::Plus => "Plus",
+            Self::Minus => "Minus",
+            Self::Close => "Close",
+            Self::Check => "Check",
+            Self::Search => "Search",
+            Self::Settings => "Settings",
+            Self::Undo => "Undo",
+            Self::Calendar => "Calendar",
+            Self::Graph => "Graph",
+            Self::Folder => "Folder",
+            Self::Sort => "Sort",
+            Self::Back => "Back",
+            Self::Forward => "Forward",
+            Self::Command => "Command",
+        }
+    }
+}
+
 /// Semantic tone for status components (`Badge`; later `Status`/`Toast`).
 /// Resolves to a `theme.<tone>_bg`/`_fg` token pair — never a hex literal
 /// (PLAN-TOKENS T2). Both engines map the markup `tone="…"` string to this.
@@ -98,8 +179,17 @@ pub enum ViewNode {
     Button {
         label: String,
         variant: Variant,
+        icon: Option<IconName>,
         on_press: String,
         on_press_arg: Option<String>,
+        test_id: Option<String>,
+    },
+    /// `<Icon name="plus" muted?>` (§7.1, PLAN-CATALOG): a token-colored
+    /// glyph from the closed [`IconName`] set. Display-only; press lives
+    /// on `Button icon="…"`.
+    Icon {
+        name: IconName,
+        muted: bool,
         test_id: Option<String>,
     },
     /// `<Badge tone="success">Online</Badge>` (§7.1, PLAN-CATALOG wave 2): a
@@ -474,7 +564,9 @@ pub enum ItemKind {
     /// `<Separator>` — paints a `theme.hairline` rect over its rect.
     Separator,
     Text { content: String, px: f32, style: FontStyle, color: Color, wrap: bool, strike: bool },
-    Button { label: String, px: f32, variant: Variant },
+    Button { label: String, px: f32, variant: Variant, icon: Option<IconName> },
+    /// `<Icon>` glyph — closed [`IconName`], token color.
+    Icon { name: IconName, muted: bool },
     /// Status pill — `tone` picks a `theme.<tone>_bg`/`_fg` pair.
     Badge { label: String, tone: Tone, px: f32 },
     /// `<Chip>` chrome — the pill behind the label / optional ×.

@@ -108,8 +108,11 @@ impl LaidTree {
                             &mut cx, item, content, *px, *style, *color, *wrap, *strike,
                         )
                     }
-                    ItemKind::Button { label, px, variant } => {
-                        catalog::button::paint(&mut cx, item, label, *px, *variant)
+                    ItemKind::Button { label, px, variant, icon } => {
+                        catalog::button::paint(&mut cx, item, label, *px, *variant, *icon)
+                    }
+                    ItemKind::Icon { name, muted } => {
+                        catalog::icon::paint(&mut cx, item, *name, *muted)
                     }
                     ItemKind::Badge { label, tone, px } => {
                         catalog::badge::paint(&mut cx, item, label, *tone, *px)
@@ -325,7 +328,7 @@ mod tests {
                 None,
             ),
             item(
-                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary, icon: None },
                 Rect::new(0.0, 30.0, 100.0, 20.0),
                 Role::Button,
                 Some("press"),
@@ -376,7 +379,7 @@ mod tests {
     #[test]
     fn unreachable_presses_do_not_advertise_themselves() {
         let mut row = item(
-            ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+            ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary, icon: None },
             Rect::new(0.0, 0.0, 100.0, 20.0),
             Role::Button,
             Some("press"),
@@ -388,7 +391,7 @@ mod tests {
 
         let behind = tree(vec![
             item(
-                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary },
+                ItemKind::Button { label: String::new(), px: 14.0, variant: Variant::Primary, icon: None },
                 Rect::new(0.0, 0.0, 100.0, 20.0),
                 Role::Button,
                 Some("press"),

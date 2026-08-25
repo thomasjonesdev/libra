@@ -1439,6 +1439,7 @@ fn gen_node(
             let mut variant = "Secondary";
             // (handler name, optional arg binding, span)
             let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut icon: Option<String> = None;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -1458,6 +1459,14 @@ fn gen_node(
                     ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
                     ("onPress", AttrValue::Call { name: m, arg }) => {
                         on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("icon", AttrValue::Str(s)) => {
+                        icon = Some(icon_variant(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                            )
+                        })?.to_string());
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -1500,16 +1509,59 @@ fn gen_node(
                     arg_expr,
                 )
             };
+            let icon_expr = match &icon {
+                Some(v) => format!("::core::option::Option::Some(::libra_components::IconName::{v})"),
+                None => "::core::option::Option::None".into(),
+            };
             Ok(format!(
                 "{i}::libra_components::ViewNode::Button {{ {at}\n\
                  {i}    label: {label},\n\
                  {i}    variant: ::libra_components::Variant::{variant},\n\
+                 {i}    icon: {icon_expr},\n\
                  {i}    on_press: {press_name_expr}, {mat}\n\
                  {i}    on_press_arg: {arg_expr},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
                 mat = at(cfg, mspan),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        "Icon" => {
+            let mut icon_name = None;
+            let mut muted = "false".to_string();
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("name", AttrValue::Str(s)) => {
+                        icon_name = Some(icon_variant(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                            )
+                        })?.to_string());
+                    }
+                    ("muted", AttrValue::Flag) => muted = "true".into(),
+                    ("muted", AttrValue::Ident(p)) => {
+                        let value_ref = display_ref_expr(p, bound, binding_ctx).map_err(|m| err(a.span, m))?;
+                        muted = format!("{{ let s = ::std::string::ToString::to_string(&{value_ref}); s == \"true\" }}");
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let icon_var = icon_name.ok_or_else(|| err(*span, "<Icon> requires name=\"plus\" (closed set)"))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Icon> takes no children"));
+            }
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Icon {{ {at}\n\
+                 {i}    name: ::libra_components::IconName::{icon_var},\n\
+                 {i}    muted: {muted},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
                 tid = opt_str(&test_id),
             ))
         }
@@ -2004,7 +2056,7 @@ fn gen_node(
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
             ),
         )),
     }
@@ -2539,6 +2591,26 @@ fn unknown_attr(el: &str, a: &Attr) -> CodegenError {
 
 fn f32_lit(v: f32) -> String {
     format!("{v}f32")
+}
+
+fn icon_variant(s: &str) -> Option<&'static str> {
+    Some(match s {
+        "plus" => "Plus",
+        "minus" => "Minus",
+        "close" => "Close",
+        "check" => "Check",
+        "search" => "Search",
+        "settings" => "Settings",
+        "undo" => "Undo",
+        "calendar" => "Calendar",
+        "graph" => "Graph",
+        "folder" => "Folder",
+        "sort" => "Sort",
+        "back" => "Back",
+        "forward" => "Forward",
+        "command" => "Command",
+        _ => return None,
+    })
 }
 
 fn str_lit(s: &str) -> String {

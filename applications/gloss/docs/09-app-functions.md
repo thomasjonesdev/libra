@@ -20,12 +20,12 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 
 | Control | Action | Status |
 | --- | --- | --- |
-| `+` | `newNote` — create `10-Inbox/Untitled*.md` via patch | **Shipped** |
-| `C` | `openCommandPalette` — quick-open dialog (`Search` + note list) | **Shipped** (catalog `CommandPalette` later) |
-| `D` | `openDailyNote` — open or create today's `Daily/YYYY-MM-DD.md` | **Shipped** |
-| `G` | `openGraph` — outgoing wikilinks + vault backlink scan | **Shipped** (list, not graph viz) |
-| `U` | `undo` — revert last journaled patch run | **Shipped** |
-| `S` | `openSettings` — vault path + Browse | **Shipped** |
+| `plus` | `newNote` — create `10-Inbox/Untitled*.md` via patch | **Shipped** (`icon="plus"`) |
+| `command` | `openCommandPalette` — quick-open dialog (`Search` + note list) | **Shipped** (catalog `CommandPalette` later) |
+| `calendar` | `openDailyNote` — open or create today's `Daily/YYYY-MM-DD.md` | **Shipped** |
+| `graph` | `openGraph` — outgoing wikilinks + vault backlink scan | **Shipped** (list, not graph viz) |
+| `undo` | `undo` — revert last journaled patch run | **Shipped** |
+| `settings` | `openSettings` — vault path + Browse | **Shipped** |
 
 ## File list (left pane)
 

@@ -232,6 +232,16 @@ fn snapshot_workbench_list_item_light() {
 }
 
 #[test]
+fn snapshot_workbench_icon_dark() {
+    select("libra-dark", "icon").assert_snapshot("workbench_icon_dark");
+}
+
+#[test]
+fn snapshot_workbench_icon_light() {
+    select("libra-light", "icon").assert_snapshot("workbench_icon_light");
+}
+
+#[test]
 fn snapshot_workbench_chip_dark() {
     select("libra-dark", "chip").assert_snapshot("workbench_chip_dark");
 }
@@ -317,6 +327,17 @@ fn statusbar_exposes_slots() {
     let h = select("libra-dark", "statusbar");
     h.query(by::test_id("pg-status")).assert_text("Atlas.md saved");
     h.query(by::test_id("pg-words")).assert_text("42 words");
+}
+
+#[test]
+fn icon_registry_and_icon_button() {
+    let mut h = select("libra-dark", "icon");
+    h.query(by::test_id("pg-icon")).assert_text("plus");
+    assert_eq!(
+        h.cursor_over(by::test_id("pg-icon-btn")),
+        libra_components::Cursor::Pointer
+    );
+    h.click(by::test_id("pg-icon-btn"));
 }
 
 /// Select toggles the model; the trailing × fires onRemove.

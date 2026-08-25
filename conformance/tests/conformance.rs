@@ -810,6 +810,7 @@ const TABS: &str = include_str!("../fixtures/tabs.lx");
 const TOAST: &str = include_str!("../fixtures/toast.lx");
 const TOOLBAR: &str = include_str!("../fixtures/toolbar.lx");
 const STATUSBAR: &str = include_str!("../fixtures/statusbar.lx");
+const ICON: &str = include_str!("../fixtures/icon.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -1047,6 +1048,55 @@ fn statusbar_produces_identical_trees() {
         matches!(&items[0], ViewNode::Text { content, muted: true, test_id: Some(id), .. } if content == "ok" && id == "status"),
         "{:?}",
         items[0]
+    );
+}
+
+/// PLAN-CATALOG — `<Icon>` closed set + `Button icon="…"`.
+#[test]
+fn icon_produces_identical_trees() {
+    use libra_components::{IconName, ViewNode};
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(ICON, &state, &fixture_registry());
+        let compiled = generated::build_icon(&state);
+        assert_eq!(interp, compiled, "engine drift on icon fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(ICON, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Icon { name: IconName::Plus, muted: false, test_id: Some(id) } if id == "plus"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(
+            &children[1],
+            ViewNode::Icon { name: IconName::Search, muted: true, test_id: Some(id) } if id == "search-icon"
+        ),
+        "{:?}",
+        children[1]
+    );
+    assert!(
+        matches!(
+            &children[3],
+            ViewNode::Button { icon: Some(IconName::Plus), label, test_id: Some(id), .. }
+                if label.is_empty() && id == "icon-btn"
+        ),
+        "{:?}",
+        children[3]
+    );
+    assert!(
+        matches!(
+            &children[4],
+            ViewNode::Button { icon: Some(IconName::Search), label, .. } if label == "Find"
+        ),
+        "{:?}",
+        children[4]
     );
 }
 

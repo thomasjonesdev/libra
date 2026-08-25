@@ -79,7 +79,7 @@ plan didn't yet track, with dispositions:
 | `Bubble` (chat surfaces) | out of scope — same call as AI elements |
 | `Media Surface` (external textures: video/camera) | maps to §9.5 Video — late, unchanged |
 | `Resizable` (engine-managed drag panel) | **not adopted**: they split model-owned `Split` from engine-managed `Resizable`; Libra keeps only the model-owned shape (fractions in State — replayable, snapshot-exact). Same reasoning as shell-owned scroll, opposite side: pane layout *is* app state |
-| `Icon` (vector registry) | already tracked; still blocked on a path/arc `DrawCmd` |
+| `Icon` (vector registry) | **shipped** 2026-08-25 — closed `name` set, polylines / full-radius RRects (same as Checkbox/Search). `Button icon="…"` for icon-only chrome |
 
 **Design confirmations from their catalog:** their `Dialog` is
 "modal surface with **model-owned dismissal**" — the shape `<Dialog>`
@@ -93,7 +93,7 @@ From existing §7.1 mission-control set — still in scope, later waves:
 | Component | Wave | Note |
 |---|---|---|
 | `Grid`, ~~`Split`~~ (**shipped** 2026-07-19 — model-owned fractions, drag + harness `resize_split`), `Panel` | layout+ | Dense consoles |
-| `Status`, `Icon`, `Markdown`, ~~`Tooltip`~~ (**shipped** 2026-07-19/20 — hover-input floating label, hidden-at-rest second paint pass) | display | |
+| `Status`, ~~`Icon`~~ (**shipped** 2026-08-25), ~~`Markdown`~~, ~~`Tooltip`~~ (**shipped** 2026-07-19/20 — hover-input floating label, hidden-at-rest second paint pass) | display | |
 | `ButtonGroup`, ~~`Radio`~~ (**shipped** 2026-07-19 — groups via `<for>` + item-scoped `onSelect`), `Select`, `Combobox`, ~~`Stepper`~~ (**shipped** 2026-07-20/21) | controls | |
 | `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |
 | `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse), ~~`Breadcrumb`~~, ~~`Pagination`~~, ~~`Timeline`~~ (all **shipped** 2026-07-20/21) | chrome | |
@@ -117,7 +117,7 @@ never invents colors.
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | ✅ `Tabs` / ✅ `Toast` / ✅ `Toolbar` / ✅ `StatusBar` shipped 2026-08-25 | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
-| **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper` shipped) | Long-tail |
+| **9** | `Select`/`Combobox`/`CommandPalette` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper`/`Markdown`/`Icon` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |
 
 Reorder freely when a real app needs something earlier — but still

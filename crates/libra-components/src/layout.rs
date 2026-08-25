@@ -46,8 +46,11 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Text { content, size, bold, muted, grow, wrap, test_id } => {
             catalog::text::build(cx, content, *size, *bold, *muted, *grow, *wrap, test_id)
         }
-        ViewNode::Button { label, variant, on_press, on_press_arg, test_id } => {
-            catalog::button::build(cx, label, *variant, on_press, on_press_arg, test_id)
+        ViewNode::Button { label, variant, icon, on_press, on_press_arg, test_id } => {
+            catalog::button::build(cx, label, *variant, *icon, on_press, on_press_arg, test_id)
+        }
+        ViewNode::Icon { name, muted, test_id } => {
+            catalog::icon::build(cx, *name, *muted, test_id)
         }
         ViewNode::Badge { label, tone, test_id } => catalog::badge::build(cx, label, *tone, test_id),
         ViewNode::Chip {

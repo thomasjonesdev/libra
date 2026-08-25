@@ -272,6 +272,7 @@ pub fn is_catalog_element(name: &str) -> bool {
             | "TimelineItem"
             | "Text"
             | "Button"
+            | "Icon"
             | "Badge"
             | "Heading"
             | "Progress"

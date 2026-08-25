@@ -1,0 +1,34 @@
+<props noop: Action />
+
+<Column gap={10}>
+  <Text bold muted>Registry</Text>
+  <Row gap={10} cross="center">
+    <Icon name="plus" testId="pg-icon" />
+    <Icon name="minus" />
+    <Icon name="close" />
+    <Icon name="check" />
+    <Icon name="search" />
+    <Icon name="settings" />
+    <Icon name="undo" />
+  </Row>
+  <Row gap={10} cross="center">
+    <Icon name="calendar" />
+    <Icon name="graph" />
+    <Icon name="folder" />
+    <Icon name="sort" />
+    <Icon name="back" />
+    <Icon name="forward" />
+    <Icon name="command" />
+  </Row>
+  <Text bold muted>Muted</Text>
+  <Row gap={10} cross="center">
+    <Icon name="settings" muted />
+    <Icon name="search" muted />
+  </Row>
+  <Text bold muted>On buttons</Text>
+  <Row gap={8} cross="center">
+    <Button variant="ghost" icon="plus" onPress={noop} testId="pg-icon-btn" />
+    <Button variant="secondary" icon="search" onPress={noop}>Find</Button>
+    <Button variant="ghost" icon="settings" onPress={noop} />
+  </Row>
+</Column>

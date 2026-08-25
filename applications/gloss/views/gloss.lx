@@ -2,35 +2,35 @@
   <Row grow>
     <Toolbar vertical testId="app-rail">
       <Tooltip text="New note">
-        <Button variant="ghost" onPress={newNote} testId="new-note">+</Button>
+        <Button variant="ghost" icon="plus" onPress={newNote} testId="new-note" />
       </Tooltip>
       <Tooltip text="Quick open">
-        <Button variant="ghost" onPress={openCommandPalette} testId="command-palette">C</Button>
+        <Button variant="ghost" icon="command" onPress={openCommandPalette} testId="command-palette" />
       </Tooltip>
       <Tooltip text="Daily note">
-        <Button variant="ghost" onPress={openDailyNote} testId="daily-note">D</Button>
+        <Button variant="ghost" icon="calendar" onPress={openDailyNote} testId="daily-note" />
       </Tooltip>
       <Tooltip text="Links and backlinks">
-        <Button variant="ghost" onPress={openGraph} testId="graph">G</Button>
+        <Button variant="ghost" icon="graph" onPress={openGraph} testId="graph" />
       </Tooltip>
       <Tooltip text="Undo">
-        <Button variant="ghost" onPress={undo} testId="undo">U</Button>
+        <Button variant="ghost" icon="undo" onPress={undo} testId="undo" />
       </Tooltip>
       <Spacer />
       <Tooltip text="Settings">
-        <Button variant="ghost" onPress={openSettings} testId="settings">S</Button>
+        <Button variant="ghost" icon="settings" onPress={openSettings} testId="settings" />
       </Tooltip>
     </Toolbar>
     <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
       <Column grow gap={4} padding={8}>
         <Toolbar testId="list-toolbar">
-          <Button variant="ghost" onPress={newFolder} testId="new-folder">+/</Button>
-          <Button variant="ghost" onPress={toggleSort} testId="sort-notes">A</Button>
-          <Button variant="ghost" onPress={collapseAll} testId="collapse-all">-</Button>
+          <Button variant="ghost" icon="folder" onPress={newFolder} testId="new-folder" />
+          <Button variant="ghost" icon="sort" onPress={toggleSort} testId="sort-notes" />
+          <Button variant="ghost" icon="minus" onPress={collapseAll} testId="collapse-all" />
         </Toolbar>
         <Row gap={6} cross="center">
           <Search value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
-          <Button variant="ghost" onPress={clearQuery} testId="clear-search">x</Button>
+          <Button variant="ghost" icon="close" onPress={clearQuery} testId="clear-search" />
         </Row>
         <Separator />
         <Scroll testId="note-scroll">
@@ -59,7 +59,7 @@
               </for>
             </Tabs>
             <Tooltip text="Open next note in a new tab">
-              <Button variant="ghost" onPress={newTab} testId="new-tab">+</Button>
+              <Button variant="ghost" icon="plus" onPress={newTab} testId="new-tab" />
             </Tooltip>
           </Toolbar>
         </if>

@@ -144,4 +144,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/toast.rs"));
     include!(concat!(env!("OUT_DIR"), "/toolbar.rs"));
     include!(concat!(env!("OUT_DIR"), "/statusbar.rs"));
+    include!(concat!(env!("OUT_DIR"), "/icon.rs"));
 }

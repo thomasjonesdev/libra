@@ -26,6 +26,7 @@ pub(crate) mod context_menu;
 pub(crate) mod dialog;
 pub(crate) mod drawer;
 pub(crate) mod heading;
+pub(crate) mod icon;
 pub(crate) mod input;
 pub(crate) mod list_item;
 pub(crate) mod markdown;

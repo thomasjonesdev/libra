@@ -183,6 +183,7 @@ impl Gallery {
         self.is_pagination = s == "pagination";
         self.is_stepper = s == "stepper";
         self.is_timeline = s == "timeline";
+        self.is_icon = s == "icon";
         self.is_tabs = s == "tabs";
         self.is_toast = s == "toast";
         self.is_toolbar = s == "toolbar";

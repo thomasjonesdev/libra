@@ -10,7 +10,7 @@ use libra_markup::{
     is_catalog_element, Attr, AttrValue, ComponentDef, ComponentRegistry, Inline, Node, PropParam,
     PropType, Span,
 };
-use libra_components::{BoxStyle, DrawerSide, TextSize, Tone, Variant, ViewNode};
+use libra_components::{BoxStyle, DrawerSide, IconName, TextSize, Tone, Variant, ViewNode};
 use libra_core::CollectionRow;
 use std::collections::{HashMap, HashSet};
 
@@ -677,6 +677,7 @@ fn element(
             let mut variant = Variant::Secondary;
             // (handler name, optional arg binding, span)
             let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut icon = None;
             let mut test_id = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
@@ -696,6 +697,14 @@ fn element(
                     ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
                     ("onPress", AttrValue::Call { name: m, arg }) => {
                         on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("icon", AttrValue::Str(s)) => {
+                        icon = Some(IconName::from_markup(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                            )
+                        })?);
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -736,7 +745,43 @@ fn element(
                 None => resolve_unit_handler(scope, &msg, mspan)?,
             };
             let label = text_content(children, scope, *span)?;
-            Ok(ViewNode::Button { label, variant, on_press, on_press_arg, test_id })
+            if label.is_empty() && icon.is_none() {
+                return Err(err(*span, "<Button> needs a label or icon=\"…\""));
+            }
+            Ok(ViewNode::Button { label, variant, icon, on_press, on_press_arg, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG): closed glyph registry. Polylines, no
+        // files / fonts / path command.
+        "Icon" => {
+            let mut icon_name = None;
+            let mut muted = false;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("name", AttrValue::Str(s)) => {
+                        icon_name = Some(IconName::from_markup(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                            )
+                        })?);
+                    }
+                    ("muted", AttrValue::Flag) => muted = true,
+                    ("muted", AttrValue::Ident(p)) => {
+                        muted = (scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })? == "true";
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let icon_name = icon_name.ok_or_else(|| err(*span, "<Icon> requires name=\"plus\" (closed set)"))?;
+            if !children.is_empty() {
+                return Err(err(*span, "<Icon> takes no children"));
+            }
+            Ok(ViewNode::Icon { name: icon_name, muted, test_id })
         }
 
         "Badge" => {
@@ -2084,7 +2129,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }
