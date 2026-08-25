@@ -43,7 +43,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Image` | `Image` | planned (§7.1) | Deterministic decode path TBD |
 | `Avatar` | `Avatar` | **shipped** 2026-07-19 | Initials in a circle; image variant waits on a deterministic decode path |
 | `Badge` | `Badge` | **shipped** 2026-07-17 | `tone` (neutral/danger/warning/success/info) → status `*_bg`/`*_fg` tokens (PLAN-TOKENS T2); pill, `type_xs`, `space`-padded. First component built through the [[PLAN-COMPONENTS]] `catalog/` flow. |
-| `Chip` | `Chip` | planned | Select / remove events |
+| `Chip` | `Chip` | **shipped** 2026-08-25 | Model-owned `selected`; `onPress` selects, optional `onRemove` is a trailing × |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
 | `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
@@ -109,7 +109,7 @@ never invents colors.
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
 | **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; ✅ `Search` shipped 2026-08-25 | Control set parity |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
-| **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
+| **5** | ✅ `Card`, `ListItem`, `Avatar` shipped 2026-07-19; ✅ `Chip` shipped 2026-08-25; `Image` blocked (decode path) | Composite / media |
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | `Tabs`, `Toast`, `Toolbar`, `StatusBar` | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |

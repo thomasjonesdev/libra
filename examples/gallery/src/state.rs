@@ -37,6 +37,7 @@ pub struct Gallery {
     pub is_button: bool,
     pub is_input: bool,
     pub is_search: bool,
+    pub is_chip: bool,
     pub is_textarea: bool,
     pub is_list_item: bool,
     pub is_dialog: bool,
@@ -89,6 +90,9 @@ pub struct Gallery {
     pub ctl_split: f32,
     /// Search playground: set when Enter fires `onSubmit`.
     pub search_submitted: bool,
+    /// Chip playground (model-owned selected + dismiss).
+    pub chip_on: bool,
+    pub chip_dismissed: bool,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -115,6 +119,7 @@ impl Gallery {
             is_button: false,
             is_input: false,
             is_search: false,
+            is_chip: false,
             is_textarea: false,
             is_list_item: false,
             is_dialog: false,
@@ -153,6 +158,8 @@ impl Gallery {
             ctl_page: 1,
             ctl_split: 0.5,
             search_submitted: false,
+            chip_on: true,
+            chip_dismissed: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

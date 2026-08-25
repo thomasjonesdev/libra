@@ -1,0 +1,13 @@
+<props chip_on: Bool, toggleChip: Action, dismissChip: Action, noop: Action />
+
+<Text bold muted>Playground (model-owned — click to select)</Text>
+<Row gap={8} cross="center">
+  <Chip selected={chip_on} onPress={toggleChip} testId="pg-chip">Filters</Chip>
+  <Text size="sm" muted>bound to state</Text>
+</Row>
+<Text bold muted>States</Text>
+<Row gap={8} cross="center">
+  <Chip selected onPress={noop}>On</Chip>
+  <Chip onPress={noop}>Off</Chip>
+  <Chip onRemove={dismissChip} testId="pg-chip-tag">Removable</Chip>
+</Row>

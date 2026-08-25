@@ -767,6 +767,80 @@ fn element(
             Ok(ViewNode::Badge { label, tone, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG wave 5): pressable pill. `selected` follows
+        // the bool Display-"true" rule; `onPress` / `onRemove` are
+        // optional and accept the item-scoped Call form.
+        "Chip" => {
+            let mut selected = false;
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_remove: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
+                (scope.field)(path)
+                    .ok_or_else(|| err(aspan, format!("no binding '{path}' in scope")))
+            };
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", AttrValue::Flag) => selected = true,
+                    ("selected", AttrValue::Ident(p)) => selected = resolve(p, a.span)? == "true",
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onRemove", AttrValue::Ident(m)) => on_remove = Some((m.clone(), None, a.span)),
+                    ("onRemove", AttrValue::Call { name: m, arg }) => {
+                        on_remove = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = text_content(children, scope, *span)?;
+            let resolve_handler = |spec: Option<(String, Option<String>, Span)>, attr: &str| {
+                match spec {
+                    None => Ok((None, None)),
+                    Some((m, arg, mspan)) => {
+                        require_camel_case(&m, mspan)?;
+                        let resolved_arg = match &arg {
+                            Some(binding) => {
+                                if !(scope.has_str_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!(
+                                            "action '{m}' takes no payload — `{attr}={{{m}({binding})}}` \
+                                             needs a String-payload action (fn {m}(&mut self, s: String))"
+                                        ),
+                                    ));
+                                }
+                                Some(resolve(binding, mspan)?)
+                            }
+                            None => {
+                                if !(scope.has_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!("no action '{m}' on Action — check the enum"),
+                                    ));
+                                }
+                                None
+                            }
+                        };
+                        Ok((Some(m), resolved_arg))
+                    }
+                }
+            };
+            let (on_press, on_press_arg) = resolve_handler(on_press, "onPress")?;
+            let (on_remove, on_remove_arg) = resolve_handler(on_remove, "onRemove")?;
+            Ok(ViewNode::Chip {
+                label,
+                selected,
+                on_press,
+                on_press_arg,
+                on_remove,
+                on_remove_arg,
+                test_id,
+            })
+        }
+
         "Heading" => {
             let mut level = 1u8;
             let mut test_id = None;
@@ -1804,7 +1878,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

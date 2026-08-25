@@ -20,6 +20,7 @@ pub(crate) mod badge;
 pub(crate) mod breadcrumb;
 pub(crate) mod button;
 pub(crate) mod chart;
+pub(crate) mod chip;
 pub(crate) mod container;
 pub(crate) mod context_menu;
 pub(crate) mod dialog;

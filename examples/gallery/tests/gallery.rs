@@ -232,6 +232,31 @@ fn snapshot_workbench_list_item_light() {
 }
 
 #[test]
+fn snapshot_workbench_chip_dark() {
+    select("libra-dark", "chip").assert_snapshot("workbench_chip_dark");
+}
+
+#[test]
+fn snapshot_workbench_chip_light() {
+    select("libra-light", "chip").assert_snapshot("workbench_chip_light");
+}
+
+/// Select toggles the model; the trailing × fires onRemove.
+#[test]
+fn chip_selects_and_dismisses() {
+    let mut h = select("libra-dark", "chip");
+    assert_eq!(h.cursor_over(by::test_id("pg-chip")), libra_components::Cursor::Pointer);
+    assert!(h.state().chip_on);
+    h.click(by::test_id("pg-chip"));
+    assert!(!h.state().chip_on, "press dispatched; the app flipped selected");
+    h.click(by::test_id("pg-chip"));
+    assert!(h.state().chip_on);
+    assert!(!h.state().chip_dismissed);
+    h.click(by::test_id("pg-chip-tag-remove"));
+    assert!(h.state().chip_dismissed, "× dispatched onRemove");
+}
+
+#[test]
 fn snapshot_workbench_search_dark() {
     select("libra-dark", "search").assert_snapshot("workbench_search_dark");
 }

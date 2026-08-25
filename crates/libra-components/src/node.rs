@@ -106,6 +106,20 @@ pub enum ViewNode {
     /// small status pill. Non-interactive — child text is the label; `tone`
     /// selects a semantic `theme.<tone>_bg`/`_fg` pair (PLAN-TOKENS T2).
     Badge { label: String, tone: Tone, test_id: Option<String> },
+    /// `<Chip selected? onPress? onRemove?>Label</Chip>` (§7.1,
+    /// PLAN-CATALOG wave 5): a pressable pill. `selected` is model-owned
+    /// (the `<if>` Display-"true" rule). `onPress` selects; optional
+    /// `onRemove` is a trailing ×. Both handlers accept the item-scoped
+    /// `action(loopVar.field)` form (§6.2).
+    Chip {
+        label: String,
+        selected: bool,
+        on_press: Option<String>,
+        on_press_arg: Option<String>,
+        on_remove: Option<String>,
+        on_remove_arg: Option<String>,
+        test_id: Option<String>,
+    },
     /// `<Heading level={2}>Title</Heading>` (§7.1, PLAN-CATALOG wave 2): a
     /// semantic heading. `level` 1–4 maps to the type ramp (xl/lg/md/sm),
     /// always bold; child text is the content. Renders as a bold `Text` item.
@@ -412,6 +426,12 @@ pub enum ItemKind {
     Button { label: String, px: f32, variant: Variant },
     /// Status pill — `tone` picks a `theme.<tone>_bg`/`_fg` pair.
     Badge { label: String, tone: Tone, px: f32 },
+    /// `<Chip>` chrome — the pill behind the label / optional ×.
+    ChipBox { selected: bool },
+    /// Chip label text; `selected` picks accent vs body tokens.
+    ChipLabel { label: String, px: f32, selected: bool },
+    /// Chip trailing dismiss glyph.
+    ChipRemove { selected: bool },
     /// Determinate progress bar — `value` 0..=1 fills the track. (Heading has
     /// no ItemKind: it builds to a bold `Text`.)
     Progress { value: f32 },

@@ -60,6 +60,9 @@
       <if test={is_search}>
         <SearchDemo ctl_input={ctl_input} inputChanged={inputChanged} search={search} />
       </if>
+      <if test={is_chip}>
+        <ChipDemo chip_on={chip_on} toggleChip={toggleChip} dismissChip={dismissChip} noop={noop} />
+      </if>
       <if test={is_textarea}>
         <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>

@@ -279,6 +279,7 @@ pub fn is_catalog_element(name: &str) -> bool {
             | "Sparkline"
             | "Input"
             | "Search"
+            | "Chip"
             | "Textarea"
             | "ListItem"
             | "Spacer"

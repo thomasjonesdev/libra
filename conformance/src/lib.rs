@@ -134,4 +134,5 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/composed_inlined.rs"));
     include!(concat!(env!("OUT_DIR"), "/slot_host.rs"));
     include!(concat!(env!("OUT_DIR"), "/search.rs"));
+    include!(concat!(env!("OUT_DIR"), "/chip.rs"));
 }

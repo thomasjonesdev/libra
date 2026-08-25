@@ -110,6 +110,13 @@ impl LaidTree {
                     ItemKind::Badge { label, tone, px } => {
                         catalog::badge::paint(&mut cx, item, label, *tone, *px)
                     }
+                    ItemKind::ChipBox { selected } => catalog::chip::paint_box(&mut cx, item, *selected),
+                    ItemKind::ChipLabel { label, px, selected } => {
+                        catalog::chip::paint_label(&mut cx, item, label, *px, *selected)
+                    }
+                    ItemKind::ChipRemove { selected } => {
+                        catalog::chip::paint_remove(&mut cx, item, *selected)
+                    }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
                     ItemKind::MenuBarrier => {}

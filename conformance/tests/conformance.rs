@@ -745,6 +745,7 @@ fn nav_produces_identical_trees() {
 }
 
 const SEARCH: &str = include_str!("../fixtures/search.lx");
+const CHIP: &str = include_str!("../fixtures/chip.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -782,6 +783,56 @@ fn search_produces_identical_trees() {
         matches!(&children[1], ViewNode::Search { on_submit: None, test_id, .. } if test_id == "live-search"),
         "{:?}",
         children[1]
+    );
+}
+
+/// PLAN-CATALOG wave 5 — `<Chip>`: selected bool, optional onPress /
+/// onRemove (item-scoped). Both engines must agree.
+#[test]
+fn chip_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(CHIP, &state, &fixture_registry());
+        let compiled = generated::build_chip(&state);
+        assert_eq!(interp, compiled, "engine drift on chip fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(CHIP, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Chip {
+                label,
+                selected: true,
+                on_press: Some(p),
+                on_remove: None,
+                test_id: Some(id),
+                ..
+            } if label == "Ada" && p == "reset" && id == "bound-chip"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(&children[1], ViewNode::Chip { selected: true, label, .. } if label == "On"),
+        "{:?}",
+        children[1]
+    );
+    assert!(
+        matches!(&children[3], ViewNode::Chip { on_remove: Some(r), test_id: Some(id), .. } if r == "reset" && id == "tag"),
+        "{:?}",
+        children[3]
+    );
+    // <for> first row: Alpha is active; press/remove args carry the id.
+    let ViewNode::Chip { selected, on_press_arg, on_remove_arg, label, .. } = &children[4] else {
+        panic!("{:?}", children[4])
+    };
+    assert_eq!(
+        (*selected, on_press_arg.as_deref(), on_remove_arg.as_deref(), label.as_str()),
+        (true, Some("1"), Some("1"), "Alpha")
     );
 }
 

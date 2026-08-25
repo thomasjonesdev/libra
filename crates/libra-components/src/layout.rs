@@ -50,6 +50,24 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             catalog::button::build(cx, label, *variant, on_press, on_press_arg, test_id)
         }
         ViewNode::Badge { label, tone, test_id } => catalog::badge::build(cx, label, *tone, test_id),
+        ViewNode::Chip {
+            label,
+            selected,
+            on_press,
+            on_press_arg,
+            on_remove,
+            on_remove_arg,
+            test_id,
+        } => catalog::chip::build(
+            cx,
+            label,
+            *selected,
+            on_press,
+            on_press_arg,
+            on_remove,
+            on_remove_arg,
+            test_id,
+        ),
         ViewNode::Heading { content, level, test_id } => {
             catalog::heading::build(cx, content, *level, test_id)
         }

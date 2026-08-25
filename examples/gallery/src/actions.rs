@@ -30,6 +30,14 @@ impl Gallery {
         self.search_submitted = true;
     }
 
+    pub fn toggle_chip(&mut self) {
+        self.chip_on = !self.chip_on;
+    }
+
+    pub fn dismiss_chip(&mut self) {
+        self.chip_dismissed = true;
+    }
+
     pub fn body_changed(&mut self, s: String) {
         self.ctl_body = s;
     }
@@ -137,6 +145,7 @@ impl Gallery {
         self.is_button = s == "button";
         self.is_input = s == "input";
         self.is_search = s == "search";
+        self.is_chip = s == "chip";
         self.is_textarea = s == "textarea";
         self.is_list_item = s == "list_item";
         self.is_chart = s == "chart";
