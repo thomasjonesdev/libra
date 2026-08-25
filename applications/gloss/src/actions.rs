@@ -4,9 +4,9 @@ use libra_core::{Effect, FolderPick, ProcessResult, ProcessStatus};
 
 use crate::model::{
     apply_create_cmd, apply_replace_cmd, backlinks_cmd, cat_cmd, daily_note_content,
-    default_daily_note_path, is_folder_id, parse_list, resolve_daily_note, today_local_iso,
-    unique_folder_note, unique_inbox_path, undo_cmd, IoKind, NoteRow, Pending, AUTOSAVE_MS,
-    STORE_KEY,
+    default_daily_note_path, insert_wikilink_mention, is_folder_id, mention_trigger, parse_list,
+    resolve_daily_note, rules_cmd, today_local_iso, unique_folder_note, unique_inbox_path, undo_cmd,
+    IoKind, NoteRow, Pending, AUTOSAVE_MS, STORE_KEY, TOAST_MS,
 };
 use crate::state::Gloss;
 
@@ -55,6 +55,8 @@ impl Gloss {
     pub fn open_vault(&mut self) -> Vec<Effect<Action>> {
         self.opened_root = self.vault_path.trim().to_string();
         self.can_undo = false;
+        self.rules_loaded = false;
+        self.rules_body.clear();
         let mut out = Vec::new();
         out.push(Effect::kv_set(
             STORE_KEY,
@@ -118,9 +120,66 @@ impl Gloss {
             return None;
         }
         self.editor_body = text;
+        self.sync_mention();
         self.dirty = true;
         self.save_pending = true;
         Some(Effect::timer(AUTOSAVE_MS, Action::FlushSave))
+    }
+
+    fn sync_mention(&mut self) {
+        if let Some((at, query)) = mention_trigger(&self.editor_body) {
+            self.show_mention = true;
+            self.mention_at = at;
+            self.mention_query = query;
+        } else {
+            self.show_mention = false;
+            self.mention_at = 0;
+            self.mention_query.clear();
+        }
+    }
+
+    pub fn close_mention(&mut self) {
+        self.show_mention = false;
+        self.mention_at = 0;
+        self.mention_query.clear();
+    }
+
+    pub fn mention_query_changed(&mut self, text: String) {
+        self.mention_query = text;
+    }
+
+    pub fn mention_pick(&mut self, id: String) -> Option<Effect<Action>> {
+        if id.is_empty() {
+            return None;
+        }
+        let stem = crate::model::file_stem(&id);
+        let query_len = self.mention_query.len();
+        let at = self.mention_at;
+        let body = insert_wikilink_mention(&self.editor_body, at, query_len, &stem);
+        self.close_mention();
+        self.body_changed(body)
+    }
+
+    pub fn dismiss(&mut self) {
+        if self.show_command_palette {
+            self.close_command_palette();
+            return;
+        }
+        if self.show_mention {
+            self.close_mention();
+            return;
+        }
+        if self.show_graph {
+            self.close_graph();
+            return;
+        }
+        if self.show_settings {
+            self.close_settings();
+            return;
+        }
+        if self.toast_ok || self.toast_err {
+            self.dismiss_toast();
+        }
     }
 
     pub fn flush_save(&mut self) -> Option<Effect<Action>> {
@@ -264,6 +323,16 @@ impl Gloss {
         self.show_settings = false;
     }
 
+    pub fn dismiss_toast(&mut self) {
+        self.toast_ok = false;
+        self.toast_err = false;
+        self.toast_title.clear();
+    }
+
+    pub fn dismiss_toast_timer(&mut self) {
+        self.dismiss_toast();
+    }
+
     pub fn go_back(&mut self) -> Option<Effect<Action>> {
         let Some(prev) = self.history_back.pop() else {
             self.status = "Nothing to go back to".into();
@@ -339,8 +408,12 @@ impl Gloss {
             if kind == IoKind::Backlinks {
                 self.graph_loading = false;
             }
-            return None;
+            if kind == IoKind::Rules {
+                self.rules_loaded = true;
+            }
+            return self.flash_toast(false, "Failed");
         }
+        let mut toast_fx = None;
         let follow = match kind {
             IoKind::List => {
                 self.note_paths = parse_list(&result.stdout);
@@ -361,12 +434,13 @@ impl Gloss {
                 self.open_tabs.retain(|p| self.note_paths.iter().any(|n| n == p));
                 if self.selected_path.is_empty() {
                     if let Some(first) = self.note_paths.first().cloned() {
+                        self.pending = Pending::Rules;
                         self.begin_cat(first)
                     } else {
-                        None
+                        self.begin_load_rules()
                     }
                 } else {
-                    None
+                    self.begin_load_rules()
                 }
             }
             IoKind::Cat => {
@@ -375,14 +449,16 @@ impl Gloss {
                 self.editor_body = body;
                 self.dirty = false;
                 self.save_pending = false;
+                self.sync_mention();
                 self.status = format!("{} notes", self.note_paths.len());
-                None
+                self.begin_load_rules()
             }
             IoKind::Apply => {
                 self.loaded_body = self.in_flight_body.clone();
                 self.dirty = self.editor_body != self.loaded_body;
                 self.can_undo = true;
                 self.status = "Saved".into();
+                toast_fx = self.flash_toast(true, "Saved");
                 if !self.note_paths.iter().any(|p| p == &self.selected_path) {
                     self.note_paths.push(self.selected_path.clone());
                     self.note_paths.sort();
@@ -392,6 +468,7 @@ impl Gloss {
             IoKind::Undo => {
                 self.can_undo = false;
                 self.status = "Undone".into();
+                toast_fx = self.flash_toast(true, "Undone");
                 if !self.selected_path.is_empty() {
                     self.pending = Pending::Cat(self.selected_path.clone());
                 }
@@ -412,16 +489,45 @@ impl Gloss {
                 self.status = format!("{} backlink(s)", self.backlink_rows.len());
                 None
             }
+            IoKind::Rules => {
+                self.rules_loaded = true;
+                self.rules_body = String::from_utf8_lossy(&result.stdout).into_owned();
+                None
+            }
             IoKind::Idle => None,
         };
         if follow.is_some() {
             return follow;
         }
-        self.after_io()
+        if let Some(fx) = self.after_io() {
+            return Some(fx);
+        }
+        if toast_fx.is_some() {
+            return toast_fx;
+        }
+        None
     }
 }
 
 impl Gloss {
+    fn flash_toast(&mut self, ok: bool, title: &str) -> Option<Effect<Action>> {
+        self.toast_ok = ok;
+        self.toast_err = !ok;
+        self.toast_title = title.into();
+        Some(Effect::timer(TOAST_MS, Action::DismissToastTimer))
+    }
+
+    fn begin_load_rules(&mut self) -> Option<Effect<Action>> {
+        if self.rules_loaded || self.vault_path.trim().is_empty() {
+            return None;
+        }
+        if self.is_busy() {
+            self.pending = Pending::Rules;
+            return None;
+        }
+        self.spawn(rules_cmd(self.vault_path.trim()), IoKind::Rules)
+    }
+
     fn scan_backlinks(&mut self) -> Option<Effect<Action>> {
         if self.selected_path.is_empty() {
             return None;
@@ -514,6 +620,7 @@ impl Gloss {
             Pending::Cat(path) => self.begin_cat(path),
             Pending::Undo => self.undo(),
             Pending::Backlinks => self.scan_backlinks(),
+            Pending::Rules => self.begin_load_rules(),
         }
     }
 }

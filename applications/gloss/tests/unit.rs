@@ -342,3 +342,52 @@ fn open_daily_note_creates_when_missing() {
     assert_eq!(s.selected_path, "Daily/2026-08-25.md");
     assert_eq!(s.io, IoKind::Apply);
 }
+
+#[test]
+fn mention_pick_inserts_wikilink() {
+    let mut s = editing("Atlas.md", "see @Wel");
+    s.note_paths = vec!["Atlas.md".into(), "10-Inbox/Welcome.md".into()];
+    reduce(&mut s, Action::BodyChanged("see @Wel".into()));
+    assert!(s.show_mention);
+    assert_eq!(s.mention_query, "Wel");
+    reduce(
+        &mut s,
+        Action::MentionPick("10-Inbox/Welcome.md".into()),
+    );
+    assert!(!s.show_mention);
+    assert_eq!(s.editor_body, "see [[Welcome]]");
+}
+
+#[test]
+fn dismiss_closes_command_palette() {
+    let mut s = editing("Atlas.md", "body");
+    s.note_paths = vec!["Atlas.md".into()];
+    s.show_command_palette = true;
+    reduce(&mut s, Action::Dismiss);
+    assert!(!s.show_command_palette);
+}
+
+#[test]
+fn rules_load_populates_settings_excerpt() {
+    let mut s = editing("Atlas.md", "body");
+    s.vault_path = "/tmp/v".into();
+    s.io = IoKind::Rules;
+    reduce(
+        &mut s,
+        Action::IoDone(ok_proc("# Vault rules\n\nBe concise.\n")),
+    );
+    assert!(s.rules_loaded);
+    assert!(s.has_rules);
+    assert!(s.rules_excerpt.contains("Be concise"));
+}
+
+#[test]
+fn shortcuts_table_is_valid() {
+    let shortcuts = Gloss::shortcuts();
+    assert_eq!(shortcuts.len(), 7);
+    assert!(
+        shortcuts
+            .iter()
+            .any(|s| s.chord == "cmd+k" && s.action == "openCommandPalette")
+    );
+}

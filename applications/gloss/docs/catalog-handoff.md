@@ -8,16 +8,14 @@ tags: [gloss, catalog]
 
 # Catalog handoff (for the Gloss UI agent)
 
-Libra catalog work on 2026-08-25 shipped the chrome Gloss is currently
-faking with `ListItem` + ghost buttons. **Do not reimplement these.**
-Wait until the catalog commits are on your branch (`catalog-search`,
-`catalog-chip`, `catalog-tabs`, `catalog-toast`, `catalog-toolbar`,
-`catalog-statusbar` — merge onto `gloss-usable` if they are not
-there yet), then swap the markup. Actions and `tab_rows` / `query`
-stay as they are.
+Libra catalog chrome is on `gloss-usable` and **adopted** in
+`views/gloss.lx`: `<Toolbar>`, `<Search>`, `<Tabs>`/`<Tab>`,
+`<StatusBar>`, `<Toast>`, `<Dialog>` (palette + `@mention`).
+Actions and `tab_rows` / `query` stayed.
+**Do not** rebuild these with `ListItem` + ghost buttons.
 
-Gallery PNG conflicts on merge: keep the catalog frames (the sidebar
-grew). Re-validate your own visual work after.
+Chip is still later (facet filters). Gallery PNG conflicts on a
+later merge: keep the catalog frames (the sidebar grew).
 
 ## 1. Tabs — do this first
 

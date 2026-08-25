@@ -3,7 +3,7 @@
 use libra_core::FolderPick;
 use libra_test::{by, fx};
 
-use crate::common::{enter_edit, harness, ok_stdout, open_first_note};
+use crate::common::{enter_edit, harness, ok_stdout, open_first_note, resolve_rules};
 
 mod common;
 
@@ -17,6 +17,9 @@ fn browse_picks_a_folder_and_lists() {
     h.resolve_kv_set(kv, libra_core::KvResult::Ok);
     let list = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(list, ok_stdout("Atlas.md\n"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Atlas\n"));
+    resolve_rules(&mut h, "");
     assert_eq!(h.state().vault_path, "/tmp/gloss-fixture");
     assert_eq!(h.state().opened_root, "/tmp/gloss-fixture");
     assert_eq!(h.state().note_rows.len(), 1);
@@ -79,6 +82,8 @@ fn undo_last_save_emits_gloss_undo() {
     h.resolve_process(undo, ok_stdout(""));
     let list = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(list, ok_stdout("Atlas.md\n"));
+    let rules = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(rules, ok_stdout(""));
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("hello"));
     assert_eq!(h.state().editor_body, "hello");
@@ -125,6 +130,7 @@ fn new_note_emits_create_apply() {
     h.resolve_kv_set(kv, libra_core::KvResult::Ok);
     let list = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(list, ok_stdout(""));
+    resolve_rules(&mut h, "");
     h.click(by::test_id("new-note"));
     let create = h.expect_effect(fx::process_program("gloss"));
     let libra_core::Effect::Process { command, .. } = &create else {
@@ -281,6 +287,31 @@ fn command_palette_opens_a_note() {
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("# Welcome\n"));
     assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+}
+
+#[test]
+fn command_palette_shortcut_opens_dialog() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n", "# Atlas\n");
+    assert!(h.press_shortcut("cmd+k"));
+    h.query(by::test_id("palette-dialog"));
+    assert!(h.press_shortcut("escape"));
+    assert!(!h.state().show_command_palette);
+}
+
+#[test]
+fn mention_dialog_opens_while_typing() {
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n",
+        "# Atlas\n\n",
+    );
+    enter_edit(&mut h);
+    h.type_text(by::test_id("editor-body"), "@Wel");
+    h.query(by::test_id("mention-dialog"));
+    h.dispatch(gloss::Action::MentionPick("10-Inbox/Welcome.md".into()));
+    assert_eq!(h.state().editor_body, "# Atlas\n\n[[Welcome]]");
 }
 
 #[test]

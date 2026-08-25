@@ -100,16 +100,9 @@ filed note via M3's review surface. Diarization is post-v1.
 **Started.** Libra app with Browse (native folder sheet), note list, preview-first
 `<Markdown>` (display-only), soft-wrapped `<Textarea>` behind Edit, save and undo
 through the patch journal. Rail functions: quick open, daily note, link/backlink
-drawer — see [[09-app-functions]]. Still missing `@`-mentions, Cmd+K inline edit,
-and a rules file.
-
-Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
-`<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
-after save/undo.
-
-Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
-`<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
-after save/undo.
+drawer — see [[09-app-functions]]. **Landed:** `@`-mentions, `.gloss/rules.md`
+(read + settings excerpt), keyboard shortcuts (§19.2), catalog chrome. Still
+missing: Cmd+K inline edit (blocked on M3 review surface).
 
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.

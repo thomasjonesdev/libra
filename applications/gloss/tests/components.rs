@@ -3,7 +3,7 @@
 use libra_core::Effect;
 use libra_test::{by, fx};
 
-use crate::common::{enter_edit, harness, ok_stdout, open_and_list, open_first_note};
+use crate::common::{enter_edit, harness, ok_stdout, open_and_list, open_first_note, resolve_rules};
 
 mod common;
 
@@ -22,6 +22,7 @@ fn opening_a_vault_lists_notes() {
     open_and_list(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n");
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("# Atlas\n\nindex"));
+    resolve_rules(&mut h, "");
     assert_eq!(h.state().note_rows.len(), 2);
     assert_eq!(h.state().file_rows.len(), 2);
     assert_eq!(h.state().selected_path, "Atlas.md");
@@ -44,4 +45,5 @@ fn typing_in_the_editor_marks_dirty_and_schedules_save() {
     let apply = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(apply, ok_stdout(""));
     assert_eq!(h.state().status, "Saved");
+    h.query(by::test_id("toast")).assert_text("Saved");
 }

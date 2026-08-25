@@ -32,10 +32,25 @@ pub fn open_and_list(h: &mut Harness<Gloss>, listing: &str) {
     h.resolve_process(list, ok_stdout(listing));
 }
 
+pub fn resolve_rules(h: &mut Harness<Gloss>, body: &str) {
+    if h
+        .pending_effects()
+        .any(|e| matches!(e, libra_core::Effect::Process { .. }))
+    {
+        let rules = h.expect_effect(fx::process_program("gloss"));
+        h.resolve_process(rules, ok_stdout(body));
+    }
+}
+
 pub fn open_first_note(h: &mut Harness<Gloss>, listing: &str, body: &str) {
     open_and_list(h, listing);
+    if listing.trim().is_empty() {
+        resolve_rules(h, "");
+        return;
+    }
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout(body));
+    resolve_rules(h, "");
 }
 
 #[allow(dead_code)]

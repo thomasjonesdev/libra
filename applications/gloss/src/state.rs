@@ -6,8 +6,8 @@ use libra_core::{Effect, ProcessId};
 
 use crate::actions::Action;
 use crate::model::{
-    char_count_label, list_cmd, project_file_rows, project_link_rows, project_palette_rows,
-    project_preview, save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending,
+    char_count_label, list_cmd, project_file_rows, project_link_rows, project_mention_rows,
+    project_palette_rows, project_preview, rules_preview, save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending,
     TabRow, STORE_KEY,
 };
 
@@ -37,6 +37,14 @@ pub struct Gloss {
     pub show_command_palette: bool,
     pub palette_query: String,
     pub palette_rows: Vec<NoteRow>,
+    pub show_mention: bool,
+    pub mention_query: String,
+    pub mention_rows: Vec<NoteRow>,
+    pub has_rules: bool,
+    pub rules_excerpt: String,
+    pub toast_ok: bool,
+    pub toast_err: bool,
+    pub toast_title: String,
     pub show_graph: bool,
     pub graph_loading: bool,
     pub outgoing_rows: Vec<NoteRow>,
@@ -81,6 +89,12 @@ pub struct Gloss {
     pub history_lock: bool,
     #[libra(skip)]
     pub daily_date_override: Option<String>,
+    #[libra(skip)]
+    pub mention_at: usize,
+    #[libra(skip)]
+    pub rules_loaded: bool,
+    #[libra(skip)]
+    pub rules_body: String,
 }
 
 impl Gloss {
@@ -174,6 +188,13 @@ impl Gloss {
         } else {
             Vec::new()
         };
+        self.mention_rows = if self.show_mention {
+            project_mention_rows(&self.note_paths, &self.mention_query, 50)
+        } else {
+            Vec::new()
+        };
+        self.has_rules = !self.rules_body.trim().is_empty();
+        self.rules_excerpt = rules_preview(&self.rules_body, 480);
         if self.show_graph && self.has_selected {
             self.outgoing_rows =
                 project_link_rows(&self.editor_body, &self.note_paths, &self.selected_path);
@@ -233,7 +254,25 @@ impl Gloss {
             self.pending = Pending::List;
             return None;
         }
+        self.rules_loaded = false;
+        self.rules_body.clear();
         self.status = "Listing…".into();
         self.spawn(list_cmd(root), IoKind::List)
+    }
+}
+
+impl Gloss {
+    /// §19.2 shortcut table — validated at startup.
+    pub fn shortcuts() -> Vec<libra_core::Shortcut> {
+        use libra_core::Shortcut;
+        vec![
+            Shortcut::action("cmd+k", "openCommandPalette"),
+            Shortcut::action("cmd+p", "openCommandPalette"),
+            Shortcut::action("cmd+d", "openDailyNote"),
+            Shortcut::action("cmd+n", "newNote"),
+            Shortcut::action("cmd+g", "openGraph"),
+            Shortcut::action("cmd+e", "togglePreview"),
+            Shortcut::action("escape", "dismiss"),
+        ]
     }
 }

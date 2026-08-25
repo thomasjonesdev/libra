@@ -1,6 +1,6 @@
 <Column grow gap={0}>
   <Row grow>
-    <Column width={48} padding={4} gap={4}>
+    <Toolbar vertical testId="app-rail">
       <Tooltip text="New note">
         <Button variant="ghost" onPress={newNote} testId="new-note">+</Button>
       </Tooltip>
@@ -20,16 +20,16 @@
       <Tooltip text="Settings">
         <Button variant="ghost" onPress={openSettings} testId="settings">S</Button>
       </Tooltip>
-    </Column>
+    </Toolbar>
     <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
       <Column grow gap={4} padding={8}>
-        <Row gap={4} cross="center">
+        <Toolbar testId="list-toolbar">
           <Button variant="ghost" onPress={newFolder} testId="new-folder">+/</Button>
           <Button variant="ghost" onPress={toggleSort} testId="sort-notes">A</Button>
           <Button variant="ghost" onPress={collapseAll} testId="collapse-all">-</Button>
-        </Row>
+        </Toolbar>
         <Row gap={6} cross="center">
-          <Input value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
+          <Search value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
           <Button variant="ghost" onPress={clearQuery} testId="clear-search">x</Button>
         </Row>
         <Separator />
@@ -50,21 +50,18 @@
       </Column>
       <Column grow gap={4} padding={8}>
         <if test={has_vault}>
-          <Row gap={4} cross="center">
+          <Toolbar testId="editor-toolbar">
             <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
             <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
-            <Row grow>
+            <Tabs testId="editor-tabs">
               <for each={tab_rows} as="t" key={t.id}>
-                <Row gap={2} cross="center">
-                  <ListItem title={t.title} selected={t.selected} onPress={selectNote(t.id)} />
-                  <Button variant="ghost" onPress={closeTab(t.id)}>x</Button>
-                </Row>
+                <Tab selected={t.selected} onPress={selectNote(t.id)} onClose={closeTab(t.id)}>{t.title}</Tab>
               </for>
-            </Row>
+            </Tabs>
             <Tooltip text="Open next note in a new tab">
               <Button variant="ghost" onPress={newTab} testId="new-tab">+</Button>
             </Tooltip>
-          </Row>
+          </Toolbar>
         </if>
         <if test={has_selected}>
           <Row gap={8} cross="center">
@@ -89,20 +86,46 @@
       </Column>
     </Split>
   </Row>
-  <Separator />
-  <Row gap={8} padding={8} cross="center">
+  <StatusBar testId="status-bar">
     <Text size="sm" muted grow wrap testId="status">{status}</Text>
     <Text size="sm" muted testId="word-count">{word_count}</Text>
     <Text size="sm" muted testId="char-count">{char_count}</Text>
     <Text size="sm" muted testId="save-label">{save_label}</Text>
-  </Row>
+  </StatusBar>
+  <if test={toast_ok}>
+    <Toast tone="success" title={toast_title} onDismiss={dismissToast} testId="toast">{status}</Toast>
+  </if>
+  <if test={toast_err}>
+    <Toast tone="danger" title={toast_title} onDismiss={dismissToast} testId="toast">{status}</Toast>
+  </if>
   <if test={show_settings}>
     <Drawer side="right" onDismiss={closeSettings} testId="settings-drawer">
       <Text bold>Vault</Text>
       <Text testId="settings-vault-name">{vault_name}</Text>
       <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
       <Button variant="secondary" onPress={browseVault} testId="settings-browse">Browse</Button>
+      <Separator />
+      <Text bold>Rules</Text>
+      <Text muted size="sm">`.gloss/rules.md`</Text>
+      <if test={has_rules}>
+        <Text wrap testId="settings-rules">{rules_excerpt}</Text>
+        <else>
+          <Text muted testId="settings-rules-empty">No rules file yet</Text>
+        </else>
+      </if>
     </Drawer>
+  </if>
+  <if test={show_mention}>
+    <Dialog title="Link note" onDismiss={closeMention} testId="mention-dialog">
+      <Search value={mention_query} placeholder="note name…" onChange={mentionQueryChanged} testId="mention-search" />
+      <Scroll testId="mention-scroll" height={240}>
+        <Column gap={2}>
+          <for each={mention_rows} as="n" key={n.id}>
+            <ListItem title={n.title} subtitle={n.snippet} onPress={mentionPick(n.id)} />
+          </for>
+        </Column>
+      </Scroll>
+    </Dialog>
   </if>
   <if test={show_command_palette}>
     <Dialog title="Open note" onDismiss={closeCommandPalette} testId="palette-dialog">

@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 pub const STORE_KEY: &str = "gloss/workspace";
 pub const AUTOSAVE_MS: u64 = 500;
 pub const GLOSS_BIN: &str = "gloss";
+pub const RULES_PATH: &str = ".gloss/rules.md";
+pub const TOAST_MS: u64 = 2_500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum IoKind {
@@ -20,6 +22,7 @@ pub enum IoKind {
     Apply,
     Undo,
     Backlinks,
+    Rules,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -30,6 +33,7 @@ pub enum Pending {
     Cat(String),
     Undo,
     Backlinks,
+    Rules,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]
@@ -317,6 +321,58 @@ pub fn project_link_rows(
     out
 }
 
+pub fn rules_preview(body: &str, max_chars: usize) -> String {
+    let t = body.trim();
+    if t.is_empty() {
+        return String::new();
+    }
+    if t.chars().count() <= max_chars {
+        return t.to_string();
+    }
+    format!("{}…", t.chars().take(max_chars).collect::<String>())
+}
+
+/// Active `@mention` at line start or after whitespace — `(byte_index, query)`.
+pub fn mention_trigger(text: &str) -> Option<(usize, String)> {
+    let bytes = text.as_bytes();
+    let mut last = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'@' {
+            let prev_ok = i == 0
+                || matches!(bytes[i - 1], b' ' | b'\n' | b'\t' | b'(' | b'[');
+            if prev_ok {
+                let rest = &text[i + 1..];
+                let end = rest
+                    .find(|c: char| c.is_whitespace() || c == '\n')
+                    .unwrap_or(rest.len());
+                let query = &rest[..end];
+                if query
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/')
+                {
+                    last = Some((i, query.to_string()));
+                }
+            }
+        }
+        i += 1;
+    }
+    last
+}
+
+/// Replace `@query` at `at` with `[[target_stem]]`.
+pub fn insert_wikilink_mention(text: &str, at: usize, query_len: usize, target_stem: &str) -> String {
+    let mut out = String::new();
+    out.push_str(&text[..at]);
+    out.push_str(&format!("[[{target_stem}]]"));
+    out.push_str(&text[at + 1 + query_len..]);
+    out
+}
+
+pub fn project_mention_rows(note_paths: &[String], query: &str, limit: usize) -> Vec<NoteRow> {
+    project_palette_rows(note_paths, query, limit)
+}
+
 pub fn project_palette_rows(note_paths: &[String], query: &str, limit: usize) -> Vec<NoteRow> {
     let q = query.to_ascii_lowercase();
     note_paths
@@ -422,6 +478,12 @@ pub fn backlinks_cmd(root: &str, path: &str) -> CommandSpec {
 pub fn cat_cmd(root: &str, path: &str) -> CommandSpec {
     CommandSpec::new(GLOSS_BIN)
         .args(["cat", "--root", root, "--path", path])
+        .timeout_ms(15_000)
+}
+
+pub fn rules_cmd(root: &str) -> CommandSpec {
+    CommandSpec::new(GLOSS_BIN)
+        .args(["cat", "--root", root, "--path", RULES_PATH])
         .timeout_ms(15_000)
 }
 

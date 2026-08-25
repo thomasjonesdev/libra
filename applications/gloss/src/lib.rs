@@ -20,6 +20,7 @@ libra::app! {
     state: Gloss,
     view: "../views/gloss.lx",
     init: Gloss::init,
+    shortcuts: Gloss::shortcuts,
     window: (960.0, 640.0),
     title: "Gloss",
 }

@@ -31,7 +31,7 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 
 | Control | Action | Status |
 | --- | --- | --- |
-| Filter | `queryChanged` — live substring filter on paths | **Shipped** |
+| Filter | `<Search>` → `queryChanged` — live substring filter on paths | **Shipped** |
 | Clear `x` | `clearQuery` | **Shipped** |
 | Tree row | `selectFile` — folder expand/collapse or open note | **Shipped** |
 | Right-click row | `openInNewTab` | **Shipped** |
@@ -45,17 +45,36 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 | Control | Action | Status |
 | --- | --- | --- |
 | Back / Fwd | `goBack` / `goForward` — note history | **Shipped** |
-| Tab row | `selectNote` / `closeTab` / `newTab` | **Shipped** (catalog `<Tabs>` handoff pending) |
+| Tab row | `<Tabs>` / `<Tab>` → `selectNote` / `closeTab` / `newTab` | **Shipped** |
 | Preview / Edit | `togglePreview` — `<Markdown>` vs `<Textarea>` | **Shipped** |
 | Preview wikilink click | `followWikilink` — resolve + open | **Shipped** |
+| `@mention` completion | Type `@note` → dialog → `[[wikilink]]` insert | **Shipped** |
 
 ## Modals
 
 | Surface | Action | Status |
 | --- | --- | --- |
 | Quick open | `palettePick` → `selectNote` | **Shipped** |
+| `@mention` | `mentionPick` → silent `[[wikilink]]` | **Shipped** |
 | Links drawer | `graphPick` → `selectNote`; backlinks via `gloss backlinks` | **Shipped** |
-| Settings drawer | vault path display + Browse | **Shipped** |
+| Settings drawer | vault path + rules excerpt (`.gloss/rules.md`) | **Shipped** |
+
+## Keyboard shortcuts (§19.2)
+
+Declared on the app via `Gloss::shortcuts()` — shell dispatches when no focused
+text control owns the chord:
+
+| Chord | Action |
+| --- | --- |
+| ⌘K / ⌘P | `openCommandPalette` |
+| ⌘D | `openDailyNote` |
+| ⌘N | `newNote` |
+| ⌘G | `openGraph` |
+| ⌘E | `togglePreview` |
+| Escape | `dismiss` — close top overlay / toast |
+
+Cmd+K **inline edit** (review-surface patch return) stays blocked on M3; ⌘K/⌘P
+map to quick open for v1.
 
 ## Autosave / I/O
 
@@ -75,12 +94,12 @@ These are the remaining **editor-shell** gaps before “write in Gloss for a wee
 
 | Function | Blocker | Target |
 | --- | --- | --- |
-| `@`-mentions | Inline completion + silent `[[wikilink]]` emit | L3 editor |
 | Cmd+K inline edit | Review surface (L2) + patch return | M3 then wire |
-| `.gloss/rules.md` | Read rules into prompts; no UI yet | L3 + agent |
-| Catalog chrome | `<Tabs>`, `<Search>`, `<Toast>`, `<Toolbar>` | [[catalog-handoff]] |
-| Keyboard shortcuts | Shortcut table on app (⌘K palette, etc.) | Libra §19.2 |
 | Full graph view | M1 index + layout; drawer is backlink list only | M1+ |
+
+**Landed in this pass:** `@`-mentions (dialog + `[[wikilink]]` emit), `.gloss/rules.md`
+read on vault open (excerpt in settings), keyboard shortcuts (§19.2), catalog chrome
+(`<Toolbar>`, `<Search>`, `<Tabs>`, `<Toast>`).
 
 ## Explicitly not M4
 
