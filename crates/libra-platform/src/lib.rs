@@ -1698,6 +1698,11 @@ fn scale_cmds_in_place(cmds: &mut [DrawCmd], s: f32) {
                 *rect = scale_rect(rect, s);
                 *radius *= s;
             }
+            DrawCmd::StrokeRRect { rect, radius, width, .. } => {
+                *rect = scale_rect(rect, s);
+                *radius *= s;
+                *width *= s;
+            }
             DrawCmd::Text { x, y, px, .. } => {
                 *x *= s;
                 *y *= s;

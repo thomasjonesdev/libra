@@ -52,6 +52,11 @@ pub enum DrawCmd {
     Clear(Color),
     Rect { rect: Rect, color: Color },
     RRect { rect: Rect, radius: f32, color: Color },
+    /// Stroked rounded rect (§9.1). Stroke is centered on the rect edge
+    /// (same as [`DrawCmd::Polyline`]); `radius` 0 is a stroked square.
+    /// Catalog chrome insets by `width/2` when the frame should sit
+    /// inside a filled rrect (Dialog, Input, Tooltip).
+    StrokeRRect { rect: Rect, radius: f32, width: f32, color: Color },
     /// Text drawn with its layout box's top-left at (x, y).
     Text { x: f32, y: f32, content: String, px: f32, style: FontStyle, color: Color },
     /// Stroked polyline (charts, sparse data). Points are absolute coordinates.
@@ -87,6 +92,10 @@ impl DrawCmd {
             DrawCmd::PushClip { .. } | DrawCmd::PopClip => None,
             DrawCmd::Rect { rect, .. } => Some(pad(rect)),
             DrawCmd::RRect { rect, .. } => Some(pad(rect)),
+            DrawCmd::StrokeRRect { rect, width, .. } => {
+                let p = width.max(0.0) * 0.5 + AA_PAD;
+                Some(Rect::new(rect.x - p, rect.y - p, rect.w + 2.0 * p, rect.h + 2.0 * p))
+            }
             DrawCmd::Text { x, y, content, px, .. } => {
                 // Width bound: glyphs can't exceed ~1·px advance each.
                 let w = content.chars().count() as f32 * px * 1.25 + px;

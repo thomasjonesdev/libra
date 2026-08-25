@@ -130,20 +130,12 @@ fn paint_input(
     m: &dyn TextMeasurer,
     theme: &Theme,
 ) {
-    const RING: f32 = 1.0;
+    // Boxed field: `secondary` fill + 1px `StrokeRRect` (accent when
+    // focused, `border` otherwise) so the frame follows `radius_md`.
     let radius = theme.radius_md;
-    if focus.is_some() && rect.w > 2.0 * RING && rect.h > 2.0 * RING {
-        // Focus ring: accent underlay + inset fill — follows `radius_md`
-        // (the old four-rect frame was square at the corners).
-        cmds.push(DrawCmd::RRect { rect, radius, color: theme.accent });
-        cmds.push(DrawCmd::RRect {
-            rect: Rect::new(rect.x + RING, rect.y + RING, rect.w - 2.0 * RING, rect.h - 2.0 * RING),
-            radius: (radius - RING).max(0.0),
-            color: theme.secondary,
-        });
-    } else {
-        cmds.push(DrawCmd::RRect { rect, radius, color: theme.secondary });
-    }
+    cmds.push(DrawCmd::RRect { rect, radius, color: theme.secondary });
+    let stroke = if focus.is_some() { theme.accent } else { theme.border };
+    crate::catalog::stroke_rrect_inside(cmds, rect, radius, 1.0, stroke);
     let ty = rect.y + theme.btn_pad_y;
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);
     let left = theme.btn_pad_x + leading;

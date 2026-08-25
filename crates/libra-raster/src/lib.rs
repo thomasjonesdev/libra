@@ -137,6 +137,9 @@ impl Renderer {
             DrawCmd::RRect { rect, radius, color } => {
                 self.fill_rrect(pixmap, *rect, *radius, *color, clip)
             }
+            DrawCmd::StrokeRRect { rect, radius, width, color } => {
+                self.stroke_rrect(pixmap, *rect, *radius, *width, *color, clip)
+            }
             DrawCmd::Text { x, y, content, px, style, color } => {
                 self.draw_text(pixmap, *x, *y, content, *px, *style, *color, clip)
             }
@@ -190,25 +193,31 @@ impl Renderer {
     }
 
     fn fill_rrect(&self, pixmap: &mut Pixmap, r: Rect, radius: f32, color: Color, clip: Option<&Clip>) {
-        let radius = radius.min(r.w / 2.0).min(r.h / 2.0);
-        // Rounded corners via cubic approximation (kappa).
-        const K: f32 = 0.552_284_75;
-        let (x, y, w, h) = (r.x, r.y, r.w, r.h);
-        let (right, bottom) = (x + w, y + h);
-        let c = radius * K;
-        let mut pb = PathBuilder::new();
-        pb.move_to(x + radius, y);
-        pb.line_to(right - radius, y);
-        pb.cubic_to(right - radius + c, y, right, y + radius - c, right, y + radius);
-        pb.line_to(right, bottom - radius);
-        pb.cubic_to(right, bottom - radius + c, right - radius + c, bottom, right - radius, bottom);
-        pb.line_to(x + radius, bottom);
-        pb.cubic_to(x + radius - c, bottom, x, bottom - radius + c, x, bottom - radius);
-        pb.line_to(x, y + radius);
-        pb.cubic_to(x, y + radius - c, x + radius - c, y, x + radius, y);
-        pb.close();
-        if let Some(path) = pb.finish() {
+        if let Some(path) = rrect_path(r, radius) {
             pixmap.fill_path(&path, &Self::paint(color), FillRule::Winding, Transform::identity(), clip.map(|c| &c.mask));
+        }
+    }
+
+    fn stroke_rrect(
+        &self,
+        pixmap: &mut Pixmap,
+        r: Rect,
+        radius: f32,
+        width: f32,
+        color: Color,
+        clip: Option<&Clip>,
+    ) {
+        if width <= 0.0 {
+            return;
+        }
+        if let Some(path) = rrect_path(r, radius) {
+            pixmap.stroke_path(
+                &path,
+                &Self::paint(color),
+                &Stroke { width, ..Stroke::default() },
+                Transform::identity(),
+                clip.map(|c| &c.mask),
+            );
         }
     }
 
@@ -236,6 +245,40 @@ impl Renderer {
             pen += metrics.advance_width;
         }
     }
+}
+
+/// Rounded-rect path shared by fill and stroke so both sit on the same
+/// geometry. `radius` 0 is a closed square (stroked rects, later).
+fn rrect_path(r: Rect, radius: f32) -> Option<tiny_skia::Path> {
+    if r.w <= 0.0 || r.h <= 0.0 {
+        return None;
+    }
+    let radius = radius.min(r.w / 2.0).min(r.h / 2.0).max(0.0);
+    let (x, y, w, h) = (r.x, r.y, r.w, r.h);
+    let (right, bottom) = (x + w, y + h);
+    let mut pb = PathBuilder::new();
+    if radius < 0.5 {
+        pb.move_to(x, y);
+        pb.line_to(right, y);
+        pb.line_to(right, bottom);
+        pb.line_to(x, bottom);
+        pb.close();
+        return pb.finish();
+    }
+    // Cubic approximation (kappa) — same as the historical fill_rrect.
+    const K: f32 = 0.552_284_75;
+    let c = radius * K;
+    pb.move_to(x + radius, y);
+    pb.line_to(right - radius, y);
+    pb.cubic_to(right - radius + c, y, right, y + radius - c, right, y + radius);
+    pb.line_to(right, bottom - radius);
+    pb.cubic_to(right, bottom - radius + c, right - radius + c, bottom, right - radius, bottom);
+    pb.line_to(x + radius, bottom);
+    pb.cubic_to(x + radius - c, bottom, x, bottom - radius + c, x, bottom - radius);
+    pb.line_to(x, y + radius);
+    pb.cubic_to(x, y + radius - c, x + radius - c, y, x + radius, y);
+    pb.close();
+    pb.finish()
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +656,30 @@ mod tests {
     }
 
     #[test]
+    fn stroke_rrect_follows_radius() {
+        let r = Renderer::new();
+        let stroke = Color::rgb(255, 0, 0);
+        let cmds = vec![
+            DrawCmd::Clear(Color::rgb(0, 0, 0)),
+            DrawCmd::StrokeRRect {
+                rect: Rect::new(10.0, 10.0, 60.0, 60.0),
+                radius: 20.0,
+                width: 2.0,
+                color: stroke,
+            },
+        ];
+        let px = r.render(&cmds, 80, 80);
+        let at = |x: u32, y: u32| {
+            let p = px.pixel(x, y).expect("in bounds");
+            (p.red(), p.green(), p.blue())
+        };
+        // Mid-edge sits on the path; the sharp outer corner is outside
+        // the rounded stroke.
+        assert!(at(40, 10).0 > 200, "top edge should carry the stroke");
+        assert!(at(10, 10).0 < 40, "outer corner should stay clear of a 20px radius");
+    }
+
+    #[test]
     fn measure_is_monotonic_and_nonzero() {
         let r = Renderer::new();
         let (w1, h) = r.measure("+", 14.0, FontStyle::Regular);
@@ -631,7 +698,7 @@ mod tests {
         };
         for i in 0..n {
             let (a, b, c, d) = (next(), next(), next(), next());
-            match i % 5 {
+            match i % 6 {
                 0 => cmds.push(DrawCmd::Rect {
                     rect: Rect::new(a * 300.0, b * 160.0, 20.0 + c * 60.0, 10.0 + d * 40.0),
                     color: Color::rgb((a * 255.0) as u8, 100, 200),
@@ -653,6 +720,12 @@ mod tests {
                     points: (0..8)
                         .map(|k| (a * 60.0 + k as f32 * 40.0, 100.0 + (b + c * k as f32).sin() * 60.0))
                         .collect(),
+                    width: 1.0 + d,
+                    color: tokens::ACCENT,
+                }),
+                4 => cmds.push(DrawCmd::StrokeRRect {
+                    rect: Rect::new(a * 280.0, b * 140.0, 24.0 + c * 50.0, 16.0 + d * 30.0),
+                    radius: 8.0,
                     width: 1.0 + d,
                     color: tokens::ACCENT,
                 }),
@@ -687,7 +760,9 @@ mod tests {
                 // Mutate one cmd per step (move a rect / change text / shift polyline).
                 let idx = 1 + ((seed as usize + step * 7) % (cmds.len() - 1));
                 match &mut cmds[idx] {
-                    DrawCmd::Rect { rect, .. } | DrawCmd::RRect { rect, .. } => {
+                    DrawCmd::Rect { rect, .. }
+                    | DrawCmd::RRect { rect, .. }
+                    | DrawCmd::StrokeRRect { rect, .. } => {
                         rect.x = (rect.x + 17.0) % 300.0;
                         rect.y = (rect.y + 9.0) % 160.0;
                     }

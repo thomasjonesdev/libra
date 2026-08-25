@@ -110,11 +110,7 @@ pub(crate) fn paint_item(
         cx.cmds.push(DrawCmd::RRect { rect: dot, radius: cx.theme.radius_full, color: fill });
     } else {
         cx.cmds.push(DrawCmd::RRect { rect: dot, radius: cx.theme.radius_full, color: cx.theme.bg });
-        let c = ring;
-        cx.cmds.push(DrawCmd::Rect { rect: Rect::new(dot.x, dot.y, dot.w, 1.0), color: c });
-        cx.cmds.push(DrawCmd::Rect { rect: Rect::new(dot.x, dot.y + dot.h - 1.0, dot.w, 1.0), color: c });
-        cx.cmds.push(DrawCmd::Rect { rect: Rect::new(dot.x, dot.y, 1.0, dot.h), color: c });
-        cx.cmds.push(DrawCmd::Rect { rect: Rect::new(dot.x + dot.w - 1.0, dot.y, 1.0, dot.h), color: c });
+        crate::catalog::stroke_rrect_inside(cx.cmds, dot, cx.theme.radius_full, 1.0, ring);
     }
     let tx = dot.x + DOT_D + cx.theme.space(2);
     cx.cmds.push(DrawCmd::Text {

@@ -127,12 +127,8 @@ fn paint_label(cx: &mut PaintCx, rect: Rect, label: &str, px: f32) {
 }
 
 /// Hairline outline for the unchecked box/ring (four thin rects — the
-/// same no-stroke-rrect workaround the focus ring uses).
 fn outline(cx: &mut PaintCx, r: Rect, color: Color) {
-    cx.cmds.push(DrawCmd::Rect { rect: Rect::new(r.x, r.y, r.w, 1.0), color });
-    cx.cmds.push(DrawCmd::Rect { rect: Rect::new(r.x, r.y + r.h - 1.0, r.w, 1.0), color });
-    cx.cmds.push(DrawCmd::Rect { rect: Rect::new(r.x, r.y, 1.0, r.h), color });
-    cx.cmds.push(DrawCmd::Rect { rect: Rect::new(r.x + r.w - 1.0, r.y, 1.0, r.h), color });
+    crate::catalog::stroke_rrect_inside(cx.cmds, r, cx.theme.radius_sm, 1.0, color);
 }
 
 pub(crate) fn paint_checkbox(cx: &mut PaintCx, rect: Rect, checked: bool, label: &str, px: f32) {

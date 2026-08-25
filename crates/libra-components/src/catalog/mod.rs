@@ -50,3 +50,26 @@ pub(crate) mod stepper;
 pub(crate) mod text;
 pub(crate) mod timeline;
 pub(crate) mod textarea;
+
+use libra_draw::{Color, DrawCmd, Rect};
+
+/// 1px (or `width`) frame inset so a centered [`DrawCmd::StrokeRRect`]
+/// sits on the inside of `rect` and follows `radius`.
+pub(crate) fn stroke_rrect_inside(
+    cmds: &mut Vec<DrawCmd>,
+    rect: Rect,
+    radius: f32,
+    width: f32,
+    color: Color,
+) {
+    if width <= 0.0 || rect.w <= width || rect.h <= width {
+        return;
+    }
+    let hw = width * 0.5;
+    cmds.push(DrawCmd::StrokeRRect {
+        rect: Rect::new(rect.x + hw, rect.y + hw, rect.w - width, rect.h - width),
+        radius: (radius - hw).max(0.0),
+        width,
+        color,
+    });
+}
