@@ -183,6 +183,7 @@ impl<M: Send + 'static> Effects<M> {
             // Shell-handled likewise (arboard is a UI-thread concern);
             // headless reach-through is a no-op.
             Effect::ClipboardSet { .. } => {}
+            Effect::PickFolder { .. } => {}
             Effect::Process { id, command, on_done } => {
                 let process_id = id.unwrap_or_else(|| self.alloc_process_id());
                 let sink = Arc::clone(&self.sink);

@@ -669,6 +669,7 @@ where
         let effects = self.app.update(msg);
         // SetTheme is presentation state (§11): the shell applies it;
         // ClipboardSet is a UI-thread OS call (arboard) acked inline;
+        // PickFolder is the same for rfd's folder sheet;
         // everything else goes to the effects runtime.
         let mut rest = Vec::with_capacity(effects.len());
         let mut acks: Vec<A::Msg> = Vec::new();
@@ -688,6 +689,17 @@ where
                 if let Some(ctor) = on_done {
                     acks.push(ctor(result));
                 }
+                continue;
+            }
+            if let Effect::PickFolder { on_done } = &effect {
+                let result = match rfd::FileDialog::new()
+                    .set_title("Open vault")
+                    .pick_folder()
+                {
+                    Some(path) => libra_core::FolderPick::Picked(path.to_string_lossy().into_owned()),
+                    None => libra_core::FolderPick::Cancelled,
+                };
+                acks.push(on_done(result));
                 continue;
             }
             rest.push(effect);

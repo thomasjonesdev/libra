@@ -1,10 +1,38 @@
 //! Integration tests: intercepted Process effects for list/cat/apply.
 
+use libra_core::FolderPick;
 use libra_test::{by, fx};
 
 use crate::common::{harness, ok_stdout, open_first_note};
 
 mod common;
+
+#[test]
+fn browse_picks_a_folder_and_lists() {
+    let mut h = harness();
+    h.click(by::test_id("browse-vault"));
+    let pick = h.expect_effect(fx::pick_folder());
+    h.resolve_folder_pick(pick, FolderPick::Picked("/tmp/gloss-fixture".into()));
+    let kv = h.expect_effect(fx::kv_set(gloss::STORE_KEY));
+    h.resolve_kv_set(kv, libra_core::KvResult::Ok);
+    let list = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(list, ok_stdout("Atlas.md\n"));
+    assert_eq!(h.state().vault_path, "/tmp/gloss-fixture");
+    assert_eq!(h.state().opened_root, "/tmp/gloss-fixture");
+    assert_eq!(h.state().note_rows.len(), 1);
+}
+
+#[test]
+fn browse_cancel_leaves_the_path_empty() {
+    let mut h = harness();
+    h.click(by::test_id("browse-vault"));
+    let pick = h.expect_effect(fx::pick_folder());
+    h.resolve_folder_pick(pick, FolderPick::Cancelled);
+    assert!(h.state().vault_path.is_empty());
+    assert!(!h
+        .pending_effects()
+        .any(|e| matches!(e, libra_core::Effect::Process { .. })));
+}
 
 #[test]
 fn save_apply_uses_the_gloss_cli() {

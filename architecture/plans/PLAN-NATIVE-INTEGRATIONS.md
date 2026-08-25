@@ -60,7 +60,7 @@ Not always Effects — sometimes layout/input plumbing:
 | Modal presentation | `Modal` | In-tree overlay (deterministic) **vs** OS dialog (effect) — both allowed; document when to use which |
 | Long-press | `Pressable.longPress` | Pointer + [[19.1-touch|§19.1]] |
 | Menus / tray / hotkeys | — | §19 table (`muda`, `tray-icon`, `global-hotkey`) — separate small plans when needed. Tray + window policy + launch-at-login: **[[PLAN-RESIDENCY]]**; global hotkeys still unclaimed |
-| File pickers | — | Fold into `Dialog` / dedicated `Effect::PickFile` when an app needs it |
+| File pickers | — | **`Effect::PickFolder` shipped** (2026-08-25, Gloss Browse). `PickFile` still folds into a later Dialog/file variant |
 
 ## Stages
 

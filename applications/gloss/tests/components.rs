@@ -12,6 +12,7 @@ fn empty_vault_prompt_is_visible() {
     let h = harness();
     h.query(by::test_id("empty"))
         .assert_text("Open a vault folder to begin");
+    h.query(by::test_id("browse-vault")).assert_text("Browse");
 }
 
 #[test]

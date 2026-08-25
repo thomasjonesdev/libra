@@ -21,6 +21,7 @@ serde.workspace = true
 serde_json.workspace = true
 directories.workspace = true
 arboard.workspace = true
+rfd.workspace = true
 accesskit.workspace = true
 accesskit_winit.workspace = true
 png.workspace = true

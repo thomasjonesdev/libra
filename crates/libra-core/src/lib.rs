@@ -266,6 +266,9 @@ pub enum Effect<M> {
     /// handled (arboard), acked with a [`ClipboardResult`] when a ctor
     /// is given — "copy note" flows can report a typed outcome.
     ClipboardSet { text: String, on_done: Option<ActionCtor<ClipboardResult, M>> },
+    /// Native folder sheet (PLAN-NATIVE-INTEGRATIONS / §19 `rfd`).
+    /// Shell-handled on the UI thread; harness intercepts.
+    PickFolder { on_done: ActionCtor<FolderPick, M> },
 
     // Processes (§12.6): worker-pool subprocess, run-to-completion.
     Process { id: Option<ProcessId>, command: CommandSpec, on_done: ActionCtor<ProcessResult, M> },
@@ -277,6 +280,13 @@ pub enum Effect<M> {
 pub enum ClipboardResult {
     Ok,
     Err(String),
+}
+
+/// Outcome of [`Effect::PickFolder`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FolderPick {
+    Picked(String),
+    Cancelled,
 }
 
 /// Equality over the effect's *data*. Ctor fields compare by presence
@@ -310,6 +320,7 @@ impl<M: PartialEq> PartialEq for Effect<M> {
                 Effect::ClipboardSet { text: ta, on_done: da },
                 Effect::ClipboardSet { text: tb, on_done: db },
             ) => ta == tb && da.is_some() == db.is_some(),
+            (Effect::PickFolder { .. }, Effect::PickFolder { .. }) => true,
             (
                 Effect::Process { id: ia, command: ca, .. },
                 Effect::Process { id: ib, command: cb, .. },
@@ -349,6 +360,9 @@ impl<M> Effect<M> {
         on_done: ActionCtor<ClipboardResult, M>,
     ) -> Self {
         Effect::ClipboardSet { text: text.into(), on_done: Some(on_done) }
+    }
+    pub fn pick_folder(on_done: ActionCtor<FolderPick, M>) -> Self {
+        Effect::PickFolder { on_done }
     }
     pub fn process(command: CommandSpec, on_done: ActionCtor<ProcessResult, M>) -> Self {
         Effect::Process { id: None, command, on_done }

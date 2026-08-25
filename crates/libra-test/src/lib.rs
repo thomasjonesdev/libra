@@ -97,6 +97,7 @@ pub mod fx {
         Random,
         SetTheme,
         ClipboardSet,
+        PickFolder,
         Process,
         /// Match when `CommandSpec.program` equals this string.
         ProcessProgram(Option<String>),
@@ -135,6 +136,9 @@ pub mod fx {
     pub fn clipboard_set() -> Matcher {
         Matcher::ClipboardSet
     }
+    pub fn pick_folder() -> Matcher {
+        Matcher::PickFolder
+    }
     pub fn process() -> Matcher {
         Matcher::Process
     }
@@ -162,6 +166,7 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::Random, Effect::Random { .. }) => true,
         (Matcher::SetTheme, Effect::SetTheme { .. }) => true,
         (Matcher::ClipboardSet, Effect::ClipboardSet { .. }) => true,
+        (Matcher::PickFolder, Effect::PickFolder { .. }) => true,
         (Matcher::Process, Effect::Process { .. }) => true,
         (Matcher::ProcessProgram(want), Effect::Process { command, .. }) => {
             want.as_deref().map_or(true, |w| w == &command.program)
@@ -590,6 +595,13 @@ impl<A: App> Harness<A> {
             Effect::ClipboardSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
             Effect::ClipboardSet { on_done: None, .. } => {}
             other => panic!("resolve_clipboard: not a ClipboardSet effect: {other:?}"),
+        }
+    }
+
+    pub fn resolve_folder_pick(&mut self, effect: Effect<A::Msg>, result: libra_core::FolderPick) {
+        match effect {
+            Effect::PickFolder { on_done } => self.dispatch(on_done(result)),
+            other => panic!("resolve_folder_pick: not a PickFolder effect: {other:?}"),
         }
     }
 

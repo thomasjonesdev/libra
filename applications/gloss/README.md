@@ -11,8 +11,9 @@ Docs live in `docs/`. Architecture note: `architecture/sections/27.2-gloss.md`.
 cargo run -p gloss
 ```
 
-Paste a vault path and click Open. New notes land in `10-Inbox/`. Edits
-autosave through `gloss apply`. Undo reverts the last journaled run.
+Click Browse to pick a vault folder, or paste a path and click Open.
+New notes land in `10-Inbox/`. Edits autosave through `gloss apply`.
+Undo reverts the last journaled run.
 
 CLI, same binary or `gloss-cli`:
 

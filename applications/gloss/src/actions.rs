@@ -1,6 +1,6 @@
 //! Actions for the Gloss shell.
 
-use libra_core::{Effect, ProcessResult, ProcessStatus};
+use libra_core::{Effect, FolderPick, ProcessResult, ProcessStatus};
 
 use crate::model::{
     apply_create_cmd, apply_replace_cmd, cat_cmd, parse_list, undo_cmd, IoKind, Pending,
@@ -33,6 +33,20 @@ impl Gloss {
         self.vault_path = text;
         if self.vault_path.trim() != self.opened_root {
             self.can_undo = false;
+        }
+    }
+
+    pub fn browse_vault(&mut self) -> Effect<Action> {
+        Effect::pick_folder(Action::FolderPicked)
+    }
+
+    pub fn folder_picked(&mut self, pick: FolderPick) -> Vec<Effect<Action>> {
+        match pick {
+            FolderPick::Cancelled => Vec::new(),
+            FolderPick::Picked(path) => {
+                self.vault_path = path;
+                self.open_vault()
+            }
         }
     }
 

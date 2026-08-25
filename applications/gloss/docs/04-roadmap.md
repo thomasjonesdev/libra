@@ -97,8 +97,9 @@ filed note via M3's review surface. Diarization is post-v1.
 
 ## M4 — Editor shell
 
-**Started.** Libra app with vault path, note list, `<Textarea>`, save and undo
-through the patch journal. Still missing `@`-mentions, Cmd+K, and a rules file.
+**Started.** Libra app with Browse (native folder sheet), note list, `<Textarea>`,
+save and undo through the patch journal. Still missing `@`-mentions, Cmd+K, and
+a rules file.
 
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.
