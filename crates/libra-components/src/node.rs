@@ -120,6 +120,23 @@ pub enum ViewNode {
         on_remove_arg: Option<String>,
         test_id: Option<String>,
     },
+    /// `<Tabs testId?="…">` (§7.1, PLAN-CATALOG wave 7): a tab strip.
+    /// Children are `<Tab>` (and `<for>`/`<if>` that resolve to them).
+    /// Gloss note tabs are the first consumer.
+    Tabs { children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<Tab selected? onPress? onClose?>Label</Tab>`: one tab. Child
+    /// text is the label. `selected` is the `<if>` Display-"true" bool;
+    /// `onPress` activates; optional `onClose` is a trailing ×. Both
+    /// handlers accept the item-scoped `action(loopVar.field)` form.
+    Tab {
+        label: String,
+        selected: bool,
+        on_press: Option<String>,
+        on_press_arg: Option<String>,
+        on_close: Option<String>,
+        on_close_arg: Option<String>,
+        test_id: Option<String>,
+    },
     /// `<Heading level={2}>Title</Heading>` (§7.1, PLAN-CATALOG wave 2): a
     /// semantic heading. `level` 1–4 maps to the type ramp (xl/lg/md/sm),
     /// always bold; child text is the content. Renders as a bold `Text` item.
@@ -432,6 +449,14 @@ pub enum ItemKind {
     ChipLabel { label: String, px: f32, selected: bool },
     /// Chip trailing dismiss glyph.
     ChipRemove { selected: bool },
+    /// `<Tabs>` strip — paints a bottom hairline.
+    TabsBox,
+    /// `<Tab>` chrome behind the label / optional ×.
+    TabBox { selected: bool },
+    /// Tab label text; `selected` picks body vs muted tokens.
+    TabLabel { label: String, px: f32, selected: bool },
+    /// Tab trailing close glyph.
+    TabClose { selected: bool },
     /// Determinate progress bar — `value` 0..=1 fills the track. (Heading has
     /// no ItemKind: it builds to a bold `Text`.)
     Progress { value: f32 },

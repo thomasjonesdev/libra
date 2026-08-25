@@ -56,6 +56,7 @@ pub struct Gallery {
     pub is_pagination: bool,
     pub is_stepper: bool,
     pub is_timeline: bool,
+    pub is_tabs: bool,
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
@@ -93,6 +94,12 @@ pub struct Gallery {
     /// Chip playground (model-owned selected + dismiss).
     pub chip_on: bool,
     pub chip_dismissed: bool,
+    /// Tabs playground (model-owned selected + closable scratch).
+    pub tab_pick: String,
+    pub tab_editor: bool,
+    pub tab_preview: bool,
+    pub tab_body: String,
+    pub tab_dismissed: bool,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -138,6 +145,7 @@ impl Gallery {
             is_pagination: false,
             is_stepper: false,
             is_timeline: false,
+            is_tabs: false,
             is_split: false,
             is_chart: false,
             is_sparkline: false,
@@ -160,6 +168,11 @@ impl Gallery {
             search_submitted: false,
             chip_on: true,
             chip_dismissed: false,
+            tab_pick: "editor".into(),
+            tab_editor: true,
+            tab_preview: false,
+            tab_body: String::new(),
+            tab_dismissed: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

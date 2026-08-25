@@ -38,6 +38,18 @@ impl Gallery {
         self.chip_dismissed = true;
     }
 
+    pub fn pick_tab_editor(&mut self) {
+        self.tab_pick = "editor".into();
+    }
+
+    pub fn pick_tab_preview(&mut self) {
+        self.tab_pick = "preview".into();
+    }
+
+    pub fn dismiss_tab(&mut self) {
+        self.tab_dismissed = true;
+    }
+
     pub fn body_changed(&mut self, s: String) {
         self.ctl_body = s;
     }
@@ -167,6 +179,14 @@ impl Gallery {
         self.is_pagination = s == "pagination";
         self.is_stepper = s == "stepper";
         self.is_timeline = s == "timeline";
+        self.is_tabs = s == "tabs";
+        self.tab_editor = self.tab_pick == "editor";
+        self.tab_preview = self.tab_pick == "preview";
+        self.tab_body = if self.tab_editor {
+            "Editing Atlas.md".into()
+        } else {
+            "Previewing Atlas.md".into()
+        };
         self.radio_a = self.radio_pick == "a";
         self.radio_b = self.radio_pick == "b";
         self.has_text_control = self.is_text || self.is_heading || self.is_badge || self.is_button;

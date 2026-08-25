@@ -63,6 +63,9 @@
       <if test={is_chip}>
         <ChipDemo chip_on={chip_on} toggleChip={toggleChip} dismissChip={dismissChip} noop={noop} />
       </if>
+      <if test={is_tabs}>
+        <TabsDemo tab_editor={tab_editor} tab_preview={tab_preview} tab_body={tab_body} pickTabEditor={pickTabEditor} pickTabPreview={pickTabPreview} dismissTab={dismissTab} />
+      </if>
       <if test={is_textarea}>
         <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>

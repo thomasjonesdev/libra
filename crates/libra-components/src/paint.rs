@@ -117,6 +117,14 @@ impl LaidTree {
                     ItemKind::ChipRemove { selected } => {
                         catalog::chip::paint_remove(&mut cx, item, *selected)
                     }
+                    ItemKind::TabsBox => catalog::tabs::paint_tabs(&mut cx, item),
+                    ItemKind::TabBox { selected } => catalog::tabs::paint_box(&mut cx, item, *selected),
+                    ItemKind::TabLabel { label, px, selected } => {
+                        catalog::tabs::paint_label(&mut cx, item, label, *px, *selected)
+                    }
+                    ItemKind::TabClose { selected } => {
+                        catalog::tabs::paint_close(&mut cx, item, *selected)
+                    }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
                     ItemKind::MenuBarrier => {}

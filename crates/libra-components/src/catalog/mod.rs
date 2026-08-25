@@ -36,6 +36,7 @@ pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod source;
 pub(crate) mod surface;
+pub(crate) mod tabs;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 pub(crate) mod split;

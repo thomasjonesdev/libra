@@ -68,6 +68,25 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             on_remove_arg,
             test_id,
         ),
+        ViewNode::Tabs { children, test_id } => catalog::tabs::build_tabs(cx, children, test_id),
+        ViewNode::Tab {
+            label,
+            selected,
+            on_press,
+            on_press_arg,
+            on_close,
+            on_close_arg,
+            test_id,
+        } => catalog::tabs::build_tab(
+            cx,
+            label,
+            *selected,
+            on_press,
+            on_press_arg,
+            on_close,
+            on_close_arg,
+            test_id,
+        ),
         ViewNode::Heading { content, level, test_id } => {
             catalog::heading::build(cx, content, *level, test_id)
         }

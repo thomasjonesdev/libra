@@ -241,6 +241,30 @@ fn snapshot_workbench_chip_light() {
     select("libra-light", "chip").assert_snapshot("workbench_chip_light");
 }
 
+#[test]
+fn snapshot_workbench_tabs_dark() {
+    select("libra-dark", "tabs").assert_snapshot("workbench_tabs_dark");
+}
+
+#[test]
+fn snapshot_workbench_tabs_light() {
+    select("libra-light", "tabs").assert_snapshot("workbench_tabs_light");
+}
+
+/// Select switches the model; the trailing × fires onClose.
+#[test]
+fn tabs_select_and_close() {
+    let mut h = select("libra-dark", "tabs");
+    assert_eq!(h.cursor_over(by::test_id("pg-tab-editor")), libra_components::Cursor::Pointer);
+    assert!(h.state().tab_editor);
+    h.click(by::test_id("pg-tab-preview"));
+    assert!(h.state().tab_preview, "press dispatched; the app flipped selected");
+    assert_eq!(h.state().tab_body, "Previewing Atlas.md");
+    assert!(!h.state().tab_dismissed);
+    h.click(by::test_id("pg-tab-scratch-close"));
+    assert!(h.state().tab_dismissed, "× dispatched onClose");
+}
+
 /// Select toggles the model; the trailing × fires onRemove.
 #[test]
 fn chip_selects_and_dismisses() {

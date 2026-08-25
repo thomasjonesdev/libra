@@ -280,6 +280,8 @@ pub fn is_catalog_element(name: &str) -> bool {
             | "Input"
             | "Search"
             | "Chip"
+            | "Tabs"
+            | "Tab"
             | "Textarea"
             | "ListItem"
             | "Spacer"

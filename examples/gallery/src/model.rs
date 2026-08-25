@@ -49,6 +49,7 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("pagination", "Pagination"),
     ("stepper", "Stepper"),
     ("timeline", "Timeline"),
+    ("tabs", "Tabs"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),

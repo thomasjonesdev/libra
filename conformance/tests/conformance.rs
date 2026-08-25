@@ -746,6 +746,7 @@ fn nav_produces_identical_trees() {
 
 const SEARCH: &str = include_str!("../fixtures/search.lx");
 const CHIP: &str = include_str!("../fixtures/chip.lx");
+const TABS: &str = include_str!("../fixtures/tabs.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -832,6 +833,58 @@ fn chip_produces_identical_trees() {
     };
     assert_eq!(
         (*selected, on_press_arg.as_deref(), on_remove_arg.as_deref(), label.as_str()),
+        (true, Some("1"), Some("1"), "Alpha")
+    );
+}
+
+/// PLAN-CATALOG wave 7 — `<Tabs>` / `<Tab>`: selected bool, optional
+/// onPress / onClose (item-scoped), `<for>` children. Both engines
+/// must agree. Gloss note tabs use this exact shape.
+#[test]
+fn tabs_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TABS, &state, &fixture_registry());
+        let compiled = generated::build_tabs(&state);
+        assert_eq!(interp, compiled, "engine drift on tabs fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TABS, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Tabs { children: tabs, test_id } = &children[0] else { panic!("{:?}", children[0]) };
+    assert_eq!(test_id.as_deref(), Some("strip"));
+    assert!(
+        matches!(
+            &tabs[0],
+            ViewNode::Tab {
+                label,
+                selected: true,
+                on_press: Some(p),
+                on_close: None,
+                test_id: Some(id),
+                ..
+            } if label == "Ada" && p == "reset" && id == "bound-tab"
+        ),
+        "{:?}",
+        tabs[0]
+    );
+    assert!(
+        matches!(&tabs[1], ViewNode::Tab { selected: true, label, .. } if label == "On"),
+        "{:?}",
+        tabs[1]
+    );
+    assert!(
+        matches!(&tabs[3], ViewNode::Tab { on_close: Some(c), test_id: Some(id), .. } if c == "reset" && id == "scratch"),
+        "{:?}",
+        tabs[3]
+    );
+    let ViewNode::Tab { selected, on_press_arg, on_close_arg, label, .. } = &tabs[4] else {
+        panic!("{:?}", tabs[4])
+    };
+    assert_eq!(
+        (*selected, on_press_arg.as_deref(), on_close_arg.as_deref(), label.as_str()),
         (true, Some("1"), Some("1"), "Alpha")
     );
 }
