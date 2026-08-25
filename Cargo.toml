@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "examples/todos", "applications/aws-login", "cli/libra", "conformance"]
+members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "examples/todos", "applications/aws-login", "applications/gloss", "applications/gloss/crates/gloss-core", "applications/gloss/crates/gloss-cli", "cli/libra", "conformance"]
 
 [workspace.package]
 version = "0.0.1"
@@ -53,6 +53,12 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 sha1 = "0.10"
+blake3 = "1"
+unicode-normalization = "0.1"
+proptest = "1"
+gloss-core = { path = "applications/gloss/crates/gloss-core" }
+gloss-cli = { path = "applications/gloss/crates/gloss-cli" }
+gloss = { path = "applications/gloss" }
 
 # Paint path stays fast in plain `cargo run` / `libra dev` (§22): pixel
 # loops and the pinned raster stack need LLVM opts even when the rest of

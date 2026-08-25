@@ -161,6 +161,7 @@ See [[04-system-overview|§4 System Overview]] and [[04.1-layer-diagram|§4.1 La
 ### [[27-first-party-applications|27. First-Party Applications]]
 
 - [[27.1-aws-sso-session-manager|27.1 AWS SSO Session Manager]]
+- [[27.2-gloss|27.2 Gloss]]
 
 ### [[appendix-a-determinism-checklist|Appendix A — The determinism contract, as a checklist]]
 

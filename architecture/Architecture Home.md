@@ -134,6 +134,7 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
 - [[26-open-questions|26. Open Questions]]
 - [[27-first-party-applications|27. First-Party Applications]]
   - [[27.1-aws-sso-session-manager|27.1 AWS SSO Session Manager]]
+  - [[27.2-gloss|27.2 Gloss]]
 
 ## Appendices
 

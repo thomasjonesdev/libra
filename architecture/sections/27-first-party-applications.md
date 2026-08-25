@@ -16,6 +16,7 @@ type: architecture
 ## In this vault
 
 - [[27.1-aws-sso-session-manager]]
+- [[27.2-gloss]]
 
 ## In code
 

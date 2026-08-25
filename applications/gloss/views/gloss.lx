@@ -1,0 +1,39 @@
+<Column gap={0}>
+  <Row gap={8} padding={8} cross="center">
+    <Input value={vault_path} placeholder="vault path…" onChange={vaultPathChanged} testId="vault-path" />
+    <Button variant="primary" onPress={openVault} testId="open-vault">Open</Button>
+    <Button variant="secondary" onPress={newNote} testId="new-note">New</Button>
+    <Text size="sm" muted testId="status">{status}</Text>
+  </Row>
+  <Separator />
+  <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
+    <Column gap={4} padding={12}>
+      <Row gap={6} cross="center">
+        <Input value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
+        <Button variant="ghost" onPress={clearQuery} testId="clear-search">×</Button>
+      </Row>
+      <Separator />
+      <if test={note_rows.isEmpty}>
+        <Text muted testId="empty">{empty_message}</Text>
+        <else>
+          <Scroll testId="note-scroll">
+            <Column gap={4}>
+              <for each={note_rows} as="n" key={n.id}>
+                <ListItem title={n.title} subtitle={n.snippet} selected={n.selected} onPress={selectNote(n.id)} />
+              </for>
+            </Column>
+          </Scroll>
+        </else>
+      </if>
+    </Column>
+    <Column gap={8} padding={12}>
+      <if test={has_selected}>
+        <Text bold testId="note-title">{selected_title}</Text>
+        <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
+        <else>
+          <Text muted testId="editor-empty">Select a note</Text>
+        </else>
+      </if>
+    </Column>
+  </Split>
+</Column>

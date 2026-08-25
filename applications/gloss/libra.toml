@@ -1,0 +1,4 @@
+[app]
+name = "Gloss"
+bundle_id = "dev.libra.gloss"
+app_user_model_id = "Libra.Gloss"

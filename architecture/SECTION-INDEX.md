@@ -98,6 +98,7 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 26 | `sections/26-open-questions.md` |
 | 27 | `sections/27-first-party-applications.md` |
 | 27.1 | `sections/27.1-aws-sso-session-manager.md` |
+| 27.2 | `sections/27.2-gloss.md` |
 | Appendix A | `appendices/appendix-a-determinism-checklist.md` |
 | Appendix B | `appendices/appendix-b-glossary.md` |
 | Appendix C | `appendices/appendix-c-react-borrowings.md` |
