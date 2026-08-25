@@ -734,6 +734,7 @@ fn gen_node(
         "Card" | "Panel" => {
             let (mut gap, mut padding, mut grow) = (0.0f32, 0.0f32, 0.0f32);
             let mut width: Option<f32> = None;
+            let mut raised = false;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => gap = *v,
@@ -741,14 +742,20 @@ fn gen_node(
                     ("grow", AttrValue::Flag) => grow = 1.0,
                     ("grow", AttrValue::Num(v)) => grow = *v,
                     ("width", AttrValue::Num(v)) => width = Some(*v),
+                    ("raised", AttrValue::Flag) if name == "Panel" => raised = true,
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
             let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            let raised_field = if name == "Panel" {
+                format!(",\n{i}    raised: {raised}", raised = raised)
+            } else {
+                String::new()
+            };
             Ok(format!(
                 "{i}::libra_components::ViewNode::{name} {{ {at}\n\
                  {i}    style: ::libra_components::BoxStyle {{ gap: {gap}, padding: {padding}, grow: {grow}, cross_center: false, main_center: false, width: {width} }},\n\
-                 {i}    children: {kids},\n\
+                 {i}    children: {kids}{raised_field}\n\
                  {i}}}",
                 at = at(cfg, *span),
                 gap = f32_lit(gap),

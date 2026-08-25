@@ -1113,6 +1113,7 @@ fn element(
         // with token surface defaults.
         "Card" | "Panel" => {
             let mut style = BoxStyle::default();
+            let mut raised = false;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => style.gap = *v,
@@ -1120,6 +1121,7 @@ fn element(
                     ("grow", AttrValue::Flag) => style.grow = 1.0,
                     ("grow", AttrValue::Num(v)) => style.grow = *v,
                     ("width", AttrValue::Num(v)) => style.width = Some(*v),
+                    ("raised", AttrValue::Flag) if name == "Panel" => raised = true,
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
@@ -1127,7 +1129,7 @@ fn element(
             Ok(if name == "Card" {
                 ViewNode::Card { style, children: kids }
             } else {
-                ViewNode::Panel { style, children: kids }
+                ViewNode::Panel { style, children: kids, raised }
             })
         }
 

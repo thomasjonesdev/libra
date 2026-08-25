@@ -79,6 +79,7 @@ pub(crate) fn paint(cx: &mut PaintCx, item: &Item, vertical: bool) {
     let r = item.rect;
     let c = cx.theme.hairline;
     if vertical {
+        cx.cmds.push(DrawCmd::Rect { rect: r, color: cx.theme.surface_raised });
         let x = (r.x + r.w - 1.0).floor();
         cx.cmds.push(DrawCmd::Rect {
             rect: Rect::new(x, r.y.floor(), 1.0, r.h.max(1.0)),

@@ -150,8 +150,8 @@ impl LaidTree {
                         catalog::toast::paint_copy(&mut cx, item, title, body, *px_md, *px_sm)
                     }
                     ItemKind::ToastClose => catalog::toast::paint_close(&mut cx, item),
-                    ItemKind::Surface { raised } => {
-                        catalog::surface::paint_surface(&mut cx, item.rect, *raised)
+                    ItemKind::Surface { raised, flat } => {
+                        catalog::surface::paint_surface(&mut cx, item.rect, *raised, *flat)
                     }
                     ItemKind::Skeleton => catalog::surface::paint_skeleton(&mut cx, item.rect),
                     ItemKind::Avatar { initials, px } => {

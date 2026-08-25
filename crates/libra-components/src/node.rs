@@ -345,8 +345,9 @@ pub enum ViewNode {
     /// container — elevated `surface_raised` fill. Ordinary flex
     /// column inside (gap/padding attrs like Column).
     Card { style: BoxStyle, children: Vec<ViewNode> },
-    /// `<Panel>…</Panel>` (§7.1): the plain surface container.
-    Panel { style: BoxStyle, children: Vec<ViewNode> },
+    /// `<Panel raised?>` (§7.1): plain surface, or flat `surface_raised`
+    /// chrome when `raised` (sidebar / rail panes — no card radius).
+    Panel { style: BoxStyle, children: Vec<ViewNode>, raised: bool },
     /// `<Skeleton width? height? />` (§7.1): a static loading
     /// placeholder block (deterministic — shimmer waits on §9.6).
     /// No width = stretch.
@@ -626,9 +627,9 @@ pub enum ItemKind {
     ToastCopy { title: String, body: String, px_md: f32, px_sm: f32 },
     /// Toast trailing dismiss glyph.
     ToastClose,
-    /// `<Card>`/`<Panel>` — a surface container behind its children
-    /// (`raised` adds the elevated fill; hairline framing is Dialog-only).
-    Surface { raised: bool },
+    /// `<Card>`/`<Panel>` — a surface container behind its children.
+    /// `flat` = edge-to-edge raised chrome (Panel); Card uses rounded fill.
+    Surface { raised: bool, flat: bool },
     /// `<Skeleton>` — static placeholder block.
     Skeleton,
     /// `<Avatar>` — initials in a circle.

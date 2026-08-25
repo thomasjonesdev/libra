@@ -15,6 +15,7 @@ pub(crate) fn build_surface(
     style: &BoxStyle,
     children: &[ViewNode],
     raised: bool,
+    flat: bool,
 ) -> Result<NodeId, taffy::TaffyError> {
     let mut kids = Vec::new();
     for c in children {
@@ -36,7 +37,7 @@ pub(crate) fn build_surface(
     let id = cx.tree.new_with_children(box_style(&st, FlexDirection::Column), &kids)?;
     cx.meta.push((
         id,
-        ItemKind::Surface { raised },
+        ItemKind::Surface { raised, flat },
         Semantics { role: Role::Container, text: String::new(), test_id: None },
         None,
     ));
@@ -143,16 +144,18 @@ pub(crate) fn build_avatar(
     Ok(id)
 }
 
-pub(crate) fn paint_surface(cx: &mut PaintCx, rect: Rect, raised: bool) {
-    if raised {
+pub(crate) fn paint_surface(cx: &mut PaintCx, rect: Rect, raised: bool, flat: bool) {
+    if !raised {
+        cx.cmds.push(DrawCmd::RRect { rect, radius: cx.theme.radius_md, color: cx.theme.surface });
+    } else if flat {
+        cx.cmds.push(DrawCmd::Rect { rect, color: cx.theme.surface_raised });
+    } else {
         // Card: elevated fill only — hairline framing is Dialog chrome.
         cx.cmds.push(DrawCmd::RRect {
             rect,
             radius: cx.theme.radius_lg,
             color: cx.theme.surface_raised,
         });
-    } else {
-        cx.cmds.push(DrawCmd::RRect { rect, radius: cx.theme.radius_md, color: cx.theme.surface });
     }
 }
 

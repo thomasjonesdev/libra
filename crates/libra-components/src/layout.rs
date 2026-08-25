@@ -146,9 +146,11 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Toast { tone, title, body, on_dismiss, test_id } => {
             catalog::toast::build(cx, *tone, title, body, on_dismiss, test_id)
         }
-        ViewNode::Card { style, children } => catalog::surface::build_surface(cx, style, children, true),
-        ViewNode::Panel { style, children } => {
-            catalog::surface::build_surface(cx, style, children, false)
+        ViewNode::Card { style, children } => {
+            catalog::surface::build_surface(cx, style, children, true, false)
+        }
+        ViewNode::Panel { style, children, raised } => {
+            catalog::surface::build_surface(cx, style, children, *raised, *raised)
         }
         ViewNode::Skeleton { width, height } => catalog::surface::build_skeleton(cx, *width, *height),
         ViewNode::Avatar { name, size, test_id } => {

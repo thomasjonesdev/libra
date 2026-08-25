@@ -8,6 +8,9 @@
   <Panel>
     <Text size="sm">plain panel</Text>
   </Panel>
+  <Panel raised>
+    <Text size="sm">raised panel</Text>
+  </Panel>
   <Skeleton />
   <Skeleton width={120} height={24} />
   <Avatar name={user.name} testId="bound-avatar" />
