@@ -55,6 +55,8 @@ pub enum IconName {
     Back,
     Forward,
     Command,
+    Bookmark,
+    PanelLeft,
 }
 
 impl IconName {
@@ -74,6 +76,8 @@ impl IconName {
             "back" => Self::Back,
             "forward" => Self::Forward,
             "command" => Self::Command,
+            "bookmark" => Self::Bookmark,
+            "panel-left" => Self::PanelLeft,
             _ => return None,
         })
     }
@@ -94,6 +98,8 @@ impl IconName {
             Self::Back => "back",
             Self::Forward => "forward",
             Self::Command => "command",
+            Self::Bookmark => "bookmark",
+            Self::PanelLeft => "panel-left",
         }
     }
 
@@ -113,6 +119,8 @@ impl IconName {
             Self::Back => "Back",
             Self::Forward => "Forward",
             Self::Command => "Command",
+            Self::Bookmark => "Bookmark",
+            Self::PanelLeft => "PanelLeft",
         }
     }
 }
@@ -214,11 +222,21 @@ pub enum ViewNode {
     /// Children are `<Tab>` (and `<for>`/`<if>` that resolve to them).
     /// Gloss note tabs are the first consumer.
     Tabs { children: Vec<ViewNode>, test_id: Option<String> },
-    /// `<Toolbar vertical?>` (§7.1, PLAN-CATALOG wave 7): chrome strip.
-    /// Horizontal default (full width, hairline bottom); `vertical` is
-    /// the Gloss left rail (fill height, hairline right). Children are
-    /// ordinary markup.
-    Toolbar { vertical: bool, children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<Toolbar vertical? compact? background?=…>` (§7.1, PLAN-CATALOG
+    /// wave 7): chrome strip. Horizontal default (full width, raised
+    /// fill, hairline bottom); `vertical` is the Gloss left rail (fill
+    /// height, hairline right). `compact` tightens a horizontal row and,
+    /// on a vertical rail, insets icons + the trailing hairline to the
+    /// title-bar band. `background` names a theme color token (`surface`,
+    /// `surface_raised`, `bg`, `secondary`, `transparent`); default is
+    /// `surface_raised`. Children are ordinary markup.
+    Toolbar {
+        vertical: bool,
+        compact: bool,
+        background: Option<String>,
+        children: Vec<ViewNode>,
+        test_id: Option<String>,
+    },
     /// `<StatusBar>` (§7.1, PLAN-CATALOG wave 7): footer chrome.
     /// Full-width row, hairline on top. Children are ordinary markup
     /// (Gloss: muted Text slots). Drops the homemade Separator+Row.
@@ -347,7 +365,8 @@ pub enum ViewNode {
     Card { style: BoxStyle, children: Vec<ViewNode> },
     /// `<Panel raised?>` (§7.1): plain surface, or flat `surface_raised`
     /// chrome when `raised` (sidebar / rail panes — no card radius).
-    Panel { style: BoxStyle, children: Vec<ViewNode>, raised: bool },
+    /// `flush` keeps explicit zero gap/padding (title-bar chrome rows).
+    Panel { style: BoxStyle, children: Vec<ViewNode>, raised: bool, flush: bool },
     /// `<Skeleton width? height? />` (§7.1): a static loading
     /// placeholder block (deterministic — shimmer waits on §9.6).
     /// No width = stretch.
@@ -578,8 +597,15 @@ pub enum ItemKind {
     ChipRemove { selected: bool },
     /// `<Tabs>` strip — paints a bottom hairline.
     TabsBox,
-    /// `<Toolbar>` — paints a trailing hairline (bottom or right).
-    ToolbarBox { vertical: bool },
+    /// `<Toolbar>` — token fill + trailing hairline (bottom or right).
+    /// `compact` on a vertical rail insets the trailing hairline to the
+    /// title-bar band so it meets a compact horizontal sibling.
+    /// `background` is a theme token name; unset → `surface_raised`.
+    ToolbarBox {
+        vertical: bool,
+        compact: bool,
+        background: Option<String>,
+    },
     /// `<StatusBar>` — paints a top hairline.
     StatusBarBox,
     /// `<Tab>` chrome behind the label / optional ×.

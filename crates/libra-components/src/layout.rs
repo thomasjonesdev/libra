@@ -72,8 +72,8 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             test_id,
         ),
         ViewNode::Tabs { children, test_id } => catalog::tabs::build_tabs(cx, children, test_id),
-        ViewNode::Toolbar { vertical, children, test_id } => {
-            catalog::toolbar::build(cx, *vertical, children, test_id)
+        ViewNode::Toolbar { vertical, compact, background, children, test_id } => {
+            catalog::toolbar::build(cx, *vertical, *compact, background, children, test_id)
         }
         ViewNode::StatusBar { children, test_id } => catalog::statusbar::build(cx, children, test_id),
         ViewNode::Tab {
@@ -147,10 +147,10 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             catalog::toast::build(cx, *tone, title, body, on_dismiss, test_id)
         }
         ViewNode::Card { style, children } => {
-            catalog::surface::build_surface(cx, style, children, true, false)
+            catalog::surface::build_surface(cx, style, children, true, false, true)
         }
-        ViewNode::Panel { style, children, raised } => {
-            catalog::surface::build_surface(cx, style, children, *raised, *raised)
+        ViewNode::Panel { style, children, raised, flush } => {
+            catalog::surface::build_surface(cx, style, children, *raised, *raised, !flush)
         }
         ViewNode::Skeleton { width, height } => catalog::surface::build_skeleton(cx, *width, *height),
         ViewNode::Avatar { name, size, test_id } => {

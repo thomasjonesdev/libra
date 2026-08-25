@@ -402,6 +402,19 @@ impl Theme {
         px * self.density.factor()
     }
 
+    /// Resolve a named color token (`background="surface_raised"` on
+    /// `<Toolbar>`, etc.). Returns `None` for unknown names.
+    pub fn color_token(&self, name: &str) -> Option<Color> {
+        match name {
+            "bg" => Some(self.bg),
+            "surface" => Some(self.surface),
+            "surface_raised" => Some(self.surface_raised),
+            "secondary" => Some(self.secondary),
+            "transparent" | "none" => Some(Color::TRANSPARENT),
+            _ => None,
+        }
+    }
+
     /// Resolve a theme by name (`Effect::SetTheme`, harness `.theme(…)`).
     pub fn by_name(name: &str) -> Option<Theme> {
         match name {

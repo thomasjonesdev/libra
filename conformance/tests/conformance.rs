@@ -640,7 +640,7 @@ fn split_produces_identical_trees() {
     let state = TestState { ratio: 0.42, ..TestState::default() };
     let interp = interp_tree_src(SPLIT, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
-    let ViewNode::Split { fraction, on_resize, test_id, children: panes } = &children[0] else {
+    let ViewNode::Split { fraction, on_resize, test_id, children: panes, .. } = &children[0] else {
         panic!("{:?}", children[0])
     };
     assert!((fraction - 0.42).abs() < 1e-6, "bound fraction resolves typed");
@@ -1018,7 +1018,7 @@ fn toolbar_produces_identical_trees() {
     let state = TestState::default();
     let interp = interp_tree_src(TOOLBAR, &state, &fixture_registry());
     let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
-    let ViewNode::Toolbar { vertical, children: items, test_id } = &children[0] else {
+    let ViewNode::Toolbar { vertical, children: items, test_id, .. } = &children[0] else {
         panic!("{:?}", children[0])
     };
     assert_eq!((*vertical, test_id.as_deref(), items.len()), (false, Some("bar"), 2));

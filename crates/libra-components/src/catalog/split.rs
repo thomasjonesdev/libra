@@ -8,7 +8,7 @@
 //!
 //! Layout: a flex row `[left (width = fraction%), divider gutter, right
 //! (grow)]`. The gutter is [`GUTTER`] px wide for grabbability and paints a
-//! 1px `theme.hairline` centered in it.
+//! 1px `theme.hairline` flush with the left pane's trailing edge.
 
 use crate::layout::{is_detached_node, BuildCx};
 use crate::node::*;
@@ -86,9 +86,8 @@ pub(crate) fn build(
 }
 
 pub(crate) fn paint_divider(cx: &mut PaintCx, rect: Rect) {
-    // 1px hairline centered in the gutter. Floor to a whole-pixel x —
-    // a hairline at a fractional coordinate can trip a tiny-skia AA
-    // scan edge case (see the same fix in catalog/tooltip.rs).
-    let x = rect.x + (GUTTER / 2.0).floor();
+    // 1px hairline on the left gutter edge — the left pane's trailing
+    // boundary. Floor to a whole-pixel x (tiny-skia AA hairline gotcha).
+    let x = rect.x.floor();
     cx.cmds.push(DrawCmd::Rect { rect: Rect::new(x, rect.y, 1.0, rect.h), color: cx.theme.hairline });
 }

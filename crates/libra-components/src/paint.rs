@@ -125,7 +125,15 @@ impl LaidTree {
                         catalog::chip::paint_remove(&mut cx, item, *selected)
                     }
                     ItemKind::TabsBox => catalog::tabs::paint_tabs(&mut cx, item),
-                    ItemKind::ToolbarBox { vertical } => catalog::toolbar::paint(&mut cx, item, *vertical),
+                    ItemKind::ToolbarBox { vertical, compact, background } => {
+                        catalog::toolbar::paint(
+                            &mut cx,
+                            item,
+                            *vertical,
+                            *compact,
+                            background.as_deref(),
+                        )
+                    }
                     ItemKind::StatusBarBox => catalog::statusbar::paint(&mut cx, item),
                     ItemKind::TabBox { selected } => catalog::tabs::paint_box(&mut cx, item, *selected),
                     ItemKind::TabLabel { label, px, selected } => {
@@ -193,7 +201,9 @@ impl LaidTree {
                     }
                     ItemKind::MenuPanel => catalog::context_menu::paint_panel(&mut cx, item.rect),
                     ItemKind::Split { .. } => {}
-                    ItemKind::SplitDivider { .. } => catalog::split::paint_divider(&mut cx, item.rect),
+                    ItemKind::SplitDivider { .. } => {
+                        catalog::split::paint_divider(&mut cx, item.rect);
+                    }
                     ItemKind::DialogPanel => catalog::dialog::paint_panel(&mut cx, item.rect),
                 }
                 if item.clip.is_some() {

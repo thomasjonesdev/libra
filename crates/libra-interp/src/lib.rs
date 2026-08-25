@@ -702,7 +702,7 @@ fn element(
                         icon = Some(IconName::from_markup(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
                             )
                         })?);
                     }
@@ -763,7 +763,7 @@ fn element(
                         icon_name = Some(IconName::from_markup(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
                             )
                         })?);
                     }
@@ -905,16 +905,20 @@ fn element(
         // Gloss left rail; default is a full-width row.
         "Toolbar" => {
             let mut vertical = false;
+            let mut compact = false;
+            let mut background = None;
             let mut test_id = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("vertical", AttrValue::Flag) => vertical = true,
+                    ("compact", AttrValue::Flag) => compact = true,
+                    ("background", AttrValue::Str(s)) => background = Some(s.clone()),
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
             let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
-            Ok(ViewNode::Toolbar { vertical, children: kids, test_id })
+            Ok(ViewNode::Toolbar { vertical, compact, background, children: kids, test_id })
         }
 
         // §7.1 (PLAN-CATALOG wave 7): footer chrome. Children are
@@ -1114,6 +1118,7 @@ fn element(
         "Card" | "Panel" => {
             let mut style = BoxStyle::default();
             let mut raised = false;
+            let mut flush = false;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => style.gap = *v,
@@ -1122,6 +1127,7 @@ fn element(
                     ("grow", AttrValue::Num(v)) => style.grow = *v,
                     ("width", AttrValue::Num(v)) => style.width = Some(*v),
                     ("raised", AttrValue::Flag) if name == "Panel" => raised = true,
+                    ("flush", AttrValue::Flag) if name == "Panel" => flush = true,
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
@@ -1129,7 +1135,7 @@ fn element(
             Ok(if name == "Card" {
                 ViewNode::Card { style, children: kids }
             } else {
-                ViewNode::Panel { style, children: kids, raised }
+                ViewNode::Panel { style, children: kids, raised, flush }
             })
         }
 

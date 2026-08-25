@@ -16,6 +16,7 @@ pub(crate) fn build_surface(
     children: &[ViewNode],
     raised: bool,
     flat: bool,
+    apply_defaults: bool,
 ) -> Result<NodeId, taffy::TaffyError> {
     let mut kids = Vec::new();
     for c in children {
@@ -26,13 +27,16 @@ pub(crate) fn build_surface(
         }
     }
     // Column semantics with surface defaults: unset padding/gap get
-    // token values instead of 0.
+    // token values instead of 0. `flush` on `<Panel>` skips this so
+    // chrome rows can sit at y=0 under a frameless title bar.
     let mut st = *style;
-    if st.padding == 0.0 {
-        st.padding = cx.theme.space(5);
-    }
-    if st.gap == 0.0 {
-        st.gap = cx.theme.space(4);
+    if apply_defaults {
+        if st.padding == 0.0 {
+            st.padding = cx.theme.space(5);
+        }
+        if st.gap == 0.0 {
+            st.gap = cx.theme.space(4);
+        }
     }
     let id = cx.tree.new_with_children(box_style(&st, FlexDirection::Column), &kids)?;
     cx.meta.push((

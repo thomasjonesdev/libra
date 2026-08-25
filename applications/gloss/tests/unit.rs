@@ -2,8 +2,8 @@
 
 use gloss::{
     default_daily_note_path, file_stem, journal_path, note_snippet, note_title, parse_list,
-    project_file_rows, reduce, resolve_daily_note, resolve_wikilink, vault_name, Action, Gloss,
-    IoKind, Pending,
+    project_file_rows, project_search_rows, reduce, resolve_daily_note, resolve_wikilink, vault_name,
+    Action, Gloss, IoKind, Pending,
 };
 use libra_core::{ProcessResult, ProcessStatus};
 
@@ -160,6 +160,18 @@ fn file_rows_project_folders_from_prefixes() {
     assert_eq!(rows[0].title, "+ 10-Inbox");
     assert_eq!(rows[0].inset, 0.0);
     assert_eq!(rows[1].id, "Atlas.md");
+}
+
+#[test]
+fn search_rows_filter_flat_paths() {
+    let rows = project_search_rows(
+        &["Atlas.md".into(), "10-Inbox/Welcome.md".into()],
+        "wel",
+        "10-Inbox/Welcome.md",
+    );
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, "10-Inbox/Welcome.md");
+    assert_eq!(rows[0].inset, 0.0);
 }
 
 #[test]

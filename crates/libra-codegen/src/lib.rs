@@ -472,10 +472,14 @@ fn gen_node(
 
         "Toolbar" => {
             let mut vertical = false;
+            let mut compact = false;
+            let mut background: Option<String> = None;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("vertical", AttrValue::Flag) => vertical = true,
+                    ("compact", AttrValue::Flag) => compact = true,
+                    ("background", AttrValue::Str(s)) => background = Some(s.clone()),
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
@@ -484,10 +488,13 @@ fn gen_node(
             Ok(format!(
                 "{i}::libra_components::ViewNode::Toolbar {{ {at}\n\
                  {i}    vertical: {vertical},\n\
+                 {i}    compact: {compact},\n\
+                 {i}    background: {bg},\n\
                  {i}    children: {kids},\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
+                bg = opt_str(&background),
                 tid = opt_str(&test_id),
             ))
         }
@@ -735,6 +742,7 @@ fn gen_node(
             let (mut gap, mut padding, mut grow) = (0.0f32, 0.0f32, 0.0f32);
             let mut width: Option<f32> = None;
             let mut raised = false;
+            let mut flush = false;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("gap", AttrValue::Num(v)) => gap = *v,
@@ -743,19 +751,24 @@ fn gen_node(
                     ("grow", AttrValue::Num(v)) => grow = *v,
                     ("width", AttrValue::Num(v)) => width = Some(*v),
                     ("raised", AttrValue::Flag) if name == "Panel" => raised = true,
+                    ("flush", AttrValue::Flag) if name == "Panel" => flush = true,
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
             let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
-            let raised_field = if name == "Panel" {
-                format!(",\n{i}    raised: {raised}", raised = raised)
+            let panel_fields = if name == "Panel" {
+                format!(
+                    ",\n{i}    raised: {raised},\n{i}    flush: {flush}",
+                    raised = raised,
+                    flush = flush,
+                )
             } else {
                 String::new()
             };
             Ok(format!(
                 "{i}::libra_components::ViewNode::{name} {{ {at}\n\
                  {i}    style: ::libra_components::BoxStyle {{ gap: {gap}, padding: {padding}, grow: {grow}, cross_center: false, main_center: false, width: {width} }},\n\
-                 {i}    children: {kids}{raised_field}\n\
+                 {i}    children: {kids}{panel_fields}\n\
                  {i}}}",
                 at = at(cfg, *span),
                 gap = f32_lit(gap),
@@ -1471,7 +1484,7 @@ fn gen_node(
                         icon = Some(icon_variant(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
                             )
                         })?.to_string());
                     }
@@ -1545,7 +1558,7 @@ fn gen_node(
                         icon_name = Some(icon_variant(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
                             )
                         })?.to_string());
                     }
@@ -2616,6 +2629,8 @@ fn icon_variant(s: &str) -> Option<&'static str> {
         "back" => "Back",
         "forward" => "Forward",
         "command" => "Command",
+        "bookmark" => "Bookmark",
+        "panel-left" => "PanelLeft",
         _ => return None,
     })
 }

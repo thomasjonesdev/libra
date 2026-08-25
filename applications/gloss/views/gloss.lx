@@ -1,6 +1,6 @@
 <Column grow gap={0}>
   <Row grow>
-    <Toolbar vertical testId="app-rail">
+    <Toolbar vertical compact testId="app-rail">
       <Tooltip text="New note">
         <Button variant="ghost" icon="plus" onPress={newNote} testId="new-note" />
       </Tooltip>
@@ -22,35 +22,71 @@
       </Tooltip>
     </Toolbar>
     <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
-      <Panel grow gap={4} padding={8} raised>
-        <Toolbar testId="list-toolbar">
-          <Button variant="ghost" icon="folder" onPress={newFolder} testId="new-folder" />
-          <Button variant="ghost" icon="sort" onPress={toggleSort} testId="sort-notes" />
-          <Button variant="ghost" icon="minus" onPress={collapseAll} testId="collapse-all" />
+      <Column grow gap={0}>
+        <Toolbar compact testId="list-toolbar">
+          <Spacer size={18} />
+          <if test={sidebar_open}>
+            <Tooltip text="Files">
+              <if test={sidebar_files}>
+                <Button variant="secondary" icon="folder" onPress={showFilesView} testId="sidebar-files" />
+                <else>
+                  <Button variant="ghost" icon="folder" onPress={showFilesView} testId="sidebar-files" />
+                </else>
+              </if>
+            </Tooltip>
+            <Tooltip text="Search">
+              <if test={sidebar_search}>
+                <Button variant="secondary" icon="search" onPress={showSearchView} testId="sidebar-search" />
+                <else>
+                  <Button variant="ghost" icon="search" onPress={showSearchView} testId="sidebar-search" />
+                </else>
+              </if>
+            </Tooltip>
+            <Tooltip text="Bookmarks">
+              <if test={sidebar_bookmarks}>
+                <Button variant="secondary" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
+                <else>
+                  <Button variant="ghost" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
+                </else>
+              </if>
+            </Tooltip>
+          </if>
+          <Spacer />
+          <Tooltip text="Toggle sidebar">
+            <Button variant="ghost" icon="panel-left" onPress={toggleSidebar} testId="sidebar-toggle" />
+          </Tooltip>
         </Toolbar>
-        <Row gap={6} cross="center">
-          <Search value={query} placeholder="filter…" onChange={queryChanged} testId="search" />
-          <Button variant="ghost" icon="close" onPress={clearQuery} testId="clear-search" />
-        </Row>
-        <Separator />
-        <Scroll testId="note-scroll">
-          <Column gap={2}>
-            <if test={file_rows.isEmpty}>
-              <Text muted testId="empty">{empty_message}</Text>
-            </if>
-            <for each={file_rows} as="n" key={n.id}>
-              <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={openInNewTab(n.id)} />
-            </for>
-          </Column>
-        </Scroll>
-        <Row gap={6} cross="center">
-          <Text muted grow wrap testId="vault-name">{vault_name}</Text>
-          <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
-        </Row>
-      </Panel>
-      <Column grow gap={4} padding={8}>
+        <if test={sidebar_open}>
+          <Panel grow gap={0} padding={0} raised flush>
+            <Column grow gap={4} padding={4}>
+              <if test={sidebar_search}>
+                <Row gap={6} cross="center">
+                  <Search value={query} placeholder="Search notes…" onChange={queryChanged} testId="search" />
+                  <Button variant="ghost" icon="close" onPress={clearQuery} testId="clear-search" />
+                </Row>
+                <Separator />
+              </if>
+              <Scroll testId="note-scroll">
+                <Column gap={2}>
+                  <if test={file_rows.isEmpty}>
+                    <Text muted testId="empty">{empty_message}</Text>
+                  </if>
+                  <for each={file_rows} as="n" key={n.id}>
+                    <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={openInNewTab(n.id)} />
+                  </for>
+                </Column>
+              </Scroll>
+              <Row gap={6} cross="center">
+                <Text muted grow wrap testId="vault-name">{vault_name}</Text>
+                <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
+              </Row>
+            </Column>
+          </Panel>
+        </if>
+      </Column>
+      <Column grow gap={0} padding={0}>
         <if test={has_vault}>
-          <Toolbar testId="editor-toolbar">
+          <Toolbar compact background="surface" testId="editor-toolbar">
             <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
             <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
             <Tabs testId="editor-tabs">
@@ -63,42 +99,44 @@
             </Tooltip>
           </Toolbar>
         </if>
-        <if test={has_selected}>
-          <Row gap={8} cross="center">
-            <Heading level={2} testId="note-title">{selected_title}</Heading>
-            <Spacer />
-            <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
-          </Row>
-          <Scroll testId="editor-scroll">
-            <if test={reader_mode}>
-              <Column grow padding={48} gap={16}>
-                <if test={has_frontmatter}>
-                  <Column gap={10}>
-                    <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
-                    <if test={has_frontmatter_title}>
-                      <Heading level={2} testId="frontmatter-title">{frontmatter_title}</Heading>
-                    </if>
-                    <for each={frontmatter_fields} as="f" key={f.key}>
-                      <Row gap={12} cross="center">
-                        <Text muted size="sm">{f.key}</Text>
-                        <Text grow wrap size="sm">{f.value}</Text>
-                      </Row>
-                    </for>
-                    <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
-                  </Column>
-                  <Separator />
-                </if>
-                <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
-              </Column>
-              <else>
-                <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
-              </else>
-            </if>
-          </Scroll>
-          <else>
-            <Text muted testId="editor-empty">Select a note</Text>
-          </else>
-        </if>
+        <Column grow gap={4} padding={4}>
+          <if test={has_selected}>
+            <Row gap={8} cross="center">
+              <Heading level={2} testId="note-title">{selected_title}</Heading>
+              <Spacer />
+              <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
+            </Row>
+            <Scroll testId="editor-scroll">
+              <if test={reader_mode}>
+                <Column grow padding={48} gap={16}>
+                  <if test={has_frontmatter}>
+                    <Column gap={10}>
+                      <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
+                      <if test={has_frontmatter_title}>
+                        <Heading level={2} testId="frontmatter-title">{frontmatter_title}</Heading>
+                      </if>
+                      <for each={frontmatter_fields} as="f" key={f.key}>
+                        <Row gap={12} cross="center">
+                          <Text muted size="sm">{f.key}</Text>
+                          <Text grow wrap size="sm">{f.value}</Text>
+                        </Row>
+                      </for>
+                      <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
+                    </Column>
+                    <Separator />
+                  </if>
+                  <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
+                </Column>
+                <else>
+                  <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
+                </else>
+              </if>
+            </Scroll>
+            <else>
+              <Text muted testId="editor-empty">Select a note</Text>
+            </else>
+          </if>
+        </Column>
       </Column>
     </Split>
   </Row>

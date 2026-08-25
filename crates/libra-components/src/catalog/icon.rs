@@ -168,6 +168,19 @@ pub(crate) fn paint_name(
             stroke(cmds, vec![p(0.78, 0.62), p(0.78, 0.78), p(0.62, 0.78)]);
             stroke(cmds, vec![p(0.38, 0.78), p(0.22, 0.78), p(0.22, 0.62)]);
         }
+        IconName::Bookmark => {
+            stroke(cmds, vec![p(0.24, 0.22), p(0.76, 0.22), p(0.76, 0.82), p(0.50, 0.66), p(0.24, 0.82), p(0.24, 0.22)]);
+        }
+        IconName::PanelLeft => {
+            stroke(cmds, vec![
+                p(0.18, 0.22),
+                p(0.82, 0.22),
+                p(0.82, 0.78),
+                p(0.18, 0.78),
+                p(0.18, 0.22),
+            ]);
+            stroke(cmds, vec![p(0.40, 0.22), p(0.40, 0.78)]);
+        }
     }
 }
 

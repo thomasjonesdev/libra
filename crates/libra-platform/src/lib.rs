@@ -120,6 +120,9 @@ pub struct Options {
     pub process_allowlist: Vec<String>,
     /// Window / title-bar icon (PNG). Also read from [`ICON_PATH_ENV`] when unset.
     pub icon: Option<PathBuf>,
+    /// macOS: transparent title bar, hidden title text, content under traffic
+    /// lights — Obsidian-style chrome. No-op on other platforms.
+    pub frameless: bool,
 }
 
 impl Options {
@@ -132,6 +135,7 @@ impl Options {
             theme_file: None,
             process_allowlist: vec![],
             icon: None,
+            frameless: false,
         }
     }
     pub fn app_id(mut self, id: &str) -> Self {
@@ -152,6 +156,10 @@ impl Options {
     }
     pub fn icon(mut self, path: impl Into<PathBuf>) -> Self {
         self.icon = Some(path.into());
+        self
+    }
+    pub fn frameless(mut self, on: bool) -> Self {
+        self.frameless = on;
         self
     }
 }
@@ -875,7 +883,7 @@ where
         // M5: pressing a `<Split>` divider gutter starts a drag instead
         // of a click (the gutter is not a pressable item).
         let target = laid.items.iter().rev().find_map(|i| match &i.kind {
-            ItemKind::SplitDivider { split } if i.rect.contains(lx, ly) => {
+            ItemKind::SplitDivider { split, .. } if i.rect.contains(lx, ly) => {
                 Some(DragTarget::Split(split.clone()))
             }
             ItemKind::SliderCtl { .. }
@@ -1447,6 +1455,15 @@ where
                     path.display()
                 );
             }
+        }
+        #[cfg(target_os = "macos")]
+        if self.opts.frameless {
+            use winit::platform::macos::WindowAttributesExtMacOS;
+            attrs = attrs
+                .with_titlebar_transparent(true)
+                .with_fullsize_content_view(true)
+                .with_title_hidden(true)
+                .with_movable_by_window_background(true);
         }
         let window = Arc::new(
             event_loop
