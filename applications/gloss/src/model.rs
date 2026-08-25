@@ -257,7 +257,13 @@ pub fn assemble_note(yaml: &str, body: &str) -> String {
     if yaml.trim().is_empty() {
         return body.to_string();
     }
-    format!("---\n{}\n---\n{}", yaml.trim_end(), body)
+    let yaml = yaml.trim_end();
+    let body = body.trim_start_matches('\n');
+    if body.is_empty() {
+        format!("---\n{yaml}\n---\n")
+    } else {
+        format!("---\n{yaml}\n---\n\n{body}")
+    }
 }
 
 pub fn parse_frontmatter_fields(yaml: &str) -> Vec<FrontmatterField> {
