@@ -50,6 +50,47 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             catalog::button::build(cx, label, *variant, on_press, on_press_arg, test_id)
         }
         ViewNode::Badge { label, tone, test_id } => catalog::badge::build(cx, label, *tone, test_id),
+        ViewNode::Chip {
+            label,
+            selected,
+            on_press,
+            on_press_arg,
+            on_remove,
+            on_remove_arg,
+            test_id,
+        } => catalog::chip::build(
+            cx,
+            label,
+            *selected,
+            on_press,
+            on_press_arg,
+            on_remove,
+            on_remove_arg,
+            test_id,
+        ),
+        ViewNode::Tabs { children, test_id } => catalog::tabs::build_tabs(cx, children, test_id),
+        ViewNode::Toolbar { vertical, children, test_id } => {
+            catalog::toolbar::build(cx, *vertical, children, test_id)
+        }
+        ViewNode::StatusBar { children, test_id } => catalog::statusbar::build(cx, children, test_id),
+        ViewNode::Tab {
+            label,
+            selected,
+            on_press,
+            on_press_arg,
+            on_close,
+            on_close_arg,
+            test_id,
+        } => catalog::tabs::build_tab(
+            cx,
+            label,
+            *selected,
+            on_press,
+            on_press_arg,
+            on_close,
+            on_close_arg,
+            test_id,
+        ),
         ViewNode::Heading { content, level, test_id } => {
             catalog::heading::build(cx, content, *level, test_id)
         }
@@ -98,6 +139,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         }
         ViewNode::Alert { tone, title, body, test_id } => {
             catalog::surface::build_alert(cx, *tone, title, body, test_id)
+        }
+        ViewNode::Toast { tone, title, body, on_dismiss, test_id } => {
+            catalog::toast::build(cx, *tone, title, body, on_dismiss, test_id)
         }
         ViewNode::Card { style, children } => catalog::surface::build_surface(cx, style, children, true),
         ViewNode::Panel { style, children } => {
@@ -464,5 +508,11 @@ pub(crate) fn is_source_node(n: &ViewNode) -> bool {
 /// sources (zero-layout mounts) and `<Dialog>` (a detached overlay root).
 pub(crate) fn is_detached_node(n: &ViewNode) -> bool {
     is_source_node(n)
-        || matches!(n, ViewNode::Dialog { .. } | ViewNode::ContextMenu { .. } | ViewNode::Drawer { .. })
+        || matches!(
+            n,
+            ViewNode::Dialog { .. }
+                | ViewNode::ContextMenu { .. }
+                | ViewNode::Drawer { .. }
+                | ViewNode::Toast { .. }
+        )
 }

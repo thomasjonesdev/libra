@@ -363,6 +363,239 @@ fn gen_node(
             ))
         }
 
+        // §7.1 (PLAN-CATALOG wave 5), matching interp's "Chip" arm:
+        // child label, optional selected / onPress / onRemove (item-scoped).
+        "Chip" => {
+            let mut selected = "false".to_string();
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_remove: Option<(String, Option<String>, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", v) => selected = bool_attr_expr(v, a.span, bound, binding_ctx)?,
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onRemove", AttrValue::Ident(m)) => on_remove = Some((m.clone(), None, a.span)),
+                    ("onRemove", AttrValue::Call { name: m, arg }) => {
+                        on_remove = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = gen_text_content(children, cfg, *span, d + 1, bound, binding_ctx)?;
+            let opt_handler = |spec: Option<(String, Option<String>, Span)>| -> Result<(String, String), CodegenError> {
+                let Some((msg, arg, mspan)) = spec else {
+                    return Ok((
+                        "::core::option::Option::None".to_string(),
+                        "::core::option::Option::None".to_string(),
+                    ));
+                };
+                let root = msg.split('.').next().unwrap_or(msg.as_str());
+                let is_prop_handler =
+                    binding_ctx == "props" && bound.iter().any(|b| b == root);
+                if !is_prop_handler {
+                    require_camel_case(&msg, mspan)?;
+                }
+                if is_prop_handler {
+                    Ok((
+                        format!("::core::option::Option::Some({msg}.to_string())"),
+                        "::core::option::Option::None".to_string(),
+                    ))
+                } else {
+                    match &arg {
+                        Some(binding) => {
+                            let value_ref = display_ref_expr(binding, bound, binding_ctx)
+                                .map_err(|m| err(mspan, m))?;
+                            Ok((
+                                format!(
+                                    "{{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                    msg_ty = cfg.action,
+                                    variant_ref = pascalize(&msg),
+                                    name_lit = str_lit(&msg),
+                                ),
+                                format!(
+                                    "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                                ),
+                            ))
+                        }
+                        None => Ok((
+                            format!(
+                                "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                msg_ty = cfg.action,
+                                variant_ref = pascalize(&msg),
+                                name_lit = str_lit(&msg),
+                            ),
+                            "::core::option::Option::None".to_string(),
+                        )),
+                    }
+                }
+            };
+            let (press_expr, press_arg) = opt_handler(on_press)?;
+            let (remove_expr, remove_arg) = opt_handler(on_remove)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Chip {{ {at}\n\
+                 {i}    label: {label},\n\
+                 {i}    selected: {selected},\n\
+                 {i}    on_press: {press_expr},\n\
+                 {i}    on_press_arg: {press_arg},\n\
+                 {i}    on_remove: {remove_expr},\n\
+                 {i}    on_remove_arg: {remove_arg},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7), matching interp's "Tabs"/"Tab" arms.
+        "Tabs" => {
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Tabs {{ {at}\n\
+                 {i}    children: {kids},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        "Toolbar" => {
+            let mut vertical = false;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("vertical", AttrValue::Flag) => vertical = true,
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Toolbar {{ {at}\n\
+                 {i}    vertical: {vertical},\n\
+                 {i}    children: {kids},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        "StatusBar" => {
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::StatusBar {{ {at}\n\
+                 {i}    children: {kids},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        "Tab" => {
+            let mut selected = "false".to_string();
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_close: Option<(String, Option<String>, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", v) => selected = bool_attr_expr(v, a.span, bound, binding_ctx)?,
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onClose", AttrValue::Ident(m)) => on_close = Some((m.clone(), None, a.span)),
+                    ("onClose", AttrValue::Call { name: m, arg }) => {
+                        on_close = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = gen_text_content(children, cfg, *span, d + 1, bound, binding_ctx)?;
+            let opt_handler = |spec: Option<(String, Option<String>, Span)>| -> Result<(String, String), CodegenError> {
+                let Some((msg, arg, mspan)) = spec else {
+                    return Ok((
+                        "::core::option::Option::None".to_string(),
+                        "::core::option::Option::None".to_string(),
+                    ));
+                };
+                let root = msg.split('.').next().unwrap_or(msg.as_str());
+                let is_prop_handler =
+                    binding_ctx == "props" && bound.iter().any(|b| b == root);
+                if !is_prop_handler {
+                    require_camel_case(&msg, mspan)?;
+                }
+                if is_prop_handler {
+                    Ok((
+                        format!("::core::option::Option::Some({msg}.to_string())"),
+                        "::core::option::Option::None".to_string(),
+                    ))
+                } else {
+                    match &arg {
+                        Some(binding) => {
+                            let value_ref = display_ref_expr(binding, bound, binding_ctx)
+                                .map_err(|m| err(mspan, m))?;
+                            Ok((
+                                format!(
+                                    "{{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                    msg_ty = cfg.action,
+                                    variant_ref = pascalize(&msg),
+                                    name_lit = str_lit(&msg),
+                                ),
+                                format!(
+                                    "::core::option::Option::Some(::std::string::ToString::to_string(&{value_ref}))"
+                                ),
+                            ))
+                        }
+                        None => Ok((
+                            format!(
+                                "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                                msg_ty = cfg.action,
+                                variant_ref = pascalize(&msg),
+                                name_lit = str_lit(&msg),
+                            ),
+                            "::core::option::Option::None".to_string(),
+                        )),
+                    }
+                }
+            };
+            let (press_expr, press_arg) = opt_handler(on_press)?;
+            let (close_expr, close_arg) = opt_handler(on_close)?;
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Tab {{ {at}\n\
+                 {i}    label: {label},\n\
+                 {i}    selected: {selected},\n\
+                 {i}    on_press: {press_expr},\n\
+                 {i}    on_press_arg: {press_arg},\n\
+                 {i}    on_close: {close_expr},\n\
+                 {i}    on_close_arg: {close_arg},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         // Mirror of interp's "Heading" arm (level default 1, clamped 1..4).
         "Heading" => {
             let mut level = 1u8;
@@ -442,6 +675,54 @@ fn gen_node(
                  {i}    tone: ::libra_components::Tone::{tone},\n\
                  {i}    title: {title},\n\
                  {i}    body: {body},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7), matching interp's "Toast" arm.
+        "Toast" => {
+            let mut tone = "Neutral";
+            let mut title = "::std::string::String::new()".to_string();
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id: Option<String> = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = tone_variant(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = format!("{}.to_string()", str_lit(v)),
+                    ("title", AttrValue::Ident(pth)) => {
+                        let expr = display_ref_expr(pth, bound, binding_ctx).map_err(|m| err(a.span, m))?;
+                        title = format!("::std::string::ToString::to_string(&{expr})");
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        on_dismiss = Some((m.clone(), a.span));
+                    }
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let body = gen_text_content(children, cfg, *span, d + 1, bound, binding_ctx)?;
+            let (dismiss_expr, dismiss_at) = match &on_dismiss {
+                Some((m, mspan)) => (
+                    format!(
+                        "{{ let _ = &{msg_ty}::{variant_ref}; ::core::option::Option::Some({name_lit}.to_string()) }}",
+                        msg_ty = cfg.action,
+                        variant_ref = pascalize(m),
+                        name_lit = str_lit(m),
+                    ),
+                    at(cfg, *mspan),
+                ),
+                None => ("::core::option::Option::None".to_string(), String::new()),
+            };
+            Ok(format!(
+                "{i}::libra_components::ViewNode::Toast {{ {at}\n\
+                 {i}    tone: ::libra_components::Tone::{tone},\n\
+                 {i}    title: {title},\n\
+                 {i}    body: {body},\n\
+                 {i}    on_dismiss: {dismiss_expr}, {dismiss_at}\n\
                  {i}    test_id: {tid},\n\
                  {i}}}",
                 at = at(cfg, *span),
@@ -1723,7 +2004,7 @@ fn gen_node(
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
             ),
         )),
     }

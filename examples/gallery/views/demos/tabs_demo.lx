@@ -1,0 +1,13 @@
+<props tab_editor: Bool, tab_preview: Bool, tab_body: String, pickTabEditor: Action, pickTabPreview: Action, dismissTab: Action />
+
+<Text bold muted>Playground (model-owned — click to select)</Text>
+<Tabs testId="pg-tabs">
+  <Tab selected={tab_editor} onPress={pickTabEditor} testId="pg-tab-editor">Editor</Tab>
+  <Tab selected={tab_preview} onPress={pickTabPreview} testId="pg-tab-preview">Preview</Tab>
+</Tabs>
+<Text size="sm" muted testId="pg-tab-body">{tab_body}</Text>
+<Text bold muted>Closable (Gloss note-tab shape)</Text>
+<Tabs>
+  <Tab selected onPress={pickTabEditor}>Atlas</Tab>
+  <Tab onClose={dismissTab} testId="pg-tab-scratch">Scratch</Tab>
+</Tabs>

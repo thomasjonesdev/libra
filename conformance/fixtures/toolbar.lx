@@ -1,0 +1,10 @@
+<Column gap={8} padding={12}>
+  <Toolbar testId="bar">
+    <Button variant="ghost" onPress={increment}>Back</Button>
+    <Button variant="ghost" onPress={reset}>Fwd</Button>
+  </Toolbar>
+  <Toolbar vertical testId="rail">
+    <Button variant="ghost" onPress={increment}>+</Button>
+    <Button variant="ghost" onPress={reset}>S</Button>
+  </Toolbar>
+</Column>

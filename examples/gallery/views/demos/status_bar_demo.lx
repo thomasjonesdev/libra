@@ -1,0 +1,9 @@
+<props />
+
+<Text bold muted>Playground (Gloss footer)</Text>
+<StatusBar testId="pg-statusbar">
+  <Text size="sm" muted grow wrap testId="pg-status">Atlas.md saved</Text>
+  <Text size="sm" muted testId="pg-words">42 words</Text>
+  <Text size="sm" muted testId="pg-chars">180 chars</Text>
+  <Text size="sm" muted testId="pg-save">saved</Text>
+</StatusBar>

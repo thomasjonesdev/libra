@@ -1,0 +1,5 @@
+<Column gap={8} padding={12}>
+  <Toast tone="success" title={user.name} onDismiss={reset} testId="bound-toast">saved</Toast>
+  <Toast tone="danger" title="Failed">could not write</Toast>
+  <Toast onDismiss={increment} testId="body-only">Saved</Toast>
+</Column>

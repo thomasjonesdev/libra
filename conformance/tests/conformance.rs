@@ -805,6 +805,11 @@ fn nav_produces_identical_trees() {
 }
 
 const SEARCH: &str = include_str!("../fixtures/search.lx");
+const CHIP: &str = include_str!("../fixtures/chip.lx");
+const TABS: &str = include_str!("../fixtures/tabs.lx");
+const TOAST: &str = include_str!("../fixtures/toast.lx");
+const TOOLBAR: &str = include_str!("../fixtures/toolbar.lx");
+const STATUSBAR: &str = include_str!("../fixtures/statusbar.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -842,6 +847,206 @@ fn search_produces_identical_trees() {
         matches!(&children[1], ViewNode::Search { on_submit: None, test_id, .. } if test_id == "live-search"),
         "{:?}",
         children[1]
+    );
+}
+
+/// PLAN-CATALOG wave 5 — `<Chip>`: selected bool, optional onPress /
+/// onRemove (item-scoped). Both engines must agree.
+#[test]
+fn chip_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(CHIP, &state, &fixture_registry());
+        let compiled = generated::build_chip(&state);
+        assert_eq!(interp, compiled, "engine drift on chip fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(CHIP, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Chip {
+                label,
+                selected: true,
+                on_press: Some(p),
+                on_remove: None,
+                test_id: Some(id),
+                ..
+            } if label == "Ada" && p == "reset" && id == "bound-chip"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(&children[1], ViewNode::Chip { selected: true, label, .. } if label == "On"),
+        "{:?}",
+        children[1]
+    );
+    assert!(
+        matches!(&children[3], ViewNode::Chip { on_remove: Some(r), test_id: Some(id), .. } if r == "reset" && id == "tag"),
+        "{:?}",
+        children[3]
+    );
+    // <for> first row: Alpha is active; press/remove args carry the id.
+    let ViewNode::Chip { selected, on_press_arg, on_remove_arg, label, .. } = &children[4] else {
+        panic!("{:?}", children[4])
+    };
+    assert_eq!(
+        (*selected, on_press_arg.as_deref(), on_remove_arg.as_deref(), label.as_str()),
+        (true, Some("1"), Some("1"), "Alpha")
+    );
+}
+
+/// PLAN-CATALOG wave 7 — `<Tabs>` / `<Tab>`: selected bool, optional
+/// onPress / onClose (item-scoped), `<for>` children. Both engines
+/// must agree. Gloss note tabs use this exact shape.
+#[test]
+fn tabs_produce_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TABS, &state, &fixture_registry());
+        let compiled = generated::build_tabs(&state);
+        assert_eq!(interp, compiled, "engine drift on tabs fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TABS, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Tabs { children: tabs, test_id } = &children[0] else { panic!("{:?}", children[0]) };
+    assert_eq!(test_id.as_deref(), Some("strip"));
+    assert!(
+        matches!(
+            &tabs[0],
+            ViewNode::Tab {
+                label,
+                selected: true,
+                on_press: Some(p),
+                on_close: None,
+                test_id: Some(id),
+                ..
+            } if label == "Ada" && p == "reset" && id == "bound-tab"
+        ),
+        "{:?}",
+        tabs[0]
+    );
+    assert!(
+        matches!(&tabs[1], ViewNode::Tab { selected: true, label, .. } if label == "On"),
+        "{:?}",
+        tabs[1]
+    );
+    assert!(
+        matches!(&tabs[3], ViewNode::Tab { on_close: Some(c), test_id: Some(id), .. } if c == "reset" && id == "scratch"),
+        "{:?}",
+        tabs[3]
+    );
+    let ViewNode::Tab { selected, on_press_arg, on_close_arg, label, .. } = &tabs[4] else {
+        panic!("{:?}", tabs[4])
+    };
+    assert_eq!(
+        (*selected, on_press_arg.as_deref(), on_close_arg.as_deref(), label.as_str()),
+        (true, Some("1"), Some("1"), "Alpha")
+    );
+}
+
+/// PLAN-CATALOG wave 7 — `<Toast>`: tone, optional title, body, optional
+/// unit onDismiss. Both engines must agree.
+#[test]
+fn toast_produces_identical_trees() {
+    use libra_components::{Tone, ViewNode};
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TOAST, &state, &fixture_registry());
+        let compiled = generated::build_toast(&state);
+        assert_eq!(interp, compiled, "engine drift on toast fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TOAST, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    assert!(
+        matches!(
+            &children[0],
+            ViewNode::Toast {
+                tone: Tone::Success,
+                title,
+                body,
+                on_dismiss: Some(d),
+                test_id: Some(id),
+            } if title == "Ada" && body == "saved" && d == "reset" && id == "bound-toast"
+        ),
+        "{:?}",
+        children[0]
+    );
+    assert!(
+        matches!(
+            &children[1],
+            ViewNode::Toast { tone: Tone::Danger, title, on_dismiss: None, .. } if title == "Failed"
+        ),
+        "{:?}",
+        children[1]
+    );
+    assert!(
+        matches!(
+            &children[2],
+            ViewNode::Toast { title, body, on_dismiss: Some(d), test_id: Some(id), .. }
+                if title.is_empty() && body == "Saved" && d == "increment" && id == "body-only"
+        ),
+        "{:?}",
+        children[2]
+    );
+}
+
+/// PLAN-CATALOG wave 7 — `<Toolbar>`: optional vertical, children.
+/// Both engines must agree. Gloss rail / editor chrome use this.
+#[test]
+fn toolbar_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(TOOLBAR, &state, &fixture_registry());
+        let compiled = generated::build_toolbar(&state);
+        assert_eq!(interp, compiled, "engine drift on toolbar fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(TOOLBAR, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::Toolbar { vertical, children: items, test_id } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!((*vertical, test_id.as_deref(), items.len()), (false, Some("bar"), 2));
+    let ViewNode::Toolbar { vertical, test_id, .. } = &children[1] else { panic!("{:?}", children[1]) };
+    assert_eq!((*vertical, test_id.as_deref()), (true, Some("rail")));
+}
+
+/// PLAN-CATALOG wave 7 — `<StatusBar>`: footer row, children.
+/// Both engines must agree. Gloss footer uses this.
+#[test]
+fn statusbar_produces_identical_trees() {
+    use libra_components::ViewNode;
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(STATUSBAR, &state, &fixture_registry());
+        let compiled = generated::build_statusbar(&state);
+        assert_eq!(interp, compiled, "engine drift on statusbar fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(STATUSBAR, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::StatusBar { children: items, test_id } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!(test_id.as_deref(), Some("bar"));
+    assert_eq!(items.len(), 2);
+    assert!(
+        matches!(&items[0], ViewNode::Text { content, muted: true, test_id: Some(id), .. } if content == "ok" && id == "status"),
+        "{:?}",
+        items[0]
     );
 }
 

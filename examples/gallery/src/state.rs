@@ -37,6 +37,7 @@ pub struct Gallery {
     pub is_button: bool,
     pub is_input: bool,
     pub is_search: bool,
+    pub is_chip: bool,
     pub is_textarea: bool,
     pub is_list_item: bool,
     pub is_dialog: bool,
@@ -55,6 +56,10 @@ pub struct Gallery {
     pub is_pagination: bool,
     pub is_stepper: bool,
     pub is_timeline: bool,
+    pub is_tabs: bool,
+    pub is_toast: bool,
+    pub is_toolbar: bool,
+    pub is_statusbar: bool,
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
@@ -89,6 +94,17 @@ pub struct Gallery {
     pub ctl_split: f32,
     /// Search playground: set when Enter fires `onSubmit`.
     pub search_submitted: bool,
+    /// Chip playground (model-owned selected + dismiss).
+    pub chip_on: bool,
+    pub chip_dismissed: bool,
+    /// Tabs playground (model-owned selected + closable scratch).
+    pub tab_pick: String,
+    pub tab_editor: bool,
+    pub tab_preview: bool,
+    pub tab_body: String,
+    pub tab_dismissed: bool,
+    /// Toast playground (overlay dismiss).
+    pub toast_dismissed: bool,
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
@@ -115,6 +131,7 @@ impl Gallery {
             is_button: false,
             is_input: false,
             is_search: false,
+            is_chip: false,
             is_textarea: false,
             is_list_item: false,
             is_dialog: false,
@@ -133,6 +150,10 @@ impl Gallery {
             is_pagination: false,
             is_stepper: false,
             is_timeline: false,
+            is_tabs: false,
+            is_toast: false,
+            is_toolbar: false,
+            is_statusbar: false,
             is_split: false,
             is_chart: false,
             is_sparkline: false,
@@ -153,6 +174,14 @@ impl Gallery {
             ctl_page: 1,
             ctl_split: 0.5,
             search_submitted: false,
+            chip_on: true,
+            chip_dismissed: false,
+            tab_pick: "editor".into(),
+            tab_editor: true,
+            tab_preview: false,
+            tab_body: String::new(),
+            tab_dismissed: false,
+            toast_dismissed: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the

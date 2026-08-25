@@ -232,6 +232,109 @@ fn snapshot_workbench_list_item_light() {
 }
 
 #[test]
+fn snapshot_workbench_chip_dark() {
+    select("libra-dark", "chip").assert_snapshot("workbench_chip_dark");
+}
+
+#[test]
+fn snapshot_workbench_chip_light() {
+    select("libra-light", "chip").assert_snapshot("workbench_chip_light");
+}
+
+#[test]
+fn snapshot_workbench_tabs_dark() {
+    select("libra-dark", "tabs").assert_snapshot("workbench_tabs_dark");
+}
+
+#[test]
+fn snapshot_workbench_tabs_light() {
+    select("libra-light", "tabs").assert_snapshot("workbench_tabs_light");
+}
+
+/// Select switches the model; the trailing × fires onClose.
+#[test]
+fn tabs_select_and_close() {
+    let mut h = select("libra-dark", "tabs");
+    assert_eq!(h.cursor_over(by::test_id("pg-tab-editor")), libra_components::Cursor::Pointer);
+    assert!(h.state().tab_editor);
+    h.click(by::test_id("pg-tab-preview"));
+    assert!(h.state().tab_preview, "press dispatched; the app flipped selected");
+    assert_eq!(h.state().tab_body, "Previewing Atlas.md");
+    assert!(!h.state().tab_dismissed);
+    h.click(by::test_id("pg-tab-scratch-close"));
+    assert!(h.state().tab_dismissed, "× dispatched onClose");
+}
+
+#[test]
+fn snapshot_workbench_toast_dark() {
+    select("libra-dark", "toast").assert_snapshot("workbench_toast_dark");
+}
+
+#[test]
+fn snapshot_workbench_toast_light() {
+    select("libra-light", "toast").assert_snapshot("workbench_toast_light");
+}
+
+/// The overlay × fires onDismiss; the host is not a modal barrier.
+#[test]
+fn toast_dismisses() {
+    let mut h = select("libra-dark", "toast");
+    assert_eq!(h.cursor_over(by::test_id("pg-toast-close")), libra_components::Cursor::Pointer);
+    assert!(!h.state().toast_dismissed);
+    h.click(by::test_id("pg-toast-close"));
+    assert!(h.state().toast_dismissed, "× dispatched onDismiss");
+}
+
+#[test]
+fn snapshot_workbench_toolbar_dark() {
+    select("libra-dark", "toolbar").assert_snapshot("workbench_toolbar_dark");
+}
+
+#[test]
+fn snapshot_workbench_toolbar_light() {
+    select("libra-light", "toolbar").assert_snapshot("workbench_toolbar_light");
+}
+
+#[test]
+fn toolbar_presses_through_children() {
+    let mut h = select("libra-dark", "toolbar");
+    assert_eq!(h.cursor_over(by::test_id("pg-toolbar-back")), libra_components::Cursor::Pointer);
+    h.click(by::test_id("pg-toolbar-back"));
+}
+
+#[test]
+fn snapshot_workbench_statusbar_dark() {
+    select("libra-dark", "statusbar").assert_snapshot("workbench_statusbar_dark");
+}
+
+#[test]
+fn snapshot_workbench_statusbar_light() {
+    select("libra-light", "statusbar").assert_snapshot("workbench_statusbar_light");
+}
+
+#[test]
+fn statusbar_exposes_slots() {
+    let h = select("libra-dark", "statusbar");
+    h.query(by::test_id("pg-status")).assert_text("Atlas.md saved");
+    h.query(by::test_id("pg-words")).assert_text("42 words");
+}
+
+/// Select toggles the model; the trailing × fires onRemove.
+#[test]
+fn chip_selects_and_dismisses() {
+    let mut h = select("libra-dark", "chip");
+    assert_eq!(h.cursor_over(by::test_id("pg-chip")), libra_components::Cursor::Pointer);
+    assert!(h.state().chip_on);
+    h.click(by::test_id("pg-chip"));
+    assert!(!h.state().chip_on, "press dispatched; the app flipped selected");
+    h.click(by::test_id("pg-chip"));
+    assert!(h.state().chip_on);
+    assert!(!h.state().chip_dismissed);
+    h.click(by::test_id("pg-chip-tag-remove"));
+    assert!(h.state().chip_dismissed, "× dispatched onRemove");
+}
+
+#[test]
 fn snapshot_workbench_search_dark() {
     select("libra-dark", "search").assert_snapshot("workbench_search_dark");
 }

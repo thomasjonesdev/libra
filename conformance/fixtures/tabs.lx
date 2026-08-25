@@ -1,0 +1,11 @@
+<Column gap={8} padding={12}>
+  <Tabs testId="strip">
+    <Tab selected={user.active} onPress={reset} testId="bound-tab">Ada</Tab>
+    <Tab selected onPress={increment}>On</Tab>
+    <Tab onPress={increment}>Off</Tab>
+    <Tab onClose={reset} testId="scratch">Scratch</Tab>
+    <for each={items} as="opt" key={opt.id}>
+      <Tab selected={opt.active} onPress={nameChanged(opt.id)} onClose={nameChanged(opt.id)}>{opt.label}</Tab>
+    </for>
+  </Tabs>
+</Column>

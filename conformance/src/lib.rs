@@ -139,4 +139,9 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/slot_host.rs"));
     include!(concat!(env!("OUT_DIR"), "/search.rs"));
     include!(concat!(env!("OUT_DIR"), "/markdown.rs"));
+    include!(concat!(env!("OUT_DIR"), "/chip.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tabs.rs"));
+    include!(concat!(env!("OUT_DIR"), "/toast.rs"));
+    include!(concat!(env!("OUT_DIR"), "/toolbar.rs"));
+    include!(concat!(env!("OUT_DIR"), "/statusbar.rs"));
 }

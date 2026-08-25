@@ -114,6 +114,23 @@ impl LaidTree {
                     ItemKind::Badge { label, tone, px } => {
                         catalog::badge::paint(&mut cx, item, label, *tone, *px)
                     }
+                    ItemKind::ChipBox { selected } => catalog::chip::paint_box(&mut cx, item, *selected),
+                    ItemKind::ChipLabel { label, px, selected } => {
+                        catalog::chip::paint_label(&mut cx, item, label, *px, *selected)
+                    }
+                    ItemKind::ChipRemove { selected } => {
+                        catalog::chip::paint_remove(&mut cx, item, *selected)
+                    }
+                    ItemKind::TabsBox => catalog::tabs::paint_tabs(&mut cx, item),
+                    ItemKind::ToolbarBox { vertical } => catalog::toolbar::paint(&mut cx, item, *vertical),
+                    ItemKind::StatusBarBox => catalog::statusbar::paint(&mut cx, item),
+                    ItemKind::TabBox { selected } => catalog::tabs::paint_box(&mut cx, item, *selected),
+                    ItemKind::TabLabel { label, px, selected } => {
+                        catalog::tabs::paint_label(&mut cx, item, label, *px, *selected)
+                    }
+                    ItemKind::TabClose { selected } => {
+                        catalog::tabs::paint_close(&mut cx, item, *selected)
+                    }
                     ItemKind::Progress { value } => catalog::progress::paint(&mut cx, item, *value),
                     ItemKind::Scrim => catalog::dialog::paint_scrim(&mut cx, item.rect),
                     ItemKind::MenuBarrier => {}
@@ -124,6 +141,12 @@ impl LaidTree {
                     ItemKind::Alert { tone, title, body, px_md, px_sm } => {
                         catalog::surface::paint_alert(&mut cx, item.rect, *tone, title, body, *px_md, *px_sm)
                     }
+                    ItemKind::ToastHost => {}
+                    ItemKind::ToastBox { tone } => catalog::toast::paint_box(&mut cx, item, *tone),
+                    ItemKind::ToastCopy { title, body, px_md, px_sm } => {
+                        catalog::toast::paint_copy(&mut cx, item, title, body, *px_md, *px_sm)
+                    }
+                    ItemKind::ToastClose => catalog::toast::paint_close(&mut cx, item),
                     ItemKind::Surface { raised } => {
                         catalog::surface::paint_surface(&mut cx, item.rect, *raised)
                     }

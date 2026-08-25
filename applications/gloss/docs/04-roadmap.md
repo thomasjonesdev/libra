@@ -107,6 +107,10 @@ Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
 `<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
 after save/undo.
 
+Catalog chrome to adopt (do not keep faking it): [[catalog-handoff]] —
+`<Tabs>` for the note strip, `<Search>` for the list filter, `<Toast>`
+after save/undo.
+
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.
 

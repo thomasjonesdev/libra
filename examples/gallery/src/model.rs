@@ -49,11 +49,16 @@ pub const DISPLAY: &[(&str, &str)] = &[
     ("pagination", "Pagination"),
     ("stepper", "Stepper"),
     ("timeline", "Timeline"),
+    ("tabs", "Tabs"),
+    ("toast", "Toast"),
+    ("toolbar", "Toolbar"),
+    ("statusbar", "StatusBar"),
 ];
 pub const CONTROLS: &[(&str, &str)] = &[
     ("button", "Button"),
     ("input", "Input"),
     ("search", "Search"),
+    ("chip", "Chip"),
     ("textarea", "Textarea"),
     ("list_item", "ListItem"),
     ("switch", "Switch"),

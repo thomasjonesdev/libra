@@ -43,7 +43,11 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Image` | `Image` | planned (§7.1) | Deterministic decode path TBD |
 | `Avatar` | `Avatar` | **shipped** 2026-07-19 | Initials in a circle; image variant waits on a deterministic decode path |
 | `Badge` | `Badge` | **shipped** 2026-07-17 | `tone` (neutral/danger/warning/success/info) → status `*_bg`/`*_fg` tokens (PLAN-TOKENS T2); pill, `type_xs`, `space`-padded. First component built through the [[PLAN-COMPONENTS]] `catalog/` flow. |
-| `Chip` | `Chip` | planned | Select / remove events |
+| `Chip` | `Chip` | **shipped** 2026-08-25 | Model-owned `selected`; `onPress` selects, optional `onRemove` is a trailing × |
+| — | `Tabs` / `Tab` | **shipped** 2026-08-25 | Strip + model-owned `selected`; `onPress` activates, optional `onClose` is a trailing ×. Gloss note tabs: `<for each={tab_rows}>` inside `<Tabs>` |
+| — | `Toast` | **shipped** 2026-08-25 | Detached non-modal overlay; mount via `<if>`; optional `onDismiss`; timeout is an app Timer |
+| — | `Toolbar` | **shipped** 2026-08-25 | Chrome strip; `vertical` is the Gloss left rail. Children are ordinary markup |
+| — | `StatusBar` | **shipped** 2026-08-25 | Footer row, hairline on top. Gloss status / counts / save label |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
 | `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
@@ -109,9 +113,9 @@ never invents colors.
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
 | **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; ✅ `Search` shipped 2026-08-25 | Control set parity |
 | **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
-| **5** | `Card`, `ListItem`, `Avatar`, `Chip`, `Image` | Composite / media |
+| **5** | ✅ `Card`, `ListItem`, `Avatar` shipped 2026-07-19; ✅ `Chip` shipped 2026-08-25; `Image` blocked (decode path) | Composite / media |
 | **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
-| **7** | `Tabs`, `Toast`, `Toolbar`, `StatusBar` | App chrome |
+| **7** | ✅ `Tabs` / ✅ `Toast` / ✅ `Toolbar` / ✅ `StatusBar` shipped 2026-08-25 | App chrome |
 | **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
 | **9** | `Select`/`Combobox`/`CommandPalette`/`Markdown`/`Icon` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |

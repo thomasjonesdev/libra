@@ -106,6 +106,46 @@ pub enum ViewNode {
     /// small status pill. Non-interactive — child text is the label; `tone`
     /// selects a semantic `theme.<tone>_bg`/`_fg` pair (PLAN-TOKENS T2).
     Badge { label: String, tone: Tone, test_id: Option<String> },
+    /// `<Chip selected? onPress? onRemove?>Label</Chip>` (§7.1,
+    /// PLAN-CATALOG wave 5): a pressable pill. `selected` is model-owned
+    /// (the `<if>` Display-"true" rule). `onPress` selects; optional
+    /// `onRemove` is a trailing ×. Both handlers accept the item-scoped
+    /// `action(loopVar.field)` form (§6.2).
+    Chip {
+        label: String,
+        selected: bool,
+        on_press: Option<String>,
+        on_press_arg: Option<String>,
+        on_remove: Option<String>,
+        on_remove_arg: Option<String>,
+        test_id: Option<String>,
+    },
+    /// `<Tabs testId?="…">` (§7.1, PLAN-CATALOG wave 7): a tab strip.
+    /// Children are `<Tab>` (and `<for>`/`<if>` that resolve to them).
+    /// Gloss note tabs are the first consumer.
+    Tabs { children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<Toolbar vertical?>` (§7.1, PLAN-CATALOG wave 7): chrome strip.
+    /// Horizontal default (full width, hairline bottom); `vertical` is
+    /// the Gloss left rail (fill height, hairline right). Children are
+    /// ordinary markup.
+    Toolbar { vertical: bool, children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<StatusBar>` (§7.1, PLAN-CATALOG wave 7): footer chrome.
+    /// Full-width row, hairline on top. Children are ordinary markup
+    /// (Gloss: muted Text slots). Drops the homemade Separator+Row.
+    StatusBar { children: Vec<ViewNode>, test_id: Option<String> },
+    /// `<Tab selected? onPress? onClose?>Label</Tab>`: one tab. Child
+    /// text is the label. `selected` is the `<if>` Display-"true" bool;
+    /// `onPress` activates; optional `onClose` is a trailing ×. Both
+    /// handlers accept the item-scoped `action(loopVar.field)` form.
+    Tab {
+        label: String,
+        selected: bool,
+        on_press: Option<String>,
+        on_press_arg: Option<String>,
+        on_close: Option<String>,
+        on_close_arg: Option<String>,
+        test_id: Option<String>,
+    },
     /// `<Heading level={2}>Title</Heading>` (§7.1, PLAN-CATALOG wave 2): a
     /// semantic heading. `level` 1–4 maps to the type ramp (xl/lg/md/sm),
     /// always bold; child text is the content. Renders as a bold `Text` item.
@@ -200,6 +240,17 @@ pub enum ViewNode {
     /// an inline callout — status-token tinted panel, bold title line,
     /// muted body from the element's text content.
     Alert { tone: Tone, title: String, body: String, test_id: Option<String> },
+    /// `<Toast tone? title? onDismiss?>body</Toast>` (§7.1, PLAN-CATALOG
+    /// wave 7): a detached, non-modal overlay at the bottom-right.
+    /// Mount via `<if>`; optional `onDismiss` is a trailing ×. Auto-
+    /// timeout is an app Timer, not a paint-path clock.
+    Toast {
+        tone: Tone,
+        title: String,
+        body: String,
+        on_dismiss: Option<String>,
+        test_id: Option<String>,
+    },
     /// `<Card>…</Card>` (§7.1): the bordered, elevated surface
     /// container — elevated `surface_raised` fill. Ordinary flex
     /// column inside (gap/padding attrs like Column).
@@ -426,6 +477,24 @@ pub enum ItemKind {
     Button { label: String, px: f32, variant: Variant },
     /// Status pill — `tone` picks a `theme.<tone>_bg`/`_fg` pair.
     Badge { label: String, tone: Tone, px: f32 },
+    /// `<Chip>` chrome — the pill behind the label / optional ×.
+    ChipBox { selected: bool },
+    /// Chip label text; `selected` picks accent vs body tokens.
+    ChipLabel { label: String, px: f32, selected: bool },
+    /// Chip trailing dismiss glyph.
+    ChipRemove { selected: bool },
+    /// `<Tabs>` strip — paints a bottom hairline.
+    TabsBox,
+    /// `<Toolbar>` — paints a trailing hairline (bottom or right).
+    ToolbarBox { vertical: bool },
+    /// `<StatusBar>` — paints a top hairline.
+    StatusBarBox,
+    /// `<Tab>` chrome behind the label / optional ×.
+    TabBox { selected: bool },
+    /// Tab label text; `selected` picks body vs muted tokens.
+    TabLabel { label: String, px: f32, selected: bool },
+    /// Tab trailing close glyph.
+    TabClose { selected: bool },
     /// Determinate progress bar — `value` 0..=1 fills the track. (Heading has
     /// no ItemKind: it builds to a bold `Text`.)
     Progress { value: f32 },
@@ -456,6 +525,15 @@ pub enum ItemKind {
     },
     /// `<Alert>` — tinted callout painting its own title/body.
     Alert { tone: Tone, title: String, body: String, px_md: f32, px_sm: f32 },
+    /// `<Toast>` overlay host — full viewport, paints nothing, not a
+    /// modal barrier (clicks outside fall through).
+    ToastHost,
+    /// Toast card — raised fill + tone stripe.
+    ToastBox { tone: Tone },
+    /// Toast title + body copy.
+    ToastCopy { title: String, body: String, px_md: f32, px_sm: f32 },
+    /// Toast trailing dismiss glyph.
+    ToastClose,
     /// `<Card>`/`<Panel>` — a surface container behind its children
     /// (`raised` adds the elevated fill; hairline framing is Dialog-only).
     Surface { raised: bool },

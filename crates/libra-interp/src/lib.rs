@@ -767,6 +767,198 @@ fn element(
             Ok(ViewNode::Badge { label, tone, test_id })
         }
 
+        // §7.1 (PLAN-CATALOG wave 5): pressable pill. `selected` follows
+        // the bool Display-"true" rule; `onPress` / `onRemove` are
+        // optional and accept the item-scoped Call form.
+        "Chip" => {
+            let mut selected = false;
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_remove: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
+                (scope.field)(path)
+                    .ok_or_else(|| err(aspan, format!("no binding '{path}' in scope")))
+            };
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", AttrValue::Flag) => selected = true,
+                    ("selected", AttrValue::Ident(p)) => selected = resolve(p, a.span)? == "true",
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onRemove", AttrValue::Ident(m)) => on_remove = Some((m.clone(), None, a.span)),
+                    ("onRemove", AttrValue::Call { name: m, arg }) => {
+                        on_remove = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = text_content(children, scope, *span)?;
+            let resolve_handler = |spec: Option<(String, Option<String>, Span)>, attr: &str| {
+                match spec {
+                    None => Ok((None, None)),
+                    Some((m, arg, mspan)) => {
+                        require_camel_case(&m, mspan)?;
+                        let resolved_arg = match &arg {
+                            Some(binding) => {
+                                if !(scope.has_str_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!(
+                                            "action '{m}' takes no payload — `{attr}={{{m}({binding})}}` \
+                                             needs a String-payload action (fn {m}(&mut self, s: String))"
+                                        ),
+                                    ));
+                                }
+                                Some(resolve(binding, mspan)?)
+                            }
+                            None => {
+                                if !(scope.has_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!("no action '{m}' on Action — check the enum"),
+                                    ));
+                                }
+                                None
+                            }
+                        };
+                        Ok((Some(m), resolved_arg))
+                    }
+                }
+            };
+            let (on_press, on_press_arg) = resolve_handler(on_press, "onPress")?;
+            let (on_remove, on_remove_arg) = resolve_handler(on_remove, "onRemove")?;
+            Ok(ViewNode::Chip {
+                label,
+                selected,
+                on_press,
+                on_press_arg,
+                on_remove,
+                on_remove_arg,
+                test_id,
+            })
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7): tab strip. Children resolve
+        // through resolve_children so `<for>` / `<if>` work — Gloss
+        // binds `tab_rows` this way.
+        "Tabs" => {
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            Ok(ViewNode::Tabs { children: kids, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7): chrome strip. `vertical` is the
+        // Gloss left rail; default is a full-width row.
+        "Toolbar" => {
+            let mut vertical = false;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("vertical", AttrValue::Flag) => vertical = true,
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            Ok(ViewNode::Toolbar { vertical, children: kids, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7): footer chrome. Children are
+        // ordinary markup (Gloss muted Text slots).
+        "StatusBar" => {
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            Ok(ViewNode::StatusBar { children: kids, test_id })
+        }
+
+        // One tab. Child text is the label; selected / onPress /
+        // onClose mirror Chip (onClose is the editor-chrome name).
+        "Tab" => {
+            let mut selected = false;
+            let mut on_press: Option<(String, Option<String>, Span)> = None;
+            let mut on_close: Option<(String, Option<String>, Span)> = None;
+            let mut test_id = None;
+            let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
+                (scope.field)(path)
+                    .ok_or_else(|| err(aspan, format!("no binding '{path}' in scope")))
+            };
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("selected", AttrValue::Flag) => selected = true,
+                    ("selected", AttrValue::Ident(p)) => selected = resolve(p, a.span)? == "true",
+                    ("onPress", AttrValue::Ident(m)) => on_press = Some((m.clone(), None, a.span)),
+                    ("onPress", AttrValue::Call { name: m, arg }) => {
+                        on_press = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("onClose", AttrValue::Ident(m)) => on_close = Some((m.clone(), None, a.span)),
+                    ("onClose", AttrValue::Call { name: m, arg }) => {
+                        on_close = Some((m.clone(), Some(arg.clone()), a.span))
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let label = text_content(children, scope, *span)?;
+            let resolve_handler = |spec: Option<(String, Option<String>, Span)>, attr: &str| {
+                match spec {
+                    None => Ok((None, None)),
+                    Some((m, arg, mspan)) => {
+                        require_camel_case(&m, mspan)?;
+                        let resolved_arg = match &arg {
+                            Some(binding) => {
+                                if !(scope.has_str_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!(
+                                            "action '{m}' takes no payload — `{attr}={{{m}({binding})}}` \
+                                             needs a String-payload action (fn {m}(&mut self, s: String))"
+                                        ),
+                                    ));
+                                }
+                                Some(resolve(binding, mspan)?)
+                            }
+                            None => {
+                                if !(scope.has_action)(&m) {
+                                    return Err(err(
+                                        mspan,
+                                        format!("no action '{m}' on Action — check the enum"),
+                                    ));
+                                }
+                                None
+                            }
+                        };
+                        Ok((Some(m), resolved_arg))
+                    }
+                }
+            };
+            let (on_press, on_press_arg) = resolve_handler(on_press, "onPress")?;
+            let (on_close, on_close_arg) = resolve_handler(on_close, "onClose")?;
+            Ok(ViewNode::Tab {
+                label,
+                selected,
+                on_press,
+                on_press_arg,
+                on_close,
+                on_close_arg,
+                test_id,
+            })
+        }
+
         "Heading" => {
             let mut level = 1u8;
             let mut test_id = None;
@@ -832,6 +1024,44 @@ fn element(
                 title.ok_or_else(|| err(*span, "<Alert> requires title={binding} or title=\"…\""))?;
             let body = text_content(children, scope, *span)?;
             Ok(ViewNode::Alert { tone, title, body, test_id })
+        }
+
+        // §7.1 (PLAN-CATALOG wave 7): detached non-modal overlay.
+        // Mount via `<if>`; optional onDismiss; timeout is an app Timer.
+        "Toast" => {
+            let mut tone = Tone::Neutral;
+            let mut title = String::new();
+            let mut on_dismiss: Option<(String, Span)> = None;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("tone", AttrValue::Str(t)) => tone = parse_tone(t, a.span)?,
+                    ("title", AttrValue::Str(v)) => title = v.clone(),
+                    ("title", AttrValue::Ident(p)) => {
+                        title = (scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?;
+                    }
+                    ("onDismiss", AttrValue::Ident(m)) => on_dismiss = Some((m.clone(), a.span)),
+                    ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let body = text_content(children, scope, *span)?;
+            if title.is_empty() && body.is_empty() {
+                return Err(err(*span, "<Toast> needs title=… or body text"));
+            }
+            let on_dismiss = match on_dismiss {
+                None => None,
+                Some((m, mspan)) => {
+                    require_camel_case(&m, mspan)?;
+                    if !(scope.has_action)(&m) {
+                        return Err(err(mspan, format!("no action '{m}' on Action — check the enum")));
+                    }
+                    Some(m)
+                }
+            };
+            Ok(ViewNode::Toast { tone, title, body, on_dismiss, test_id })
         }
 
         // §7.1 (PLAN-CATALOG): surface containers — Column semantics
@@ -1854,7 +2084,7 @@ fn element(
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
 }

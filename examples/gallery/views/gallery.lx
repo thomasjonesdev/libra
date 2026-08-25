@@ -60,6 +60,24 @@
       <if test={is_search}>
         <SearchDemo ctl_input={ctl_input} inputChanged={inputChanged} search={search} />
       </if>
+      <if test={is_chip}>
+        <ChipDemo chip_on={chip_on} toggleChip={toggleChip} dismissChip={dismissChip} noop={noop} />
+      </if>
+      <if test={is_tabs}>
+        <TabsDemo tab_editor={tab_editor} tab_preview={tab_preview} tab_body={tab_body} pickTabEditor={pickTabEditor} pickTabPreview={pickTabPreview} dismissTab={dismissTab} />
+      </if>
+      <if test={is_toast}>
+        <ToastDemo />
+      </if>
+      <if test={is_toolbar}>
+        <ToolbarDemo noop={noop} />
+      </if>
+      <if test={is_statusbar}>
+        <StatusBarDemo />
+      </if>
+      <if test={is_toast}>
+        <Toast tone="success" title="Saved" onDismiss={dismissToast} testId="pg-toast">Atlas.md written</Toast>
+      </if>
       <if test={is_textarea}>
         <TextareaDemo ctl_body={ctl_body} bodyChanged={bodyChanged} />
       </if>

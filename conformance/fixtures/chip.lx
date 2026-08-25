@@ -1,0 +1,9 @@
+<Column gap={8} padding={12}>
+  <Chip selected={user.active} onPress={reset} testId="bound-chip">Ada</Chip>
+  <Chip selected onPress={increment}>On</Chip>
+  <Chip onPress={increment}>Off</Chip>
+  <Chip onRemove={reset} testId="tag">Removable</Chip>
+  <for each={items} as="opt" key={opt.id}>
+    <Chip selected={opt.active} onPress={nameChanged(opt.id)} onRemove={nameChanged(opt.id)}>{opt.label}</Chip>
+  </for>
+</Column>
