@@ -697,11 +697,13 @@ fn surfaces_produce_identical_trees() {
     let ViewNode::Alert { title, body, .. } = &children[0] else { panic!("{:?}", children[0]) };
     assert_eq!((title.as_str(), body.as_str()), ("", "something broke"));
     assert!(matches!(&children[2], ViewNode::Card { .. }));
-    assert!(matches!(&children[4], ViewNode::Skeleton { width: None, .. }));
-    let ViewNode::Avatar { name, .. } = &children[6] else { panic!("{:?}", children[6]) };
+    assert!(matches!(&children[3], ViewNode::Panel { raised: false, .. }));
+    assert!(matches!(&children[4], ViewNode::Panel { raised: true, .. }));
+    assert!(matches!(&children[5], ViewNode::Skeleton { width: None, .. }));
+    let ViewNode::Avatar { name, .. } = &children[7] else { panic!("{:?}", children[7]) };
     assert_eq!(name, "Ada");
     assert!(matches!(
-        &children[8],
+        &children[9],
         ViewNode::Drawer { side: libra_components::DrawerSide::Right, .. }
     ));
 }
