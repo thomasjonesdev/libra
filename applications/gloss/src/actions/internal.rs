@@ -70,6 +70,7 @@ impl Gloss {
         self.in_flight_body = self.full_note_text();
         self.dirty = false;
         self.save_pending = false;
+        self.save_timer = None;
         self.expand_ancestors(&path);
         self.status = "Creating…".into();
         self.spawn(cmd, IoKind::Apply)
@@ -85,6 +86,8 @@ impl Gloss {
         self.has_frontmatter = false;
         self.has_frontmatter_title = false;
         self.dirty = false;
+        self.save_pending = false;
+        self.save_timer = None;
     }
 
     pub(super) fn push_history(&mut self, next: &str) {
@@ -122,7 +125,14 @@ impl Gloss {
                 }
             }
             Pending::List => self.open_list(),
-            Pending::Cat(path) => self.begin_cat(path),
+            Pending::Cat(path) => {
+                if self.save_pending && self.dirty {
+                    self.pending = Pending::Cat(path);
+                    self.flush_save()
+                } else {
+                    self.begin_cat(path)
+                }
+            }
             Pending::Undo => self.undo(),
             Pending::Backlinks => self.scan_backlinks(),
             Pending::Rules => self.begin_load_rules(),
@@ -218,23 +228,26 @@ impl Gloss {
         self.set_note_text(&body);
         self.dirty = false;
         self.save_pending = false;
+        self.save_timer = None;
         self.sync_mention();
         self.status = format!("{} notes", self.note_paths.len());
         self.begin_load_rules()
     }
 
     fn finish_apply(&mut self) -> Option<Effect<Action>> {
-        let saved = self.in_flight_body.clone();
-        self.loaded_body = saved.clone();
-        self.set_note_text(&saved);
-        self.dirty = false;
+        self.loaded_body = self.in_flight_body.clone();
+        self.mark_edited();
         self.can_undo = true;
-        self.status = "Saved".into();
+        if self.dirty {
+            self.save_pending = true;
+        } else {
+            self.status = "Saved".into();
+        }
         if !self.note_paths.iter().any(|p| p == &self.selected_path) {
             self.note_paths.push(self.selected_path.clone());
             self.note_paths.sort();
         }
-        self.flash_toast(true, "Saved")
+        None
     }
 
     fn finish_undo(&mut self) -> Option<Effect<Action>> {
@@ -270,10 +283,19 @@ impl Gloss {
         }
     }
 
-    pub(super) fn schedule_save(&mut self) -> Option<Effect<Action>> {
+    pub(super) fn schedule_save(&mut self) -> Vec<Effect<Action>> {
         use crate::model::AUTOSAVE_MS;
         self.save_pending = true;
-        Some(Effect::timer(AUTOSAVE_MS, Action::FlushSave))
+        let mut fx = Vec::new();
+        if let Some(id) = self.save_timer.take() {
+            fx.push(Effect::CancelTimer {
+                id: libra_core::TimerId(id),
+            });
+        }
+        let id = self.alloc_timer();
+        self.save_timer = Some(id.0);
+        fx.push(Effect::timer_id(id, AUTOSAVE_MS, Action::FlushSave));
+        fx
     }
 
     pub(super) fn mark_edited(&mut self) {

@@ -2,6 +2,7 @@
   <Icon name="plus" testId="plus" />
   <Icon name="search" muted testId="search-icon" />
   <Icon name="settings" />
+  <Icon name="loader" testId="loader" />
   <Button variant="ghost" icon="plus" onPress={increment} testId="icon-btn" />
   <Button variant="secondary" icon="search" onPress={reset}>Find</Button>
 </Column>

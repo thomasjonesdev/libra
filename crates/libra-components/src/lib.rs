@@ -18,5 +18,6 @@ mod layout;
 mod node;
 mod paint;
 
+pub use catalog::caret::caret_byte_at;
 pub use layout::layout;
 pub use node::*;

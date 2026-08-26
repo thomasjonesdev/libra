@@ -1484,7 +1484,7 @@ fn gen_node(
                         icon = Some(icon_variant(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left/loader"),
                             )
                         })?.to_string());
                     }
@@ -1558,7 +1558,7 @@ fn gen_node(
                         icon_name = Some(icon_variant(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left/loader"),
                             )
                         })?.to_string());
                     }
@@ -2631,6 +2631,7 @@ fn icon_variant(s: &str) -> Option<&'static str> {
         "command" => "Command",
         "bookmark" => "Bookmark",
         "panel-left" => "PanelLeft",
+        "loader" => "Loader",
         _ => return None,
     })
 }

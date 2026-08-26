@@ -166,9 +166,9 @@ impl Gloss {
         }
     }
 
-    pub fn body_changed(&mut self, text: String) -> Option<Effect<Action>> {
+    pub fn body_changed(&mut self, text: String) -> Vec<Effect<Action>> {
         if self.selected_path.is_empty() {
-            return None;
+            return Vec::new();
         }
         self.editor_body = text;
         self.sync_mention();
@@ -176,9 +176,9 @@ impl Gloss {
         self.schedule_save()
     }
 
-    pub fn frontmatter_changed(&mut self, text: String) -> Option<Effect<Action>> {
+    pub fn frontmatter_changed(&mut self, text: String) -> Vec<Effect<Action>> {
         if self.selected_path.is_empty() || !self.reader_mode {
-            return None;
+            return Vec::new();
         }
         self.frontmatter_yaml = text;
         self.has_frontmatter = !self.frontmatter_yaml.trim().is_empty();
@@ -187,13 +187,14 @@ impl Gloss {
     }
 
     pub fn flush_save(&mut self) -> Option<Effect<Action>> {
-        if !self.save_pending || !self.dirty {
+        if !self.save_pending || !self.dirty || self.selected_path.is_empty() {
             return None;
         }
         if self.is_busy() {
             return None;
         }
         self.save_pending = false;
+        self.save_timer = None;
         self.in_flight_body = self.full_note_text();
         let root = self.vault_path.trim();
         let cmd = match apply_replace_cmd(
@@ -284,9 +285,9 @@ impl Gloss {
         self.mention_query = text;
     }
 
-    pub fn mention_pick(&mut self, id: String) -> Option<Effect<Action>> {
+    pub fn mention_pick(&mut self, id: String) -> Vec<Effect<Action>> {
         if id.is_empty() {
-            return None;
+            return Vec::new();
         }
         let stem = crate::model::file_stem(&id);
         let query_len = self.mention_query.len();

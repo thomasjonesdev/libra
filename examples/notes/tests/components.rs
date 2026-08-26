@@ -5,6 +5,7 @@
 use libra_components::Cursor;
 use libra_core::{Effect, KvResult};
 use libra_test::{by, fx, Harness};
+use libra_text::EditOp;
 use notes::{Action, Notes, STORE_KEY, VIEW};
 
 fn harness() -> Harness<Notes> {
@@ -48,6 +49,23 @@ fn new_note_appears_untitled_and_becomes_the_editor_body() {
     assert_eq!(h.state().note_rows.len(), 1);
     assert_eq!(h.state().note_rows[0].title, "Untitled");
     assert_eq!(h.state().editor_body, "");
+    settle_save(&mut h);
+}
+
+#[test]
+fn editor_selects_words_lines_and_ranges() {
+    let mut h = harness();
+    add_note(&mut h, "hello world\nnext");
+    h.click(by::test_id("editor-body"));
+    h.edit(EditOp::SetCaret { byte: 1, select: false });
+    h.edit(EditOp::SelectWord);
+    assert_eq!(h.focused_edit().unwrap().selected_text(), "hello");
+    h.edit(EditOp::SetCaret { byte: 13, select: false });
+    h.edit(EditOp::SelectLine);
+    assert_eq!(h.focused_edit().unwrap().selected_text(), "next");
+    h.edit(EditOp::SetCaret { byte: 0, select: false });
+    h.edit(EditOp::SetCaret { byte: 5, select: true });
+    assert_eq!(h.focused_edit().unwrap().selected_text(), "hello");
     settle_save(&mut h);
 }
 

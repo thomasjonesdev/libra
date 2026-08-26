@@ -30,7 +30,7 @@ use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::{Damage, Renderer};
 use tiny_skia::Pixmap;
-use libra_components::{Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
+use libra_components::{caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -122,6 +122,9 @@ pub struct Options {
     pub icon: Option<PathBuf>,
     /// macOS: transparent title bar, hidden title text, content under traffic
     /// lights — Obsidian-style chrome. No-op on other platforms.
+    /// Window dragging is the native title-bar strip plus empty `<Toolbar>`
+    /// chrome (`Window::drag_window`). The content surface is not
+    /// movable-by-background — that would steal Split and text drags.
     pub frameless: bool,
 }
 
@@ -399,6 +402,7 @@ where
         scroll_state: libra_components::ScrollState::new(),
         shortcut_table,
         drag: None,
+        text_click: None,
         menu_anchor: (0.0, 0.0),
         gfx: None,
         watch_mtime,
@@ -448,6 +452,15 @@ struct Gfx {
 enum DragTarget {
     Split(String),
     Slider(String),
+    Text,
+}
+
+struct TextClick {
+    id: String,
+    at: Instant,
+    count: u8,
+    x: f32,
+    y: f32,
 }
 
 /// §19: Libra's closed `Cursor` set → winit's icon vocabulary. The
@@ -490,9 +503,12 @@ struct Shell<A: App> {
     /// §19.2: the app's validated chord → action table (built once at
     /// startup from `A::shortcuts()`).
     shortcut_table: Vec<(libra_core::Chord, libra_core::Shortcut)>,
-    /// Pointer drag target (M5 Split divider / Slider track), keyed by
-    /// the control's test_id while the left button is down.
+    /// Pointer drag target (M5 Split divider / Slider track / text
+    /// selection), keyed by the control's test_id while the left
+    /// button is down.
     drag: Option<DragTarget>,
+    /// Last text-field click, for double/triple-click word/line select.
+    text_click: Option<TextClick>,
     /// M7 `<ContextMenu>` anchor — the last right-click point (logical
     /// px), a deterministic layout input like scroll offsets.
     menu_anchor: (f32, f32),
@@ -901,17 +917,47 @@ where
             return;
         }
         let Some(hit) = laid.hit(lx, ly) else {
-            // Clicked empty space: blur (§10.1).
+            // Empty toolbar chrome in a frameless window is the title-bar
+            // drag region. AppKit `movableByWindowBackground` cannot be
+            // used here: the whole window is one softbuffer surface, so
+            // it would steal Split and text drags.
+            let chrome = self.opts.frameless && laid.chrome_drag_at(lx, ly);
             if self.focus.take().is_some() {
                 self.request_redraw();
+            }
+            if chrome {
+                if let Some(gfx) = &self.gfx {
+                    let _ = gfx.window.drag_window();
+                }
             }
             return;
         };
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
             let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
-            self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
-            self.request_redraw();
+            let text = hit.semantics.text.clone();
+            let focus = self.focus_paint();
+            let byte = caret_byte_at(hit, lx, ly, &self.renderer, &self.theme, focus.as_ref())
+                .unwrap_or(text.len());
+            let already = self
+                .focus
+                .as_ref()
+                .is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
+            let shift = self.modifiers.shift_key();
+            if !already {
+                self.focus = Some((id.clone(), EditState::new(text), name));
+            }
+            let count = self.bump_text_click(&id, lx, ly);
+            let op = match count {
+                2 => EditOp::SelectWord,
+                3 => EditOp::SelectLine,
+                _ => EditOp::SetCaret {
+                    byte,
+                    select: shift && already,
+                },
+            };
+            self.apply_edit(op);
+            self.drag = Some(DragTarget::Text);
             return;
         }
         self.focus = None;
@@ -946,6 +992,7 @@ where
         let want = match &self.drag {
             Some(DragTarget::Split(_)) => Cursor::ColResize,
             Some(DragTarget::Slider(_)) => Cursor::Pointer,
+            Some(DragTarget::Text) => Cursor::Text,
             None => {
                 let scale = self.scale();
                 let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
@@ -994,8 +1041,59 @@ where
     /// from the pointer within the control's rect and dispatch its
     /// String-payload handler (`{:.4}` — identical formatting to the
     /// harness's `resize_split`/`set_slider`, so both paths agree).
+    fn bump_text_click(&mut self, id: &str, x: f32, y: f32) -> u8 {
+        const WINDOW: Duration = Duration::from_millis(400);
+        const SLOP: f32 = 6.0;
+        let now = Instant::now();
+        let next = match &self.text_click {
+            Some(prev)
+                if prev.id == id
+                    && now.duration_since(prev.at) <= WINDOW
+                    && (prev.x - x).abs() <= SLOP
+                    && (prev.y - y).abs() <= SLOP =>
+            {
+                (prev.count % 3) + 1
+            }
+            _ => 1,
+        };
+        self.text_click = Some(TextClick {
+            id: id.to_string(),
+            at: now,
+            count: next,
+            x,
+            y,
+        });
+        next
+    }
+
+    fn text_drag_move(&mut self) {
+        let scale = self.scale();
+        let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+        let focus = self.focus_paint();
+        let Some(id) = self.focus.as_ref().map(|(id, _, _)| id.clone()) else {
+            return;
+        };
+        let Some(laid) = &self.laid else { return };
+        let Some(item) = laid
+            .items
+            .iter()
+            .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+        else {
+            return;
+        };
+        let Some(byte) = caret_byte_at(item, lx, ly, &self.renderer, &self.theme, focus.as_ref())
+        else {
+            return;
+        };
+        self.apply_edit(EditOp::SetCaret { byte, select: true });
+    }
+
     fn drag_move(&mut self) {
         let Some(target) = self.drag.clone() else { return };
+        if matches!(target, DragTarget::Text) {
+            self.text_drag_move();
+            return;
+        }
         let scale = self.scale();
         let lx = self.cursor.0 as f32 / scale;
         let Some(laid) = &self.laid else { return };
@@ -1016,6 +1114,7 @@ where
                 }
                 _ => None,
             }),
+            DragTarget::Text => None,
         };
         let Some((rect, handler, lo, hi)) = found else { return };
         if rect.w <= 0.0 {
@@ -1462,8 +1561,7 @@ where
             attrs = attrs
                 .with_titlebar_transparent(true)
                 .with_fullsize_content_view(true)
-                .with_title_hidden(true)
-                .with_movable_by_window_background(true);
+                .with_title_hidden(true);
         }
         let window = Arc::new(
             event_loop

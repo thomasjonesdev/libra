@@ -19,6 +19,7 @@
 pub(crate) mod badge;
 pub(crate) mod breadcrumb;
 pub(crate) mod button;
+pub(crate) mod caret;
 pub(crate) mod chart;
 pub(crate) mod chip;
 pub(crate) mod container;

@@ -1086,8 +1086,7 @@ fn icon_produces_identical_trees() {
     assert!(
         matches!(
             &children[3],
-            ViewNode::Button { icon: Some(IconName::Plus), label, test_id: Some(id), .. }
-                if label.is_empty() && id == "icon-btn"
+            ViewNode::Icon { name: IconName::Loader, muted: false, test_id: Some(id) } if id == "loader"
         ),
         "{:?}",
         children[3]
@@ -1095,6 +1094,15 @@ fn icon_produces_identical_trees() {
     assert!(
         matches!(
             &children[4],
+            ViewNode::Button { icon: Some(IconName::Plus), label, test_id: Some(id), .. }
+                if label.is_empty() && id == "icon-btn"
+        ),
+        "{:?}",
+        children[4]
+    );
+    assert!(
+        matches!(
+            &children[5],
             ViewNode::Button { icon: Some(IconName::Search), label, .. } if label == "Find"
         ),
         "{:?}",

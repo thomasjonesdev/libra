@@ -19,6 +19,7 @@
     <Icon name="back" />
     <Icon name="forward" />
     <Icon name="command" />
+    <Icon name="loader" />
   </Row>
   <Text bold muted>Muted</Text>
   <Row gap={10} cross="center">

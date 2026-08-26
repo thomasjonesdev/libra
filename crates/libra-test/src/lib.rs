@@ -14,7 +14,7 @@ use libra_markup::Node;
 use libra_raster::Renderer;
 use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_components::{Cursor, InputFocus, LaidTree, Role, ScrollState};
+use libra_components::{caret_byte_at, Cursor, InputFocus, LaidTree, Role, ScrollState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -443,7 +443,19 @@ impl<A: App> Harness<A> {
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
             let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
-            self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
+            let text = hit.semantics.text.clone();
+            let focus = self.focus.as_ref().map(|(fid, e, _)| InputFocus {
+                test_id: fid.clone(),
+                caret: e.caret(),
+                selection: e.selection(),
+            });
+            let byte = caret_byte_at(hit, cx, cy, &self.renderer, &self.theme, focus.as_ref())
+                .unwrap_or(text.len());
+            let already = self.focus.as_ref().is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
+            if !already {
+                self.focus = Some((id, EditState::new(text), name));
+            }
+            self.edit(EditOp::SetCaret { byte, select: false });
             return;
         }
         // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch
@@ -469,7 +481,14 @@ impl<A: App> Harness<A> {
     /// keystroke runs the editing core and dispatches the input's
     /// onChange msg through the real update, exactly like the shell.
     pub fn type_text(&mut self, sel: Selector, text: &str) {
-        self.click(sel);
+        let item = self.find(&sel).unwrap_or_else(|| panic!("type_text: no item matches {sel:?}"));
+        if item.semantics.role != Role::TextInput {
+            panic!("type_text: {sel:?} is not a text field");
+        }
+        let id = item.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+        let name = item.on_press.clone().expect("text field has onChange");
+        let current = item.semantics.text.clone();
+        self.focus = Some((id, EditState::new(current), name));
         for ch in text.chars() {
             self.edit(EditOp::Insert(ch));
         }

@@ -352,6 +352,9 @@ impl<M> Effect<M> {
     pub fn timer(after_ms: u64, action: M) -> Self {
         Effect::Timer { id: None, after_ms, action }
     }
+    pub fn timer_id(id: TimerId, after_ms: u64, action: M) -> Self {
+        Effect::Timer { id: Some(id), after_ms, action }
+    }
     pub fn clipboard_set(text: impl Into<String>) -> Self {
         Effect::ClipboardSet { text: text.into(), on_done: None }
     }

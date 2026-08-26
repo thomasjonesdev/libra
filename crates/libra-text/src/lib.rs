@@ -52,6 +52,10 @@ pub enum EditOp {
     Up(bool),
     Down(bool),
     SelectAll,
+    /// Select the word (or whitespace/punctuation run) at the caret.
+    SelectWord,
+    /// Select the current hard line (excluding the trailing newline).
+    SelectLine,
     /// Place the caret at a byte offset (clamped to a char boundary).
     SetCaret { byte: usize, select: bool },
     Undo,
@@ -185,6 +189,17 @@ impl EditState {
                 self.anchor = 0;
                 self.caret = self.text.len();
             }
+            EditOp::SelectWord => {
+                self.last_kind = OpKind::Other;
+                let (start, end) = word_bounds(&self.text, self.caret);
+                self.anchor = start;
+                self.caret = end;
+            }
+            EditOp::SelectLine => {
+                self.last_kind = OpKind::Other;
+                self.anchor = line_start(&self.text, self.caret);
+                self.caret = line_end(&self.text, self.caret);
+            }
             EditOp::SetCaret { byte, select } => {
                 self.last_kind = OpKind::Other;
                 let to = clamp_boundary(&self.text, byte);
@@ -293,6 +308,40 @@ fn prev_word(text: &str, from: usize) -> usize {
         }
     }
     chars.last().map_or(0, |&(i, c)| i + c.len_utf8())
+}
+
+/// Inclusive run of the same class (word vs non-word) around `caret`.
+fn word_bounds(text: &str, caret: usize) -> (usize, usize) {
+    if text.is_empty() {
+        return (0, 0);
+    }
+    let i = if caret >= text.len() {
+        prev_boundary(text, text.len())
+    } else {
+        caret
+    };
+    let Some(ch) = text[i..].chars().next() else {
+        return (0, 0);
+    };
+    let wordish = is_word(ch);
+    let mut start = i;
+    while start > 0 {
+        let p = prev_boundary(text, start);
+        let c = text[p..].chars().next().unwrap();
+        if is_word(c) != wordish {
+            break;
+        }
+        start = p;
+    }
+    let mut end = i + ch.len_utf8();
+    while end < text.len() {
+        let c = text[end..].chars().next().unwrap();
+        if is_word(c) != wordish {
+            break;
+        }
+        end += c.len_utf8();
+    }
+    (start, end)
 }
 
 /// Caret target for Alt/Ctrl+Right: end of the next word.
@@ -527,5 +576,24 @@ mod tests {
         assert_eq!(e.caret(), e.text().find('\n').unwrap(), "clamps to a char boundary");
         e.apply(EditOp::Down(false));
         assert_eq!(e.caret(), e.text().len());
+    }
+
+    #[test]
+    fn select_word_covers_the_run_under_the_caret() {
+        let mut e = typed("hello world");
+        e.apply(EditOp::SetCaret { byte: 1, select: false });
+        e.apply(EditOp::SelectWord);
+        assert_eq!(e.selected_text(), "hello");
+        e.apply(EditOp::SetCaret { byte: 8, select: false });
+        e.apply(EditOp::SelectWord);
+        assert_eq!(e.selected_text(), "world");
+    }
+
+    #[test]
+    fn select_line_excludes_the_newline() {
+        let mut e = typed("one\ntwo\nthree");
+        e.apply(EditOp::SetCaret { byte: 5, select: false });
+        e.apply(EditOp::SelectLine);
+        assert_eq!(e.selected_text(), "two");
     }
 }

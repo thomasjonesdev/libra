@@ -702,7 +702,7 @@ fn element(
                         icon = Some(IconName::from_markup(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left/loader"),
                             )
                         })?);
                     }
@@ -763,7 +763,7 @@ fn element(
                         icon_name = Some(IconName::from_markup(s).ok_or_else(|| {
                             err(
                                 a.span,
-                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left"),
+                                format!("unknown icon \"{s}\" — expected plus/minus/close/check/search/settings/undo/calendar/graph/folder/sort/back/forward/command/bookmark/panel-left/loader"),
                             )
                         })?);
                     }

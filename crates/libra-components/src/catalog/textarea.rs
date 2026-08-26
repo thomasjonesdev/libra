@@ -140,6 +140,52 @@ fn fit_prefix(
     (end, end)
 }
 
+/// Byte offset nearest `(x, y)` in a soft-wrapped textarea.
+pub(crate) fn caret_byte(
+    value: &str,
+    rect: Rect,
+    px: f32,
+    x: f32,
+    y: f32,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+) -> usize {
+    if value.is_empty() {
+        return 0;
+    }
+    let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
+    let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+    let line_h = th + TEXTAREA_LEADING;
+    let max_w = (rect.w - 2.0 * theme.btn_pad_x).max(0.0);
+    let lines = wrap_visual_lines(value, max_w, px, m);
+    if y < ty {
+        return lines[0].0;
+    }
+    let row = ((y - ty) / line_h).floor().max(0.0) as usize;
+    if row >= lines.len() {
+        return value.len();
+    }
+    let (ls, le) = lines[row];
+    let rel = x - tx;
+    if rel <= 0.0 {
+        return ls;
+    }
+    let mut prev_i = ls;
+    let mut prev_w = 0.0f32;
+    let mut i = ls;
+    while i < le {
+        let ch = value[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+        let w = m.measure(&value[ls..i], px, FontStyle::Regular).0;
+        if w >= rel {
+            return if (rel - prev_w) <= (w - rel) { prev_i } else { i };
+        }
+        prev_i = i;
+        prev_w = w;
+    }
+    le
+}
+
 pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &str, px: f32) {
     let focused = cx
         .focus

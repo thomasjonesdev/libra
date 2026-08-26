@@ -17,7 +17,7 @@ pub use actions::{reduce, Action};
 pub use model::{
     assemble_note, default_daily_note_path, file_stem, journal_path, note_snippet, note_title,
     parse_list, project_file_rows, project_preview, project_search_rows, resolve_daily_note,
-    resolve_wikilink, split_note, SidebarView, IoKind, Pending, STORE_KEY, vault_name,
+    resolve_wikilink, split_note, SidebarView, IoKind, Pending, AUTOSAVE_MS, STORE_KEY, vault_name,
 };
 pub use state::Gloss;
 

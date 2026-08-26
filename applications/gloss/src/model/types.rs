@@ -6,7 +6,7 @@ use libra_core::LibraReflect;
 use serde::{Deserialize, Serialize};
 
 pub const STORE_KEY: &str = "gloss/workspace";
-pub const AUTOSAVE_MS: u64 = 500;
+pub const AUTOSAVE_MS: u64 = 800;
 pub const GLOSS_BIN: &str = "gloss";
 pub const RULES_PATH: &str = ".gloss/rules.md";
 pub const TOAST_MS: u64 = 2_500;

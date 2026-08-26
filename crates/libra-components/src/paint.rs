@@ -297,6 +297,17 @@ impl LaidTree {
         }
         Cursor::Default
     }
+
+    /// Empty `<Toolbar>` chrome — a frameless window may start a native
+    /// drag here. Interactive children (buttons, tabs, inputs) and split
+    /// gutters win first via [`hit`] / the divider walk in the shell.
+    pub fn chrome_drag_at(&self, x: f32, y: f32) -> bool {
+        self.items.iter().rev().any(|i| {
+            matches!(i.kind, ItemKind::ToolbarBox { .. })
+                && i.rect.contains(x, y)
+                && i.clip.map_or(true, |c| c.contains(x, y))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -410,5 +421,36 @@ mod tests {
         ]);
         assert!(behind.hit(10.0, 10.0).is_none());
         assert_eq!(behind.cursor_at(10.0, 10.0), Cursor::Default);
+    }
+
+    #[test]
+    fn empty_toolbar_chrome_is_a_window_drag_region() {
+        let laid = tree(vec![
+            item(
+                ItemKind::ToolbarBox {
+                    vertical: false,
+                    compact: true,
+                    background: None,
+                },
+                Rect::new(0.0, 0.0, 200.0, 36.0),
+                Role::Container,
+                None,
+            ),
+            item(
+                ItemKind::Button {
+                    label: String::new(),
+                    px: 14.0,
+                    variant: Variant::Ghost,
+                    icon: None,
+                },
+                Rect::new(8.0, 4.0, 24.0, 28.0),
+                Role::Button,
+                Some("press"),
+            ),
+        ]);
+        assert!(laid.chrome_drag_at(80.0, 16.0));
+        assert!(laid.hit(80.0, 16.0).is_none());
+        assert!(laid.hit(16.0, 16.0).is_some());
+        assert!(!laid.chrome_drag_at(80.0, 80.0));
     }
 }

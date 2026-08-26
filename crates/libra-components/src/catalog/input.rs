@@ -74,6 +74,44 @@ pub(crate) fn paint_field(
     );
 }
 
+/// Byte offset nearest `x` in a single-line field (Input / Search).
+pub(crate) fn caret_byte(
+    value: &str,
+    rect: Rect,
+    px: f32,
+    leading: f32,
+    x: f32,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+    focus: Option<&InputFocus>,
+) -> usize {
+    let left = theme.btn_pad_x + leading;
+    let inner_w = (rect.w - left - theme.btn_pad_x).max(0.0);
+    let scroll_x = input_scroll_x(m, value, px, inner_w, focus);
+    let rel = x - (rect.x + left) + scroll_x;
+    caret_at_advance(value, px, rel, m)
+}
+
+fn caret_at_advance(value: &str, px: f32, rel: f32, m: &dyn TextMeasurer) -> usize {
+    if rel <= 0.0 || value.is_empty() {
+        return 0;
+    }
+    let mut prev_i = 0usize;
+    let mut prev_w = 0.0f32;
+    let mut i = 0usize;
+    while i < value.len() {
+        let ch = value[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+        let w = m.measure(&value[..i], px, FontStyle::Regular).0;
+        if w >= rel {
+            return if (rel - prev_w) <= (w - rel) { prev_i } else { i };
+        }
+        prev_i = i;
+        prev_w = w;
+    }
+    value.len()
+}
+
 /// Horizontal scroll offset so the caret and selection stay visible in a
 /// clipped single-line field. Computed at paint time from focus state —
 /// arrow keys and typing move the caret, which moves the viewport.

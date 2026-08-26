@@ -41,8 +41,29 @@ fn typing_in_the_editor_marks_dirty_and_schedules_save() {
         .any(|e| matches!(e, Effect::Timer { .. })));
     let t = h.expect_effect(fx::timer());
     h.fire_timer(t);
+    h.query(by::test_id("save-icon")).assert_text("loader");
     let apply = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(apply, ok_stdout(""));
     assert_eq!(h.state().status, "Saved");
-    h.query(by::test_id("toast")).assert_text("Saved");
+    h.query(by::test_id("save-icon")).assert_text("check");
+}
+
+#[test]
+fn typing_during_save_keeps_the_newer_editor_text() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nindex");
+    h.type_text(by::test_id("reader-body"), " more");
+    let t = h.expect_effect(fx::timer());
+    h.fire_timer(t);
+    let apply = h.expect_effect(fx::process_program("gloss"));
+    h.type_text(by::test_id("reader-body"), "!");
+    assert_eq!(h.state().editor_body, "# Atlas\n\nindex more!");
+    h.resolve_process(apply, ok_stdout(""));
+    assert_eq!(h.state().editor_body, "# Atlas\n\nindex more!");
+    assert!(h.state().dirty);
+    let apply2 = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(apply2, ok_stdout(""));
+    assert_eq!(h.state().editor_body, "# Atlas\n\nindex more!");
+    assert!(!h.state().dirty);
+    h.query(by::test_id("save-icon")).assert_text("check");
 }

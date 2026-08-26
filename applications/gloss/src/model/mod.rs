@@ -23,7 +23,7 @@ pub use paths::{
 pub use projections::{
     char_count_label, insert_wikilink_mention, mention_trigger, project_bookmark_rows,
     project_file_rows, project_link_rows, project_palette_rows, project_preview,
-    project_search_rows, rules_preview, save_label, word_count_label,
+    project_search_rows, rules_preview, save_busy, save_ok, word_count_label,
 };
 pub use types::{
     FileRow, FrontmatterField, IoKind, NoteRow, Pending, SidebarView, TabRow, AUTOSAVE_MS,

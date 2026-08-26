@@ -25,7 +25,8 @@ pub struct Gloss {
     pub empty_message: String,
     pub word_count: String,
     pub char_count: String,
-    pub save_label: String,
+    pub save_busy: bool,
+    pub save_ok: bool,
     pub mode_label: String,
     pub has_vault: bool,
     pub has_selected: bool,
@@ -77,9 +78,13 @@ pub struct Gloss {
     #[libra(skip)]
     pub next_process_id: u64,
     #[libra(skip)]
+    pub next_timer_id: u64,
+    #[libra(skip)]
     pub dirty: bool,
     #[libra(skip)]
     pub save_pending: bool,
+    #[libra(skip)]
+    pub save_timer: Option<u64>,
     #[libra(skip)]
     pub in_flight_body: String,
     #[libra(skip)]
@@ -117,6 +122,12 @@ impl Gloss {
         let id = self.next_process_id;
         self.next_process_id += 1;
         ProcessId(id)
+    }
+
+    pub fn alloc_timer(&mut self) -> libra_core::TimerId {
+        let id = self.next_timer_id;
+        self.next_timer_id += 1;
+        libra_core::TimerId(id)
     }
 
     pub fn is_busy(&self) -> bool {

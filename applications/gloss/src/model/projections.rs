@@ -226,16 +226,12 @@ pub fn char_count_label(body: &str) -> String {
     format!("{n} chars")
 }
 
-pub fn save_label(dirty: bool, status: &str) -> String {
-    if status == "Saving…" {
-        "Saving…".into()
-    } else if dirty {
-        "Edited".into()
-    } else if status == "Saved" {
-        "Saved".into()
-    } else {
-        String::new()
-    }
+pub fn save_busy(status: &str) -> bool {
+    status == "Saving…"
+}
+
+pub fn save_ok(has_selected: bool, status: &str) -> bool {
+    has_selected && !save_busy(status)
 }
 
 pub fn rules_preview(body: &str, max_chars: usize) -> String {

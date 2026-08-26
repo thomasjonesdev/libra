@@ -57,6 +57,7 @@ pub enum IconName {
     Command,
     Bookmark,
     PanelLeft,
+    Loader,
 }
 
 impl IconName {
@@ -78,6 +79,7 @@ impl IconName {
             "command" => Self::Command,
             "bookmark" => Self::Bookmark,
             "panel-left" => Self::PanelLeft,
+            "loader" => Self::Loader,
             _ => return None,
         })
     }
@@ -100,6 +102,7 @@ impl IconName {
             Self::Command => "command",
             Self::Bookmark => "bookmark",
             Self::PanelLeft => "panel-left",
+            Self::Loader => "loader",
         }
     }
 
@@ -121,6 +124,7 @@ impl IconName {
             Self::Command => "Command",
             Self::Bookmark => "Bookmark",
             Self::PanelLeft => "PanelLeft",
+            Self::Loader => "Loader",
         }
     }
 }

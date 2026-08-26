@@ -3,9 +3,9 @@
 use gloss::{
     default_daily_note_path, file_stem, journal_path, note_snippet, note_title, parse_list,
     project_file_rows, project_search_rows, reduce, resolve_daily_note, resolve_wikilink, vault_name,
-    Action, Gloss, IoKind, Pending,
+    Action, Gloss, IoKind, Pending, AUTOSAVE_MS,
 };
-use libra_core::{ProcessResult, ProcessStatus};
+use libra_core::{Effect, ProcessResult, ProcessStatus, TimerId};
 
 fn boot() -> Gloss {
     let (mut s, fx) = Gloss::init();
@@ -200,6 +200,63 @@ fn changing_vault_path_clears_can_undo() {
     s.can_undo = true;
     reduce(&mut s, Action::VaultPathChanged("/tmp/b".into()));
     assert!(!s.can_undo);
+}
+
+fn timer_id(fx: &[Effect<Action>]) -> TimerId {
+    fx.iter()
+        .find_map(|e| match e {
+            Effect::Timer { id: Some(id), after_ms, .. } => {
+                assert_eq!(*after_ms, AUTOSAVE_MS);
+                Some(*id)
+            }
+            _ => None,
+        })
+        .expect("save timer")
+}
+
+#[test]
+fn typing_resets_the_save_debounce() {
+    let mut s = editing("Atlas.md", "hello");
+    let first = reduce(&mut s, Action::BodyChanged("hello!".into()));
+    assert_eq!(
+        first
+            .iter()
+            .filter(|e| matches!(e, Effect::Timer { .. }))
+            .count(),
+        1
+    );
+    assert!(first
+        .iter()
+        .all(|e| !matches!(e, Effect::CancelTimer { .. })));
+    let first_id = timer_id(&first);
+    let second = reduce(&mut s, Action::BodyChanged("hello!!".into()));
+    assert!(second
+        .iter()
+        .any(|e| matches!(e, Effect::CancelTimer { id } if *id == first_id)));
+    assert_eq!(
+        second
+            .iter()
+            .filter(|e| matches!(e, Effect::Timer { .. }))
+            .count(),
+        1
+    );
+    assert_ne!(timer_id(&second), first_id);
+}
+
+#[test]
+fn apply_done_does_not_clobber_newer_edits() {
+    let mut s = editing("Atlas.md", "hello!!");
+    s.io = IoKind::Apply;
+    s.dirty = true;
+    s.loaded_body = "hello".into();
+    s.in_flight_body = "hello!".into();
+    reduce(&mut s, Action::IoDone(ok_proc("")));
+    assert_eq!(s.editor_body, "hello!!");
+    assert_eq!(s.loaded_body, "hello!");
+    assert!(s.dirty);
+    assert_eq!(s.io, IoKind::Apply);
+    assert_eq!(s.in_flight_body, "hello!!");
+    assert_eq!(s.status, "Saving…");
 }
 
 #[test]

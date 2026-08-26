@@ -144,11 +144,15 @@
     <Text size="sm" muted grow wrap testId="status">{status}</Text>
     <Text size="sm" muted testId="word-count">{word_count}</Text>
     <Text size="sm" muted testId="char-count">{char_count}</Text>
-    <Text size="sm" muted testId="save-label">{save_label}</Text>
+    <if test={save_busy}>
+      <Icon name="loader" muted testId="save-icon" />
+      <else>
+        <if test={save_ok}>
+          <Icon name="check" muted testId="save-icon" />
+        </if>
+      </else>
+    </if>
   </StatusBar>
-  <if test={toast_ok}>
-    <Toast tone="success" title={toast_title} onDismiss={dismissToast} testId="toast">{status}</Toast>
-  </if>
   <if test={toast_err}>
     <Toast tone="danger" title={toast_title} onDismiss={dismissToast} testId="toast">{status}</Toast>
   </if>

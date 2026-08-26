@@ -181,6 +181,16 @@ pub(crate) fn paint_name(
             ]);
             stroke(cmds, vec![p(0.40, 0.22), p(0.40, 0.78)]);
         }
+        IconName::Loader => {
+            let (cx, cy) = p(0.50, 0.50);
+            let r = s * 0.32;
+            let mut arc = Vec::with_capacity(11);
+            for i in 0..=10 {
+                let a = std::f32::consts::TAU * (0.12 + 0.72 * (i as f32 / 10.0));
+                arc.push((cx + r * a.cos(), cy + r * a.sin()));
+            }
+            stroke(cmds, arc);
+        }
     }
 }
 

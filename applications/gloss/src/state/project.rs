@@ -2,7 +2,7 @@
 
 use crate::model::{
     frontmatter_scan_rows, frontmatter_title, project_bookmark_rows, project_file_rows,
-    project_link_rows, project_palette_rows, save_label, vault_name, word_count_label,
+    project_link_rows, project_palette_rows, save_busy, save_ok, vault_name, word_count_label,
     char_count_label, IoKind, NoteRow, SidebarView, TabRow,
 };
 use crate::state::Gloss;
@@ -103,7 +103,8 @@ impl Gloss {
         self.empty_message = self.empty_sidebar_message();
         self.word_count = word_count_label(full);
         self.char_count = char_count_label(full);
-        self.save_label = save_label(self.dirty, &self.status);
+        self.save_busy = save_busy(&self.status);
+        self.save_ok = save_ok(self.has_selected, &self.status);
         self.mode_label = if self.reader_mode { "Raw" } else { "Reader" }.into();
         if self.reader_mode {
             self.frontmatter_title = frontmatter_title(&self.frontmatter_yaml);
