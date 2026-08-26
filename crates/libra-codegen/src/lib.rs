@@ -1264,12 +1264,29 @@ fn gen_node(
         // §7.1, matching interp's "Tooltip" arm exactly.
         "Tooltip" => {
             let mut text: Option<String> = None;
+            let mut position = "Top";
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("text", AttrValue::Str(v)) => text = Some(format!("{}.to_string()", str_lit(v))),
                     ("text", AttrValue::Ident(pth)) => {
                         let expr = display_ref_expr(pth, bound, binding_ctx).map_err(|m| err(a.span, m))?;
                         text = Some(format!("::std::string::ToString::to_string(&{expr})"));
+                    }
+                    ("position", AttrValue::Str(v)) => {
+                        position = match v.as_str() {
+                            "top" => "Top",
+                            "right" => "Right",
+                            "bottom" => "Bottom",
+                            "left" => "Left",
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!(
+                                        "unknown position \"{other}\" — expected \"top\", \"right\", \"bottom\" or \"left\""
+                                    ),
+                                ))
+                            }
+                        }
                     }
                     _ => return Err(unknown_attr(name, a)),
                 }
@@ -1280,6 +1297,7 @@ fn gen_node(
             Ok(format!(
                 "{i}::libra_components::ViewNode::Tooltip {{ {at}\n\
                  {i}    text: {text},\n\
+                 {i}    position: ::libra_components::TooltipPosition::{position},\n\
                  {i}    children: {kids},\n\
                  {i}}}",
                 at = at(cfg, *span),

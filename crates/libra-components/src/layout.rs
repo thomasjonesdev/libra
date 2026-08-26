@@ -171,7 +171,9 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Slider { value, on_change, test_id } => {
             catalog::slider::build(cx, *value, on_change, test_id)
         }
-        ViewNode::Tooltip { text, children } => catalog::tooltip::build(cx, text, children),
+        ViewNode::Tooltip { text, position, children } => {
+            catalog::tooltip::build(cx, text, *position, children)
+        }
         ViewNode::Breadcrumb { children } => catalog::breadcrumb::build_breadcrumb(cx, children),
         ViewNode::BreadcrumbItem { label, current, on_press, on_press_arg, test_id } => {
             catalog::breadcrumb::build_item(cx, label, *current, on_press, on_press_arg, test_id)

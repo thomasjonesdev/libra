@@ -10,7 +10,9 @@ use libra_markup::{
     is_catalog_element, Attr, AttrValue, ComponentDef, ComponentRegistry, Inline, Node, PropParam,
     PropType, Span,
 };
-use libra_components::{BoxStyle, DrawerSide, IconName, TextSize, Tone, Variant, ViewNode};
+use libra_components::{
+    BoxStyle, DrawerSide, IconName, TextSize, Tone, TooltipPosition, Variant, ViewNode,
+};
 use libra_core::CollectionRow;
 use std::collections::{HashMap, HashSet};
 
@@ -1571,6 +1573,7 @@ fn element(
         // §7.1 (PLAN-CATALOG): hover-input tooltip wrapper.
         "Tooltip" => {
             let mut text: Option<String> = None;
+            let mut position = TooltipPosition::Top;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("text", AttrValue::Str(v)) => text = Some(v.clone()),
@@ -1579,13 +1582,29 @@ fn element(
                             err(a.span, format!("no binding '{p}' in scope"))
                         })?)
                     }
+                    ("position", AttrValue::Str(v)) => {
+                        position = match v.as_str() {
+                            "top" => TooltipPosition::Top,
+                            "right" => TooltipPosition::Right,
+                            "bottom" => TooltipPosition::Bottom,
+                            "left" => TooltipPosition::Left,
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!(
+                                        "unknown position \"{other}\" — expected \"top\", \"right\", \"bottom\" or \"left\""
+                                    ),
+                                ))
+                            }
+                        }
+                    }
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
             let text =
                 text.ok_or_else(|| err(*span, "<Tooltip> requires text={binding} or text=\"…\""))?;
             let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
-            Ok(ViewNode::Tooltip { text, children: kids })
+            Ok(ViewNode::Tooltip { text, position, children: kids })
         }
 
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M7): the anchored menu —

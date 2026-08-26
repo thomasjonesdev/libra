@@ -754,8 +754,13 @@ fn slider_tooltip_produce_identical_trees() {
     let ViewNode::Slider { value, test_id, .. } = &children[0] else { panic!("{:?}", children[0]) };
     assert!((value - 0.7).abs() < 1e-6);
     assert_eq!(test_id, "bound-slider");
-    let ViewNode::Tooltip { text, children: kids } = &children[2] else { panic!("{:?}", children[2]) };
+    let ViewNode::Tooltip { text, position, children: kids } = &children[2] else { panic!("{:?}", children[2]) };
     assert_eq!(text, "ok");
+    assert_eq!(*position, libra_components::TooltipPosition::Top);
+    assert_eq!(kids.len(), 1);
+    let ViewNode::Tooltip { text, position, children: kids } = &children[3] else { panic!("{:?}", children[3]) };
+    assert_eq!(text, "static tip");
+    assert_eq!(*position, libra_components::TooltipPosition::Bottom);
     assert_eq!(kids.len(), 1);
 }
 

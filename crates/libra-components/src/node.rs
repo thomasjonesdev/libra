@@ -161,6 +161,16 @@ pub enum DrawerSide {
     Bottom,
 }
 
+/// Which side of its host a `<Tooltip>` label opens toward.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TooltipPosition {
+    #[default]
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BoxStyle {
     pub gap: f32,
@@ -438,12 +448,13 @@ pub enum ViewNode {
     /// press/drag dispatches `onChange` with the new fraction's
     /// Display, the app echoes it back.
     Slider { value: f32, on_change: String, test_id: String },
-    /// `<Tooltip text=…>child</Tooltip>` (§7.1): a floating label over
-    /// its child while the **hover input** is inside it — hover is
-    /// already deterministic (shell cursor / harness `hover(sel)`), so
-    /// tooltip frames are snapshot-exact. Painted in a second pass, on
-    /// top of everything.
-    Tooltip { text: String, children: Vec<ViewNode> },
+    /// `<Tooltip text=… position?=…>child</Tooltip>` (§7.1): a floating
+    /// label over its child while the **hover input** is inside it —
+    /// hover is already deterministic (shell cursor / harness
+    /// `hover(sel)`), so tooltip frames are snapshot-exact. Painted in
+    /// a second pass, on top of everything. `position` is
+    /// `top|right|bottom|left` (default `top`).
+    Tooltip { text: String, position: TooltipPosition, children: Vec<ViewNode> },
     /// `<Drawer side="left|right|bottom" onDismiss?=… testId?=…>` (§7.1):
     /// an edge-anchored modal on the Dialog overlay machinery — scrim +
     /// panel pinned to a side (`bottom` is the reference's Sheet).
@@ -674,8 +685,8 @@ pub enum ItemKind {
     /// handler for the shell's track drag / harness `set_slider`.
     SliderCtl { value: f32, on_change: String },
     /// `<Tooltip>` wrapper — invisible container; the second paint
-    /// pass draws `text` above it while hovered.
-    TooltipHost { text: String },
+    /// pass draws `text` beside it while hovered.
+    TooltipHost { text: String, position: TooltipPosition },
     /// `<Breadcrumb>` — invisible Row-shaped wrapper.
     BreadcrumbBox,
     /// One crumb — pressable unless current (handler lives in the

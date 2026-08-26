@@ -213,7 +213,7 @@ impl LaidTree {
             // Second phase: hovered tooltips top the z-order.
             if let Some((hx, hy)) = hover {
                 for item in &self.items {
-                    if let ItemKind::TooltipHost { text } = &item.kind {
+                    if let ItemKind::TooltipHost { text, position } = &item.kind {
                         let inside = item.rect.contains(hx, hy)
                             && item.clip.map_or(true, |c| c.contains(hx, hy));
                         if inside {
@@ -221,6 +221,7 @@ impl LaidTree {
                                 &mut cx,
                                 item.rect,
                                 text,
+                                *position,
                                 (self.width, self.height),
                             );
                         }

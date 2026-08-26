@@ -4,7 +4,7 @@
   <Tooltip text={status}>
     <Button onPress={increment} testId="tip-btn">hover me</Button>
   </Tooltip>
-  <Tooltip text="static tip">
+  <Tooltip text="static tip" position="bottom">
     <Text muted>hover target</Text>
   </Tooltip>
 </Column>
