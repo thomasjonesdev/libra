@@ -12,7 +12,9 @@ mod workspace;
 pub use hash::{hash_bytes, ContentHash};
 pub use journal::{Journal, RunRecord};
 pub use link::{find_backlinks, resolve_link_target};
-pub use parse::{split_frontmatter, wikilinks, ByteRange, FrontmatterSplit, LinkKind, Wikilink};
+pub use parse::{
+    comment_spans, split_frontmatter, wikilinks, ByteRange, FrontmatterSplit, LinkKind, Wikilink,
+};
 pub use patch::{
     apply_in_memory, apply_op, apply_patch, ApplyError, Op, Patch, PatchId, Provenance, RunId,
 };

@@ -15,7 +15,7 @@ type: architecture
 
 | # | Risk | Severity | Mitigation |
 |---|---|---|---|
-| 1 | **Text editing & IME** — the historically fatal subsystem | High | Ride parley/swash (don't invent shaping); scope fenced to plain-text entry ([[10.1-text-entry|§10.1]]) — the rich-text death traps are excluded by policy; pure editing state machine tested without rendering; hostile corpus + CJK acceptance criteria from day 1 |
+| 1 | **Text editing & IME** — the historically fatal subsystem | High | Ride the text stack; do not invent shaping. The *buffer* stays a plain string ([[10.1-text-entry|§10.1]]). Attributed editing and formatting toolbars stay out. Styled *display* (`<Markdown>`, emphasis faces) already ships and is not the death trap. Pure `EditState` tested without rendering; CJK IME still a v0.1 bar. |
 | 2 | **CPU rendering ceiling** — a real app outgrows the raster budget | Medium | Damage+layers first (usually sufficient); per-component GPU surfaces second; wgpu executor third — architecture already decoupled, decision deferred to profiling evidence |
 | 3 | **Interpreter/codegen drift** | Medium | Structural prevention (one parser crate), golden conformance suite in CI, fuzzed equivalence |
 | 4 | **Determinism erosion** (a dependency update changes rasterization) | Medium | Pin tiny-skia/swash exactly; snapshot corpus is the canary; version-bump PRs re-validate deliberately, reviewed as diffs |

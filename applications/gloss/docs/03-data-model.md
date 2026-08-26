@@ -11,7 +11,9 @@ tags: [gloss, architecture]
 ## Where things live
 
 M0 keeps the undo log in the vault so apply/undo works without an app-data
-layout. Later milestones move derived stores out.
+layout. M1 `gloss-index` writes `index.db` wherever the caller passes
+`--db`. The Libra app must pick a path outside the vault. See [[10-libra]]
+if that path needs a platform helper.
 
 ```
 <vault-root>/.gloss/
@@ -24,8 +26,14 @@ layout. Later milestones move derived stores out.
     index.db          SQLite: notes, chunks, links, vectors, FTS
     journal.db        SQLite: patch journal, cost ledger, rejections
     models/           downloaded embedding + whisper weights
-  settings.json       workspace list, provider prefs (no secrets)
+  settings.json       (later) provider prefs — no secrets
 ```
+
+The Libra app persists the **vault switcher** as JSON on the existing
+`Effect::Kv*` key `gloss/workspace` (one vault open at a time; a raw
+path from older builds migrates to a one-entry list). Per-vault fields:
+path, name, last note, sort, split, reader mode. The index still lives
+outside the vault when M1 writes `index.db`.
 
 Nothing derived is stored in the vault. The index must be rebuildable from the
 files alone; if index and files disagree, the files win. API keys live in the

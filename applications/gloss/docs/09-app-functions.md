@@ -13,8 +13,10 @@ blocked on index / catalog / agent layers. This is the M4 “usable editor” ch
 — not the M2 MCP wedge or M3 review surface.
 
 Implementation lives in `applications/gloss/views/gloss.lx` (chrome) and
-`applications/gloss/src/actions.rs` (handlers). Vault bytes still move only
-through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
+`applications/gloss/src/{model,state,actions}` (handlers). Vault bytes still
+move only through `Effect::Process` →
+`gloss list|cat|apply|undo|backlinks|index|neighbors`. Framework gaps that
+look like missing app features are in [[10-libra]].
 
 ## Rail (left column)
 
@@ -25,7 +27,8 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 | `calendar` | `openDailyNote` — open or create today's `Daily/YYYY-MM-DD.md` | **Shipped** |
 | `graph` | `openGraph` — outgoing wikilinks + vault backlink scan | **Shipped** (list, not graph viz) |
 | `undo` | `undo` — revert last journaled patch run | **Shipped** |
-| `settings` | `openSettings` — vault path + Browse | **Shipped** |
+| `folder` | `openVaultPicker` — dialog of saved vaults + Browse | **Shipped** |
+| `settings` | `openSettings` — current vault path + rules | **Shipped** |
 
 ## File list (left pane)
 
@@ -34,11 +37,11 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 | Filter | `<Search>` → `queryChanged` — live substring filter on paths | **Shipped** |
 | Clear `x` | `clearQuery` | **Shipped** |
 | Tree row | `selectFile` — folder expand/collapse or open note | **Shipped** |
-| Right-click row | `openInNewTab` | **Shipped** |
+| Right-click row | `fileContext` then native menu: Open / Open in new tab | **Shipped** (§19.3) |
 | `+/` | `newFolder` — `Untitled/Untitled*.md` scaffold | **Shipped** |
 | `A` | `toggleSort` — alpha vs tree order | **Shipped** |
 | `-` | `collapseAll` | **Shipped** |
-| Browse | `browseVault` — native folder sheet | **Shipped** |
+| Vault name | current vault stem (picker is on the rail) | **Shipped** |
 
 ## Editor strip
 
@@ -56,7 +59,8 @@ through `Effect::Process` → `gloss list|cat|apply|undo|backlinks`.
 | Quick open | `palettePick` → `selectNote` | **Shipped** |
 | `@mention` | `mentionPick` → silent `[[wikilink]]` | **Shipped** |
 | Links drawer | `graphPick` → `selectNote`; backlinks via `gloss backlinks` | **Shipped** |
-| Settings drawer | vault path + rules excerpt (`.gloss/rules.md`) | **Shipped** |
+| Vault picker | rail folder → saved vaults (switch / right-click forget) + Browse | **Shipped** |
+| Settings drawer | current vault path + rules excerpt | **Shipped** |
 
 ## Keyboard shortcuts (§19.2)
 
@@ -75,6 +79,12 @@ text control owns the chord:
 Cmd+K **inline edit** (review-surface patch return) stays blocked on M3; ⌘K/⌘P
 map to quick open for v1.
 
+## Native menus (§19.3)
+
+File (Open Vault, Open Recent, Close Vault), Go (same chords as the
+shortcut table), View (Reader/Raw, Settings). Right-click a note for
+Open / Open in new tab. Recents come from the Kv workspace list.
+
 ## Autosave / I/O
 
 | Path | CLI | Status |
@@ -84,8 +94,11 @@ map to quick open for v1.
 | Save edit | `gloss apply --patch-json …` | **Shipped** |
 | Undo | `gloss undo --journal …` | **Shipped** |
 | Backlinks | `gloss backlinks --root DIR --path REL` | **Shipped** |
+| Index | `gloss index --root DIR --db FILE` | **Shipped** (M1 notes + links) |
+| Neighbors | `gloss neighbors --root DIR --path REL --db FILE` | **Shipped** |
 
 Journal: `<vault>/.gloss/journal.json`. See [[03-data-model#Patch and checkpoint format]].
+Index DB stays outside the vault. See [[03-data-model#Where things live]].
 
 ## Still open for M4 exit
 
@@ -93,8 +106,10 @@ These are the remaining **editor-shell** gaps before “write in Gloss for a wee
 
 | Function | Blocker | Target |
 | --- | --- | --- |
-| Cmd+K inline edit | Review surface (L2) + patch return | M3 then wire |
-| Full graph view | M1 index + layout; drawer is backlink list only | M1+ |
+| Soft wrap + IME | PLAN-TEXTAREA stages 2–4 | Libra. This is the week-one pain. |
+| `FileRead` / `FileWrite` | sketched in §12.1, not in the enum | Libra. Process-to-self until then. |
+| Cmd+K inline edit | Review surface (L2) + Textarea selection in the action | M3 then Libra |
+| Full graph view | M1 index + a drawing node we do not have | Not an M4 exit. Drawer is a list. |
 
 **Landed in this pass:** `@`-mentions (dialog + `[[wikilink]]` emit), `.gloss/rules.md`
 read on vault open (excerpt in settings), keyboard shortcuts (§19.2), catalog chrome

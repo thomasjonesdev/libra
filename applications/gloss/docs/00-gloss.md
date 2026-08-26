@@ -8,24 +8,26 @@ tags: [gloss, project]
 
 # Gloss
 
-An agentic note-taking application for Markdown vaults. Gloss takes notes *with*
-you, keeps the relationships between them alive, and treats your vault as a
-first-class artifact rather than a folder of dead files.
+Point it at your existing vault. It just works. The thesis is not a
+better feature. It is a bundle that composes.
+
+What and why: [[11-coherence]].
 
 > [!info] Name
-> A gloss is a note written alongside a text to explain it — which is
-> literally the product. Short, verb-able, and it points straight at the
-> vault-as-codebase-guide wedge.
+> A gloss is a note written alongside a text to explain it. That is
+> the product: notes that explain other notes, and a vault that
+> explains a codebase.
 >
-> It is also a common English word, so collisions are likely. Check GitHub,
-> crates.io, npm, `gloss.md` / `glossapp.*`, and USPTO class 9 before the
-> first public commit.
+> It is also a common English word, so collisions are likely. Check
+> GitHub, crates.io, npm, `gloss.md` / `glossapp.*`, and USPTO class 9
+> before the first public commit.
 
 ## The documents
 
 | Doc | What it covers |
 | --- | --- |
-| [[01-overview]] | Problem, thesis, positioning, non-goals |
+| [[11-coherence]] | What this is and why. Read first. |
+| [[01-overview]] | Same list, plus non-goals |
 | [[02-architecture]] | Layers, components, process model, tech choices |
 | [[03-data-model]] | Index schema, patch/checkpoint format, config |
 | [[04-roadmap]] | Milestones M0–M5, dependency spine, exit criteria |
@@ -34,7 +36,8 @@ first-class artifact rather than a folder of dead files.
 | [[07-risks]] | Risk register with triggers and mitigations |
 | [[08-obsidian-compat]] | What must parse, what must never be touched |
 | [[09-app-functions]] | Shipped shell actions, rail map, M4 gaps |
-| [[catalog-handoff]] | Catalog chrome (Tabs, Search, Toast, Toolbar, StatusBar) |
+| [[10-libra]] | What is Gloss work vs a Libra framework change |
+| [[catalog-handoff]] | Catalog chrome already adopted. Do not rebuild it. |
 | [[decisions/index\|Decisions]] | ADRs — the calls that are expensive to reverse |
 
 ## Locked decisions
@@ -45,10 +48,10 @@ first-class artifact rather than a folder of dead files.
 - Multi-root index from commit #1. — [[decisions/adr-001-multi-root]]
 - Every write goes through one patch layer. — [[decisions/adr-002-patch-layer]]
 - Obsidian vaults are a first-class, byte-safe input. — [[decisions/adr-008-obsidian-compat]]
-- Libra-native shell. The editor is `<Textarea>` until a markdown crate exists. — [[adr-009-libra-native]]
+- Libra-native shell. The editor is `<Textarea>`. Preview is `<Markdown>`. — [[adr-009-libra-native]]
 - CodeMirror 6 is superseded. — [[adr-003-codemirror]]
 
 ## The one-line thesis
 
-The pieces already exist as separate Obsidian plugins. None of them compose,
-because the plugin API can't own the editing loop. Gloss owns it.
+Not a better feature. A bundle that composes, because the plugin API
+can't own the editing loop.

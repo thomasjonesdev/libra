@@ -15,15 +15,17 @@ Gloss lives in the Libra workspace under `applications/gloss`.
 ```
 applications/gloss/
   crates/gloss-core/         vault, patch, parse — no UI types
-  crates/gloss-cli/          list / cat / apply / undo
+  crates/gloss-cli/          list / cat / apply / undo / index / neighbors / suggest-links
+  crates/gloss-index/        SQLite notes + link graph + title-mention suggestions (M1)
   src/ + views/gloss.lx      Libra editor shell
   vault-fixtures/            golden vaults
   docs/                      these notes
 ```
 
 Later crates (`gloss-agent`, `gloss-llm`, `gloss-mcp`) stay in this tree when
-they land. **`gloss-core` must not depend on `libra-platform`.** That is what
-lets M2 ship without a UI.
+they land. **`gloss-core` and `gloss-index` must not depend on
+`libra-platform`.** That is what lets M2 ship without a UI. Framework
+changes Gloss needs are listed in [[10-libra]], not invented in this app.
 
 ## Toolchain
 
@@ -41,8 +43,9 @@ toolchain.
 ## Testing strategy
 
 Shipped today: T1 (parser, paths, reduce), T2 (`patch_props`), T3 (mini
-fixture, noop byte identity), plus the Libra harness ladder on the editor
-shell. T4 and a windowed T5 are still open.
+fixture, noop byte identity, index graph on the same vault), plus the
+Libra harness ladder on the editor shell. T4 and a windowed T5 are still
+open.
 
 Five tiers, because the failure mode is silent corruption of state the user
 can't easily inspect.
@@ -75,7 +78,7 @@ it, verify disk state. Small and slow; keep it to a handful of paths.
 
 GitHub Actions, `macos-14` runners.
 
-- **PR:** fmt, clippy, T1–T3, `cargo test -p gloss -p gloss-core -p gloss-cli`
+- **PR:** fmt, clippy, T1–T3, `cargo test -p gloss -p gloss-core -p gloss-cli -p gloss-index`
 - **Nightly:** T4 eval harness, full-vault performance benchmark with regression
   thresholds on cold-index and incremental-update time
 - **Tag:** build, sign, notarize, release
@@ -88,10 +91,12 @@ invisibly otherwise, and by the time you feel it you can't bisect it.
 Universal binary (`aarch64` + `x86_64`), though Apple silicon is the only tested
 target given MLX and Core Audio taps.
 
-1. `libra package -p gloss`
+1. `libra package -p gloss` ([[PLAN-PACKAGE]], §20)
 2. `codesign` with Developer ID Application, hardened runtime enabled
 3. `notarytool submit --wait`, then `stapler staple`
-4. Sparkle for updates — appcast signed with EdDSA, hosted on GitHub Releases
+
+Sparkle is a later Gloss choice. Libra has no updater on purpose
+([[24-non-goals|§24]]). Do not treat auto-update as a framework task.
 
 **Entitlements needed:** microphone, audio input, and — for system-audio taps —
 screen recording (Core Audio process taps are gated behind it). Request them

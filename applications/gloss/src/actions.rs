@@ -5,8 +5,9 @@ use libra_core::{Effect, FolderPick, ProcessResult, ProcessStatus};
 use crate::model::{
     apply_create_cmd, apply_replace_cmd, backlinks_cmd, cat_cmd, daily_note_content,
     default_daily_note_path, insert_wikilink_mention, is_folder_id, mention_trigger, parse_list,
-    resolve_daily_note, rules_cmd, split_note, today_local_iso, unique_folder_note,
-    unique_inbox_path, undo_cmd, IoKind, NoteRow, Pending, AUTOSAVE_MS, STORE_KEY, TOAST_MS,
+    parse_workspace_bytes, resolve_daily_note, rules_cmd, split_note, today_local_iso, undo_cmd,
+    unique_folder_note, unique_inbox_path, upsert_vault, IoKind, NoteRow, Pending, VaultRecord,
+    AUTOSAVE_MS, STORE_KEY, TOAST_MS,
 };
 use crate::state::Gloss;
 
@@ -19,13 +20,17 @@ impl Gloss {
 
     pub fn workspace_loaded(&mut self, bytes: Option<Vec<u8>>) -> Option<Effect<Action>> {
         if let Some(raw) = bytes {
-            if let Ok(path) = String::from_utf8(raw) {
-                let path = path.trim().to_string();
-                if !path.is_empty() {
-                    self.vault_path = path;
-                    self.opened_root = self.vault_path.clone();
-                    return self.open_list();
-                }
+            self.workspace = parse_workspace_bytes(&raw);
+            if let Some(rec) = self
+                .workspace
+                .vaults
+                .iter()
+                .find(|v| v.path == self.workspace.last_path)
+                .cloned()
+                .or_else(|| self.workspace.vaults.first().cloned())
+            {
+                apply_record(self, &rec);
+                return self.open_list();
             }
         }
         None
@@ -42,30 +47,91 @@ impl Gloss {
         Effect::pick_folder(Action::FolderPicked)
     }
 
+    pub fn open_vault_picker(&mut self) {
+        self.show_vault_picker = true;
+    }
+
+    pub fn close_vault_picker(&mut self) {
+        self.show_vault_picker = false;
+    }
+
     pub fn folder_picked(&mut self, pick: FolderPick) -> Vec<Effect<Action>> {
         match pick {
             FolderPick::Cancelled => Vec::new(),
             FolderPick::Picked(path) => {
                 self.vault_path = path;
+                self.show_vault_picker = false;
                 self.open_vault()
             }
         }
     }
 
     pub fn open_vault(&mut self) -> Vec<Effect<Action>> {
-        self.opened_root = self.vault_path.trim().to_string();
-        self.can_undo = false;
-        self.rules_loaded = false;
-        self.rules_body.clear();
-        let mut out = Vec::new();
-        out.push(Effect::kv_set(
-            STORE_KEY,
-            self.vault_path.trim().as_bytes().to_vec(),
-        ));
+        snapshot_open_vault(self);
+        let path = self.vault_path.trim().to_string();
+        let rec = self
+            .workspace
+            .vaults
+            .iter()
+            .find(|v| v.path == path)
+            .cloned()
+            .unwrap_or_else(|| VaultRecord::from_path(&path));
+        apply_record(self, &rec);
+        upsert_vault(&mut self.workspace, rec);
+        let mut out = vec![persist_workspace(self)];
         if let Some(list) = self.open_list() {
             out.push(list);
         }
         out
+    }
+
+    pub fn switch_vault(&mut self, path: String) -> Vec<Effect<Action>> {
+        let path = path.trim().to_string();
+        self.show_vault_picker = false;
+        if path.is_empty() || path == self.opened_root {
+            return Vec::new();
+        }
+        snapshot_open_vault(self);
+        let rec = self
+            .workspace
+            .vaults
+            .iter()
+            .find(|v| v.path == path)
+            .cloned()
+            .unwrap_or_else(|| VaultRecord::from_path(&path));
+        apply_record(self, &rec);
+        upsert_vault(&mut self.workspace, rec);
+        clear_session_notes(self);
+        let mut out = vec![persist_workspace(self)];
+        if let Some(list) = self.open_list() {
+            out.push(list);
+        }
+        out
+    }
+
+    pub fn close_vault(&mut self) -> Effect<Action> {
+        snapshot_open_vault(self);
+        self.workspace.last_path.clear();
+        clear_session_notes(self);
+        self.vault_path.clear();
+        self.opened_root.clear();
+        self.can_undo = false;
+        persist_workspace(self)
+    }
+
+    pub fn remove_vault(&mut self, path: String) -> Vec<Effect<Action>> {
+        self.workspace.vaults.retain(|v| v.path != path);
+        if self.workspace.last_path == path {
+            self.workspace.last_path.clear();
+        }
+        if self.opened_root == path {
+            return vec![self.close_vault()];
+        }
+        vec![persist_workspace(self)]
+    }
+
+    pub fn file_context(&mut self, id: String) {
+        self.context_path = id;
     }
 
     pub fn query_changed(&mut self, text: String) {
@@ -161,6 +227,10 @@ impl Gloss {
     }
 
     pub fn dismiss(&mut self) {
+        if self.show_vault_picker {
+            self.close_vault_picker();
+            return;
+        }
         if self.show_command_palette {
             self.close_command_palette();
             return;
@@ -456,11 +526,19 @@ impl Gloss {
                 {
                     self.clear_selection();
                 }
-                self.open_tabs.retain(|p| self.note_paths.iter().any(|n| n == p));
+                self.open_tabs
+                    .retain(|p| self.note_paths.iter().any(|n| n == p));
+                let restore = std::mem::take(&mut self.restore_note);
                 if self.selected_path.is_empty() {
-                    if let Some(first) = self.note_paths.first().cloned() {
+                    let next =
+                        if !restore.is_empty() && self.note_paths.iter().any(|p| p == &restore) {
+                            Some(restore)
+                        } else {
+                            self.note_paths.first().cloned()
+                        };
+                    if let Some(path) = next {
                         self.pending = Pending::Rules;
-                        self.begin_cat(first)
+                        self.begin_cat(path)
                     } else {
                         self.begin_load_rules()
                     }
@@ -655,4 +733,50 @@ impl Gloss {
             Pending::Rules => self.begin_load_rules(),
         }
     }
+}
+
+fn persist_workspace(g: &Gloss) -> Effect<Action> {
+    Effect::kv_set(
+        STORE_KEY,
+        serde_json::to_vec(&g.workspace).unwrap_or_else(|_| b"{}".to_vec()),
+    )
+}
+
+fn snapshot_open_vault(g: &mut Gloss) {
+    let path = g.opened_root.trim();
+    if path.is_empty() {
+        return;
+    }
+    upsert_vault(
+        &mut g.workspace,
+        VaultRecord {
+            path: path.to_string(),
+            name: crate::model::vault_name(path),
+            last_note: g.selected_path.clone(),
+            sort_alpha: g.sort_alpha,
+            split_list: g.split_list,
+            reader_mode: g.reader_mode,
+        },
+    );
+}
+
+fn apply_record(g: &mut Gloss, rec: &VaultRecord) {
+    g.vault_path = rec.path.clone();
+    g.opened_root = rec.path.clone();
+    g.sort_alpha = rec.sort_alpha;
+    g.split_list = rec.split_list;
+    g.reader_mode = rec.reader_mode;
+    g.restore_note = rec.last_note.clone();
+    g.can_undo = false;
+    g.rules_loaded = false;
+    g.rules_body.clear();
+}
+
+fn clear_session_notes(g: &mut Gloss) {
+    g.note_paths.clear();
+    g.open_tabs.clear();
+    g.history_back.clear();
+    g.history_forward.clear();
+    g.context_path.clear();
+    g.clear_selection();
 }

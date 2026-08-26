@@ -14,6 +14,7 @@
 
 pub mod a11y;
 pub mod icon;
+mod menu;
 
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -21,21 +22,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use libra_core::{shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub};
-use libra_text::{EditOp, EditState};
+use libra_components::{Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
+use libra_core::{
+    shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub,
+};
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
 use libra_interp::Scope;
 use libra_kv::Kv;
 use libra_markup::Node;
 use libra_raster::{Damage, Renderer};
+use libra_text::{EditOp, EditState};
 use tiny_skia::Pixmap;
-use libra_components::{Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
-use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(250);
@@ -86,7 +89,9 @@ fn report_frame_stats(intervals_ms: &mut Vec<f64>, present_ms: &mut Vec<f64>) {
     intervals_ms.sort_by(f64::total_cmp);
     present_ms.sort_by(f64::total_cmp);
     let p = |xs: &[f64], q: f64| {
-        xs.get(((xs.len().max(1) - 1) as f64 * q) as usize).copied().unwrap_or(0.0)
+        xs.get(((xs.len().max(1) - 1) as f64 * q) as usize)
+            .copied()
+            .unwrap_or(0.0)
     };
     eprintln!(
         "[libra] frame p50/p95/max interval {:.2}/{:.2}/{:.2} ms · present {:.2}/{:.2}/{:.2} ms",
@@ -146,7 +151,10 @@ impl Options {
         self.theme_file = Some(path.into());
         self
     }
-    pub fn process_allowlist(mut self, programs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn process_allowlist(
+        mut self,
+        programs: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         self.process_allowlist = programs.into_iter().map(Into::into).collect();
         self
     }
@@ -182,7 +190,10 @@ impl<A> ViewDriver<A> {
 
     /// Release-only: use the `build.rs`-generated view fn.
     #[cfg(not(debug_assertions))]
-    pub const fn with_codegen(lx: &'static str, build: fn(&A) -> libra_components::ViewNode) -> Self {
+    pub const fn with_codegen(
+        lx: &'static str,
+        build: fn(&A) -> libra_components::ViewNode,
+    ) -> Self {
         Self {
             lx,
             build: Some(build),
@@ -250,7 +261,10 @@ where
     A::Msg: Send + 'static,
 {
     let view = view.into();
-    let app_id = opts.app_id.clone().ok_or("run_rehydrating requires Options::app_id")?;
+    let app_id = opts
+        .app_id
+        .clone()
+        .ok_or("run_rehydrating requires Options::app_id")?;
     let path = snapshot_path(&app_id).ok_or("no home directory for model snapshot")?;
 
     let rehydrated: Option<A> = match std::fs::read_to_string(&path) {
@@ -316,9 +330,8 @@ where
             view.build_fn(),
         )
     } else {
-        let ast = Some(
-            libra_markup::parse(view.lx()).map_err(|e| format!("markup parse error: {e}"))?,
-        );
+        let ast =
+            Some(libra_markup::parse(view.lx()).map_err(|e| format!("markup parse error: {e}"))?);
         let registry = opts
             .watch
             .as_ref()
@@ -336,11 +349,15 @@ where
         None => app,
     };
 
-    let event_loop = EventLoop::<A::Msg>::with_user_event().build()?;
+    let event_loop = EventLoop::<menu::ShellEvent<A::Msg>>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
+    let menu_proxy = proxy.clone();
+    muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
+        let _ = menu_proxy.send_event(menu::ShellEvent::Menu(event.id));
+    }));
     let sink: libra_effects::Sink<A::Msg> = Arc::new(move |msg| {
         // The window may be closing; a dead proxy just drops the msg.
-        let _ = proxy.send_event(msg);
+        let _ = proxy.send_event(menu::ShellEvent::App(msg));
     });
     let kv = match &opts.app_id {
         Some(id) => match Kv::open_default(id) {
@@ -356,17 +373,28 @@ where
     let effects = Effects::new(sink, kv).with_process_allowlist(opts.process_allowlist.clone());
     effects.execute_all(init_cmds);
 
-    let watch_mtime = opts.watch.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
-    let theme_mtime =
-        opts.theme_file.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
+    let watch_mtime = opts
+        .watch
+        .as_deref()
+        .and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
+    let theme_mtime = opts
+        .theme_file
+        .as_deref()
+        .and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
     let theme = match &opts.theme_file {
-        Some(path) => match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|s| Theme::from_toml_str(&s)) {
+        Some(path) => match std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|s| Theme::from_toml_str(&s))
+        {
             Ok(t) => {
                 eprintln!("[libra] theme '{}' loaded from {}", t.name, path.display());
                 t
             }
             Err(e) => {
-                eprintln!("[libra] theme file {}: {e}; using libra-dark", path.display());
+                eprintln!(
+                    "[libra] theme file {}: {e}; using libra-dark",
+                    path.display()
+                );
                 Theme::dark()
             }
         },
@@ -392,6 +420,7 @@ where
         shortcut_table,
         drag: None,
         menu_anchor: (0.0, 0.0),
+        native_menus: menu::NativeMenus::new(),
         gfx: None,
         watch_mtime,
         next_watch_check: Instant::now() + WATCH_INTERVAL,
@@ -488,6 +517,8 @@ struct Shell<A: App> {
     /// M7 `<ContextMenu>` anchor — the last right-click point (logical
     /// px), a deterministic layout input like scroll offsets.
     menu_anchor: (f32, f32),
+    /// §19.3 native menubar / context ids.
+    native_menus: menu::NativeMenus,
     gfx: Option<Gfx>,
     watch_mtime: Option<std::time::SystemTime>,
     next_watch_check: Instant,
@@ -549,7 +580,9 @@ where
     A::Msg: Send + 'static,
 {
     fn scale(&self) -> f32 {
-        self.gfx.as_ref().map_or(1.0, |g| g.window.scale_factor() as f32)
+        self.gfx
+            .as_ref()
+            .map_or(1.0, |g| g.window.scale_factor() as f32)
     }
 
     /// Rebuild view → layout at the window's current logical size.
@@ -588,7 +621,12 @@ where
             )
         };
         match view_result {
-            Ok(view) => match libra_components::layout(&view, (logical.width, logical.height), &self.renderer, &self.theme) {
+            Ok(view) => match libra_components::layout(
+                &view,
+                (logical.width, logical.height),
+                &self.renderer,
+                &self.theme,
+            ) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
                     // declaration so sync_subscriptions/tick_frame/
@@ -600,7 +638,9 @@ where
                         .items
                         .iter()
                         .filter_map(|i| match &i.kind {
-                            ItemKind::Source(SourceDecl::Frames { on_tick }) => Some(on_tick.clone()),
+                            ItemKind::Source(SourceDecl::Frames { on_tick }) => {
+                                Some(on_tick.clone())
+                            }
                             _ => None,
                         })
                         .collect();
@@ -677,26 +717,28 @@ where
             if let Effect::SetTheme { name } = &effect {
                 match Theme::by_name(name) {
                     Some(t) => self.theme = t,
-                    None => eprintln!("[libra] unknown theme '{name}' (built in: libra-dark, libra-light)"),
+                    None => eprintln!(
+                        "[libra] unknown theme '{name}' (built in: libra-dark, libra-light)"
+                    ),
                 }
                 continue;
             }
             if let Effect::ClipboardSet { text, on_done } = &effect {
-                let result = match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text.clone())) {
-                    Ok(()) => libra_core::ClipboardResult::Ok,
-                    Err(e) => libra_core::ClipboardResult::Err(e.to_string()),
-                };
+                let result =
+                    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text.clone())) {
+                        Ok(()) => libra_core::ClipboardResult::Ok,
+                        Err(e) => libra_core::ClipboardResult::Err(e.to_string()),
+                    };
                 if let Some(ctor) = on_done {
                     acks.push(ctor(result));
                 }
                 continue;
             }
             if let Effect::PickFolder { on_done } = &effect {
-                let result = match rfd::FileDialog::new()
-                    .set_title("Open vault")
-                    .pick_folder()
-                {
-                    Some(path) => libra_core::FolderPick::Picked(path.to_string_lossy().into_owned()),
+                let result = match rfd::FileDialog::new().set_title("Open vault").pick_folder() {
+                    Some(path) => {
+                        libra_core::FolderPick::Picked(path.to_string_lossy().into_owned())
+                    }
                     None => libra_core::FolderPick::Cancelled,
                 };
                 acks.push(on_done(result));
@@ -711,8 +753,28 @@ where
         }
         self.effects.execute_all(rest);
         self.relayout(); // collects mounted sources, then sync_subscriptions
+        self.sync_native_menu();
         if let Some(gfx) = &self.gfx {
             gfx.window.request_redraw();
+        }
+    }
+
+    fn sync_native_menu(&mut self) {
+        let decl = self.app.menu();
+        let window = self.gfx.as_ref().map(|g| g.window.as_ref());
+        menu::sync_menubar::<A::Msg>(&mut self.native_menus, decl, window);
+    }
+
+    fn dispatch_menu(&mut self, id: muda::MenuId) {
+        let Some((action, arg)) = self.native_menus.lookup(&id) else {
+            return;
+        };
+        let msg = match arg {
+            Some(a) => A::Msg::action_with_str(&action, a),
+            None => A::Msg::action_by_name(&action),
+        };
+        if let Some(msg) = msg {
+            self.dispatch(msg);
         }
     }
 
@@ -724,7 +786,11 @@ where
     /// drops the live-ingest term and the loop idles. Activating arms an
     /// immediate first tick; the `request_redraw` chain keeps it alive.
     fn sync_subscriptions(&mut self) {
-        let want = self.app.subscriptions().iter().any(|s| matches!(s, Sub::Frames { .. }))
+        let want = self
+            .app
+            .subscriptions()
+            .iter()
+            .any(|s| matches!(s, Sub::Frames { .. }))
             || !self.markup_frame_handlers.is_empty()
             || self.effects.store().has_live_ingest();
         if want && !self.frames_active {
@@ -761,7 +827,11 @@ where
         });
 
         for (every_ms, name) in wanted {
-            if self.running_intervals.iter().any(|(ms, n, _)| *ms == every_ms && *n == name) {
+            if self
+                .running_intervals
+                .iter()
+                .any(|(ms, n, _)| *ms == every_ms && *n == name)
+            {
                 continue;
             }
             let cancel = Arc::new(AtomicBool::new(false));
@@ -795,7 +865,11 @@ where
     /// the platform can't report a rate (`current_monitor`/
     /// `refresh_rate_millihertz` both return `Option`).
     fn refresh_frame_period(&mut self) {
-        let mhz = self.gfx.as_ref().and_then(|g| g.window.current_monitor()).and_then(|m| m.refresh_rate_millihertz());
+        let mhz = self
+            .gfx
+            .as_ref()
+            .and_then(|g| g.window.current_monitor())
+            .and_then(|m| m.refresh_rate_millihertz());
         self.frame_period = match mhz {
             Some(mhz) if mhz > 0 => Duration::from_secs_f64(1000.0 / mhz as f64),
             _ => DEFAULT_FRAME_PERIOD,
@@ -901,7 +975,11 @@ where
         };
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
-            let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+            let id = hit
+                .semantics
+                .test_id
+                .clone()
+                .expect("Input has a testId (load-enforced)");
             self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
             self.request_redraw();
             return;
@@ -941,7 +1019,9 @@ where
             None => {
                 let scale = self.scale();
                 let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
-                self.laid.as_ref().map_or(Cursor::Default, |laid| laid.cursor_at(lx, ly))
+                self.laid
+                    .as_ref()
+                    .map_or(Cursor::Default, |laid| laid.cursor_at(lx, ly))
             }
         };
         if want == self.cursor_icon {
@@ -961,10 +1041,10 @@ where
         let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
         let Some(laid) = &self.laid else { return };
         let Some((name, arg)) = laid.items.iter().rev().find_map(|i| match &i.kind {
-            ItemKind::ListItem { on_menu: Some((name, arg)), .. }
-                if i.rect.contains(lx, ly)
-                    && i.clip.map_or(true, |c| c.contains(lx, ly)) =>
-            {
+            ItemKind::ListItem {
+                on_menu: Some((name, arg)),
+                ..
+            } if i.rect.contains(lx, ly) && i.clip.map_or(true, |c| c.contains(lx, ly)) => {
                 Some((name.clone(), arg.clone()))
             }
             _ => None,
@@ -980,6 +1060,16 @@ where
             panic!("onMenu '{name}' resolved to no Action — reflection out of sync")
         });
         self.dispatch(msg);
+        if let Some(decl) = self.app.context_menu() {
+            if let Some(gfx) = &self.gfx {
+                menu::show_context::<A::Msg>(
+                    &mut self.native_menus,
+                    &decl,
+                    &gfx.window,
+                    self.cursor,
+                );
+            }
+        }
     }
 
     /// Active pointer drag (M5 Split / Slider): re-derive the fraction
@@ -987,7 +1077,9 @@ where
     /// String-payload handler (`{:.4}` — identical formatting to the
     /// harness's `resize_split`/`set_slider`, so both paths agree).
     fn drag_move(&mut self) {
-        let Some(target) = self.drag.clone() else { return };
+        let Some(target) = self.drag.clone() else {
+            return;
+        };
         let scale = self.scale();
         let lx = self.cursor.0 as f32 / scale;
         let Some(laid) = &self.laid else { return };
@@ -1009,13 +1101,15 @@ where
                 _ => None,
             }),
         };
-        let Some((rect, handler, lo, hi)) = found else { return };
+        let Some((rect, handler, lo, hi)) = found else {
+            return;
+        };
         if rect.w <= 0.0 {
             return;
         }
         let fraction = ((lx - rect.x) / rect.w).clamp(lo, hi);
-        let msg = A::Msg::action_with_str(&handler, format!("{fraction:.4}"))
-            .unwrap_or_else(|| {
+        let msg =
+            A::Msg::action_with_str(&handler, format!("{fraction:.4}")).unwrap_or_else(|| {
                 panic!("'{handler}' resolved to no String-payload Action — reflection out of sync")
             });
         self.dispatch(msg);
@@ -1125,9 +1219,8 @@ where
             // action. The query is already in State via onChange.
             Key::Named(NamedKey::Enter) => {
                 if let Some(name) = self.focused_search_submit() {
-                    let msg = A::Msg::action_by_name(&name).unwrap_or_else(|| {
-                        panic!("'{name}' is not a unit Action variant")
-                    });
+                    let msg = A::Msg::action_by_name(&name)
+                        .unwrap_or_else(|| panic!("'{name}' is not a unit Action variant"));
                     self.dispatch(msg);
                     return;
                 }
@@ -1199,7 +1292,9 @@ where
     }
 
     fn apply_edit(&mut self, op: EditOp) {
-        let Some((id, mut edit, on_change)) = self.focus.take() else { return };
+        let Some((id, mut edit, on_change)) = self.focus.take() else {
+            return;
+        };
         let before = edit.text().to_string();
         edit.apply(op);
         let changed = edit.text() != before;
@@ -1224,7 +1319,9 @@ where
     /// Is the focused control a `Textarea`? Decides the multi-line key
     /// bindings (Enter/Up/Down) and paste newline handling (§10.1).
     fn focused_is_textarea(&self) -> bool {
-        let Some((id, ..)) = &self.focus else { return false };
+        let Some((id, ..)) = &self.focus else {
+            return false;
+        };
         let Some(laid) = &self.laid else { return false };
         laid.items.iter().any(|i| {
             i.semantics.test_id.as_deref() == Some(id.as_str())
@@ -1251,8 +1348,13 @@ where
     /// Dev hot reload: swap the AST if the watched file changed; on a
     /// parse error keep the last good view and overlay the diagnostic.
     fn check_watch(&mut self) {
-        let Some(path) = self.opts.watch.clone() else { return };
-        let Some(mtime) = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()) else {
+        let Some(path) = self.opts.watch.clone() else {
+            return;
+        };
+        let Some(mtime) = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+        else {
             return;
         };
         if Some(mtime) == self.watch_mtime {
@@ -1285,8 +1387,13 @@ where
 
     /// §11: theme tables hot-reload like views — edit, save, restyle.
     fn check_theme_file(&mut self) {
-        let Some(path) = self.opts.theme_file.clone() else { return };
-        let Some(mtime) = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()) else {
+        let Some(path) = self.opts.theme_file.clone() else {
+            return;
+        };
+        let Some(mtime) = std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+        else {
             return;
         };
         if Some(mtime) == self.theme_mtime {
@@ -1322,8 +1429,7 @@ where
         let Some(laid) = &self.laid else { return };
         let Some(gfx) = &mut self.gfx else { return };
         let size = gfx.window.inner_size();
-        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-        else {
+        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
             return;
         };
         let scale = gfx.window.scale_factor() as f32;
@@ -1343,7 +1449,8 @@ where
             // (Retina: 1 column per physical pixel) — presentation-only,
             // off the determinism contract (§21); the canonical density
             // stays 1.0 (`LaidTree::paint`, everywhere else).
-            let mut cmds = laid.paint_full(renderer, store, focus_paint.as_ref(), hover, &theme, scale);
+            let mut cmds =
+                laid.paint_full(renderer, store, focus_paint.as_ref(), hover, &theme, scale);
             if let Some(text) = &overlay {
                 overlay_cmds(&mut cmds, text, logical_w, &theme);
             }
@@ -1363,7 +1470,14 @@ where
                 self.frame_cache = None; // cache poisoned mid-paint: discard
                 gfx.surface.resize(w, h).expect("surface resize");
                 let mut buffer = gfx.surface.buffer_mut().expect("surface buffer");
-                blit_rows(&mut buffer, &pixmap, 0, w.get() as usize, 0, h.get() as usize);
+                blit_rows(
+                    &mut buffer,
+                    &pixmap,
+                    0,
+                    w.get() as usize,
+                    0,
+                    h.get() as usize,
+                );
                 gfx.window.pre_present_notify();
                 buffer.present().expect("present");
                 self.frame_stats.record(t0.elapsed());
@@ -1380,7 +1494,9 @@ where
             self.frame_stats.record(t0.elapsed());
             return;
         }
-        let Some(cache) = self.frame_cache.as_ref() else { return };
+        let Some(cache) = self.frame_cache.as_ref() else {
+            return;
+        };
         let pixmap = cache.pixmap();
         gfx.surface.resize(w, h).expect("surface resize");
         let mut buffer = gfx.surface.buffer_mut().expect("surface buffer");
@@ -1392,7 +1508,14 @@ where
                 let y0 = (r.y.round() as u32).min(bh);
                 let x1 = ((r.x + r.w).round() as u32).min(bw).max(x0);
                 let y1 = ((r.y + r.h).round() as u32).min(bh).max(y0);
-                blit_rows(&mut buffer, pixmap, x0 as usize, x1 as usize, y0 as usize, y1 as usize);
+                blit_rows(
+                    &mut buffer,
+                    pixmap,
+                    x0 as usize,
+                    x1 as usize,
+                    y0 as usize,
+                    y1 as usize,
+                );
                 gfx.window.pre_present_notify();
                 if x1 > x0 && y1 > y0 {
                     let damage_rect = softbuffer::Rect {
@@ -1421,7 +1544,7 @@ where
     }
 }
 
-impl<A: App + 'static> ApplicationHandler<A::Msg> for Shell<A>
+impl<A: App + 'static> ApplicationHandler<menu::ShellEvent<A::Msg>> for Shell<A>
 where
     A::Msg: Send + 'static,
 {
@@ -1448,18 +1571,16 @@ where
                 );
             }
         }
-        let window = Arc::new(
-            event_loop
-                .create_window(attrs)
-                .expect("create window"),
-        );
+        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let context = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         let surface =
             softbuffer::Surface::new(&context, window.clone()).expect("softbuffer surface");
         let a11y = accesskit_winit::Adapter::with_direct_handlers(
             event_loop,
             &window,
-            Activation { snapshot: Arc::clone(&self.a11y_snapshot) },
+            Activation {
+                snapshot: Arc::clone(&self.a11y_snapshot),
+            },
             Actions::<A> {
                 snapshot: Arc::clone(&self.a11y_snapshot),
                 sink: Arc::clone(&self.a11y_sink),
@@ -1468,27 +1589,31 @@ where
         );
         window.set_visible(true);
         window.request_redraw();
-        self.gfx = Some(Gfx { window, _context: context, surface, a11y });
+        self.gfx = Some(Gfx {
+            window,
+            _context: context,
+            surface,
+            a11y,
+        });
         self.refresh_frame_period();
         // relayout collects mounted `<Frames>` then sync_subscriptions
         // arms the display loop — do not sync on empty handlers first.
         self.relayout();
+        self.sync_native_menu();
     }
 
     /// Effect results, a11y actions, and `<Interval>` ticks arrive here
     /// (via the EventLoopProxy) and dispatch on the main thread — same
     /// causal path as §4.2's loop. Frame ticks run from `about_to_wait`
     /// while the display loop is active.
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, msg: A::Msg) {
-        self.dispatch(msg);
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: menu::ShellEvent<A::Msg>) {
+        match event {
+            menu::ShellEvent::App(msg) => self.dispatch(msg),
+            menu::ShellEvent::Menu(id) => self.dispatch_menu(id),
+        }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         if let Some(gfx) = &mut self.gfx {
             let window = Arc::clone(&gfx.window);
             gfx.a11y.process_event(&window, &event);
@@ -1603,7 +1728,9 @@ struct Activation {
 
 impl accesskit::ActivationHandler for Activation {
     fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
-        Some(a11y::tree_update(&self.snapshot.lock().expect("a11y snapshot")))
+        Some(a11y::tree_update(
+            &self.snapshot.lock().expect("a11y snapshot"),
+        ))
     }
 }
 
@@ -1669,7 +1796,12 @@ fn overlay_cmds(cmds: &mut Vec<DrawCmd>, text: &str, width: f32, theme: &Theme) 
     const BAR_H: f32 = 28.0;
     cmds.push(DrawCmd::Rect {
         rect: Rect::new(0.0, 0.0, width, BAR_H),
-        color: Color { r: 0x8B, g: 0x1A, b: 0x1A, a: 255 },
+        color: Color {
+            r: 0x8B,
+            g: 0x1A,
+            b: 0x1A,
+            a: 255,
+        },
     });
     cmds.push(DrawCmd::Text {
         x: 8.0,
@@ -1698,7 +1830,12 @@ fn scale_cmds_in_place(cmds: &mut [DrawCmd], s: f32) {
                 *rect = scale_rect(rect, s);
                 *radius *= s;
             }
-            DrawCmd::StrokeRRect { rect, radius, width, .. } => {
+            DrawCmd::StrokeRRect {
+                rect,
+                radius,
+                width,
+                ..
+            } => {
                 *rect = scale_rect(rect, s);
                 *radius *= s;
                 *width *= s;
@@ -1715,7 +1852,9 @@ fn scale_cmds_in_place(cmds: &mut [DrawCmd], s: f32) {
                 }
                 *width *= s;
             }
-            DrawCmd::Strips { x, col_w, strips, .. } => {
+            DrawCmd::Strips {
+                x, col_w, strips, ..
+            } => {
                 *x *= s;
                 *col_w *= s;
                 for o in strips.iter_mut() {
@@ -1746,7 +1885,11 @@ mod tests {
         let theme = Theme::dark();
         let cmds = vec![
             DrawCmd::Clear(theme.bg),
-            DrawCmd::RRect { rect: Rect::new(1.0, 2.0, 3.0, 4.0), radius: 6.0, color: theme.accent },
+            DrawCmd::RRect {
+                rect: Rect::new(1.0, 2.0, 3.0, 4.0),
+                radius: 6.0,
+                color: theme.accent,
+            },
         ];
         let mut scaled = cmds.clone();
         scale_cmds_in_place(&mut scaled, 1.0);
@@ -1765,7 +1908,9 @@ mod tests {
         }];
         scale_cmds_in_place(&mut cmds, 2.0);
         match &cmds[0] {
-            DrawCmd::Text { x, y, px, color, .. } => {
+            DrawCmd::Text {
+                x, y, px, color, ..
+            } => {
                 assert_eq!((*x, *y, *px), (20.0, 40.0, 28.0));
                 assert_eq!(*color, Theme::dark().text);
             }
@@ -1776,7 +1921,12 @@ mod tests {
     #[test]
     fn overlay_draws_bar_then_text_over_the_frame() {
         let mut cmds = vec![DrawCmd::Clear(Theme::dark().bg)];
-        overlay_cmds(&mut cmds, "views/x.lx: 3:7: no field 'cuont'", 400.0, &Theme::dark());
+        overlay_cmds(
+            &mut cmds,
+            "views/x.lx: 3:7: no field 'cuont'",
+            400.0,
+            &Theme::dark(),
+        );
         assert_eq!(cmds.len(), 3);
         assert!(matches!(&cmds[1], DrawCmd::Rect { rect, .. } if rect.w == 400.0));
         assert!(matches!(&cmds[2], DrawCmd::Text { content, .. } if content.contains("cuont")));

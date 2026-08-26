@@ -7,8 +7,9 @@ use libra_core::{Effect, ProcessId};
 use crate::actions::Action;
 use crate::model::{
     char_count_label, frontmatter_scan_rows, frontmatter_title, full_note_text, list_cmd,
-    project_file_rows, project_link_rows, project_mention_rows, project_palette_rows, rules_preview,
-    save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending, TabRow, STORE_KEY,
+    project_file_rows, project_link_rows, project_mention_rows, project_palette_rows,
+    rules_preview, save_label, vault_name, word_count_label, FileRow, IoKind, NoteRow, Pending,
+    TabRow, VaultRow, WorkspaceSettings, STORE_KEY,
 };
 
 #[derive(Default)]
@@ -39,6 +40,7 @@ pub struct Gloss {
     pub frontmatter_yaml: String,
     pub frontmatter_fields: Vec<crate::model::FrontmatterField>,
     pub show_settings: bool,
+    pub show_vault_picker: bool,
     pub show_command_palette: bool,
     pub palette_query: String,
     pub palette_rows: Vec<NoteRow>,
@@ -58,6 +60,8 @@ pub struct Gloss {
     pub note_rows: Vec<NoteRow>,
     pub file_rows: Vec<FileRow>,
     pub tab_rows: Vec<TabRow>,
+    pub vault_rows: Vec<VaultRow>,
+    pub has_saved_vaults: bool,
 
     #[libra(skip)]
     pub loaded_body: String,
@@ -99,6 +103,12 @@ pub struct Gloss {
     pub rules_loaded: bool,
     #[libra(skip)]
     pub rules_body: String,
+    #[libra(skip)]
+    pub workspace: WorkspaceSettings,
+    #[libra(skip)]
+    pub restore_note: String,
+    #[libra(skip)]
+    pub context_path: String,
 }
 
 impl Gloss {
@@ -112,7 +122,11 @@ impl Gloss {
         self.io != IoKind::Idle
     }
 
-    pub fn spawn(&mut self, command: libra_core::CommandSpec, kind: IoKind) -> Option<Effect<Action>> {
+    pub fn spawn(
+        &mut self,
+        command: libra_core::CommandSpec,
+        kind: IoKind,
+    ) -> Option<Effect<Action>> {
         if self.is_busy() {
             return None;
         }
@@ -179,6 +193,18 @@ impl Gloss {
                 selected: p == &self.selected_path,
             })
             .collect();
+        self.vault_rows = self
+            .workspace
+            .vaults
+            .iter()
+            .map(|v| VaultRow {
+                id: v.path.clone(),
+                title: v.name.clone(),
+                snippet: v.path.clone(),
+                selected: v.path == self.opened_root,
+            })
+            .collect();
+        self.has_saved_vaults = !self.workspace.vaults.is_empty();
         self.vault_name = vault_name(&self.vault_path);
         self.has_vault = !self.vault_path.trim().is_empty() && !self.note_paths.is_empty()
             || self.io == IoKind::List
@@ -193,7 +219,11 @@ impl Gloss {
             crate::model::note_title(&self.selected_path, &full)
         };
         self.empty_message = if self.vault_path.trim().is_empty() {
-            "Browse a vault folder to begin".into()
+            if self.has_saved_vaults {
+                "Open a vault you've used, or browse a folder".into()
+            } else {
+                "Browse a vault folder to begin".into()
+            }
         } else if self.file_rows.is_empty() {
             "No notes in this vault".into()
         } else {
@@ -221,8 +251,7 @@ impl Gloss {
         self.has_rules = !self.rules_body.trim().is_empty();
         self.rules_excerpt = rules_preview(&self.rules_body, 480);
         if self.show_graph && self.has_selected {
-            self.outgoing_rows =
-                project_link_rows(&full, &self.note_paths, &self.selected_path);
+            self.outgoing_rows = project_link_rows(&full, &self.note_paths, &self.selected_path);
         } else if !self.show_graph {
             self.outgoing_rows.clear();
             self.backlink_rows.clear();
@@ -259,7 +288,7 @@ impl Gloss {
 
     pub fn init() -> (Gloss, Vec<Effect<Action>>) {
         let mut state = Gloss::default();
-        state.split_list = 0.32;
+        state.split_list = crate::model::DEFAULT_SPLIT;
         state.reader_mode = true;
         state.status = "Browse a vault folder".into();
         state.rebuild_rows();
@@ -299,5 +328,70 @@ impl Gloss {
             Shortcut::action("cmd+e", "toggleReaderMode"),
             Shortcut::action("escape", "dismiss"),
         ]
+    }
+
+    /// §19.3 native menubar — File / Go / View, Recents from saved vaults.
+    pub fn menu(&self) -> libra_core::MenuDecl {
+        use libra_core::{Menu, MenuDecl, MenuItem};
+        let recents: Vec<MenuItem> = self
+            .workspace
+            .vaults
+            .iter()
+            .map(|v| {
+                MenuItem::action(format!("recent-{}", v.path), &v.name, "switchVault")
+                    .with_arg(&v.path)
+            })
+            .collect();
+        MenuDecl::new(vec![
+            Menu::new(
+                "file",
+                "File",
+                vec![
+                    MenuItem::action("open-vault", "Open Vault…", "openVaultPicker"),
+                    MenuItem::submenu("recents", "Open Recent", recents),
+                    MenuItem::separator(),
+                    MenuItem::action("close-vault", "Close Vault", "closeVault")
+                        .enabled(!self.vault_path.trim().is_empty()),
+                ],
+            ),
+            Menu::new(
+                "go",
+                "Go",
+                vec![
+                    MenuItem::action("quick-open", "Quick Open…", "openCommandPalette")
+                        .accelerator("cmd+k"),
+                    MenuItem::action("daily", "Daily Note", "openDailyNote").accelerator("cmd+d"),
+                    MenuItem::action("new", "New Note", "newNote").accelerator("cmd+n"),
+                    MenuItem::action("links", "Links", "openGraph").accelerator("cmd+g"),
+                ],
+            ),
+            Menu::new(
+                "view",
+                "View",
+                vec![
+                    MenuItem::action("reader", "Reader / Raw", "toggleReaderMode")
+                        .accelerator("cmd+e")
+                        .enabled(self.has_selected),
+                    MenuItem::action("settings", "Settings", "openSettings"),
+                ],
+            ),
+        ])
+    }
+
+    pub fn context_menu(&self) -> Option<libra_core::MenuDecl> {
+        use crate::model::is_folder_id;
+        use libra_core::{Menu, MenuDecl, MenuItem};
+        let id = self.context_path.trim();
+        if id.is_empty() || is_folder_id(id, &self.note_paths) {
+            return None;
+        }
+        Some(MenuDecl::new(vec![Menu::new(
+            "file-row",
+            "Note",
+            vec![
+                MenuItem::action("open", "Open", "selectFile").with_arg(id),
+                MenuItem::action("open-tab", "Open in New Tab", "openInNewTab").with_arg(id),
+            ],
+        )]))
     }
 }

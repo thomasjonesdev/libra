@@ -17,6 +17,7 @@ type: architecture
 
 - [[19.1-touch]]
 - [[19.2-keyboard-shortcuts-declarations-not-handlers]]
+- [[19.3-native-menus]]
 
 ## In code
 

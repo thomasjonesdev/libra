@@ -12,8 +12,9 @@ mod state;
 pub use actions::{reduce, Action};
 pub use model::{
     assemble_note, default_daily_note_path, file_stem, journal_path, note_snippet, note_title,
-    parse_list, project_file_rows, project_preview, resolve_daily_note, resolve_wikilink, split_note,
-    vault_name, IoKind, Pending, STORE_KEY,
+    parse_list, parse_workspace_bytes, project_file_rows, project_preview, resolve_daily_note,
+    resolve_wikilink, split_note, vault_name, IoKind, Pending, VaultRecord, WorkspaceSettings,
+    STORE_KEY,
 };
 pub use state::Gloss;
 
@@ -22,6 +23,8 @@ libra::app! {
     view: "../views/gloss.lx",
     init: Gloss::init,
     shortcuts: Gloss::shortcuts,
+    menu: Gloss::menu,
+    context_menu: Gloss::context_menu,
     window: (960.0, 640.0),
     title: "Gloss",
 }

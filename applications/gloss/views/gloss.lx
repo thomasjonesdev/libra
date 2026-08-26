@@ -17,6 +17,9 @@
         <Button variant="ghost" icon="undo" onPress={undo} testId="undo" />
       </Tooltip>
       <Spacer />
+      <Tooltip text="Vaults">
+        <Button variant="ghost" icon="folder" onPress={openVaultPicker} testId="vault-picker" />
+      </Tooltip>
       <Tooltip text="Settings">
         <Button variant="ghost" icon="settings" onPress={openSettings} testId="settings" />
       </Tooltip>
@@ -39,14 +42,11 @@
               <Text muted testId="empty">{empty_message}</Text>
             </if>
             <for each={file_rows} as="n" key={n.id}>
-              <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={openInNewTab(n.id)} />
+              <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={fileContext(n.id)} />
             </for>
           </Column>
         </Scroll>
-        <Row gap={6} cross="center">
-          <Text muted grow wrap testId="vault-name">{vault_name}</Text>
-          <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
-        </Row>
+        <Text muted grow wrap testId="vault-name">{vault_name}</Text>
       </Panel>
       <Column grow gap={4} padding={8}>
         <if test={has_vault}>
@@ -119,7 +119,6 @@
       <Text bold>Vault</Text>
       <Text testId="settings-vault-name">{vault_name}</Text>
       <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
-      <Button variant="secondary" onPress={browseVault} testId="settings-browse">Browse</Button>
       <Separator />
       <Text bold>Rules</Text>
       <Text muted size="sm">`.gloss/rules.md`</Text>
@@ -130,6 +129,20 @@
         </else>
       </if>
     </Drawer>
+  </if>
+  <if test={show_vault_picker}>
+    <Dialog title="Vaults" onDismiss={closeVaultPicker} testId="vault-dialog">
+      <if test={has_saved_vaults}>
+        <Scroll testId="vault-scroll" height={240}>
+          <Column gap={2}>
+            <for each={vault_rows} as="v" key={v.id}>
+              <ListItem title={v.title} subtitle={v.snippet} selected={v.selected} onPress={switchVault(v.id)} onMenu={removeVault(v.id)} />
+            </for>
+          </Column>
+        </Scroll>
+      </if>
+      <Button variant="secondary" onPress={browseVault} testId="browse-vault">Browse</Button>
+    </Dialog>
   </if>
   <if test={show_mention}>
     <Dialog title="Link note" onDismiss={closeMention} testId="mention-dialog">

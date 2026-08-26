@@ -79,13 +79,13 @@ fn chrome_fits_at_720_and_1280() {
     );
     h.query(by::test_id("new-note"));
     h.query(by::test_id("undo"));
-    h.query(by::test_id("browse-vault"));
+    h.query(by::test_id("vault-picker"));
     h.query(by::test_id("vault-name")).assert_text("gloss-fixture");
     assert_no_overflow(&h);
     h.set_viewport(1280, 640);
     h.query(by::test_id("new-note"));
     h.query(by::test_id("undo"));
-    h.query(by::test_id("browse-vault"));
+    h.query(by::test_id("vault-picker"));
     h.query(by::test_id("vault-name")).assert_text("gloss-fixture");
     assert_no_overflow(&h);
 }

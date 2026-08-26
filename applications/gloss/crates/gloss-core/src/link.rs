@@ -28,19 +28,29 @@ pub fn resolve_link_target(target: &str, notes: &[RelPath]) -> Option<RelPath> {
     }
     let needle = {
         let stem = with_md.rsplit('/').next().unwrap_or(&with_md);
-        let stem = stem.strip_suffix(".md").or_else(|| stem.strip_suffix(".MD")).unwrap_or(stem);
+        let stem = stem
+            .strip_suffix(".md")
+            .or_else(|| stem.strip_suffix(".MD"))
+            .unwrap_or(stem);
         stem.chars().collect::<String>().to_ascii_lowercase()
     };
     let suffix = format!("/{needle}.md");
-    notes.iter().find(|p| {
-        p.file_stem_key() == needle
-            || p.nfc_key() == format!("{needle}.md")
-            || p.nfc_key().ends_with(&suffix)
-    }).cloned()
+    notes
+        .iter()
+        .find(|p| {
+            p.file_stem_key() == needle
+                || p.nfc_key() == format!("{needle}.md")
+                || p.nfc_key().ends_with(&suffix)
+        })
+        .cloned()
 }
 
 /// Notes whose bodies contain a wikilink that resolves to `target`.
-pub fn find_backlinks(ws: &Workspace, root: RootId, target: &RelPath) -> Result<Vec<RelPath>, PathError> {
+pub fn find_backlinks(
+    ws: &Workspace,
+    root: RootId,
+    target: &RelPath,
+) -> Result<Vec<RelPath>, PathError> {
     let root_ref = ws.root(root).ok_or(PathError::OutsideRoot)?;
     let notes = list_notes(root_ref)?;
     let mut out = Vec::new();

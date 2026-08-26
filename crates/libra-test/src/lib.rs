@@ -7,14 +7,16 @@
 //! Architecture: ARCHITECTURE.md §15 (testing architecture).
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
-use libra_core::{App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult, ReflectAction, SeriesId};
+use libra_components::{Cursor, InputFocus, LaidTree, Role, ScrollState};
+use libra_core::{
+    App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult, ReflectAction, SeriesId,
+};
 use libra_data::SeriesStore;
+use libra_draw::Theme;
 use libra_interp::Scope;
 use libra_markup::Node;
 use libra_raster::Renderer;
-use libra_draw::Theme;
 use libra_text::{EditOp, EditState};
-use libra_components::{Cursor, InputFocus, LaidTree, Role, ScrollState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -203,8 +205,8 @@ impl<A: App> Harness<A> {
         w: u32,
         h: u32,
     ) -> Self {
-        let ast = libra_markup::parse(lx_source)
-            .unwrap_or_else(|e| panic!("markup parse error: {e}"));
+        let ast =
+            libra_markup::parse(lx_source).unwrap_or_else(|e| panic!("markup parse error: {e}"));
         let (app, init_effects) = A::init();
         let renderer = Renderer::new();
         let theme = Theme::dark();
@@ -234,8 +236,14 @@ impl<A: App> Harness<A> {
     /// arg included), exactly like the shell's right-click.
     pub fn right_click(&mut self, sel: Selector) {
         use libra_components::ItemKind;
-        let item = self.find(&sel).unwrap_or_else(|| panic!("right_click: no item matches {sel:?}"));
-        let ItemKind::ListItem { on_menu: Some((name, arg)), .. } = &item.kind else {
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("right_click: no item matches {sel:?}"));
+        let ItemKind::ListItem {
+            on_menu: Some((name, arg)),
+            ..
+        } = &item.kind
+        else {
             panic!("right_click: {sel:?} has no onMenu handler");
         };
         let (name, arg) = (name.clone(), arg.clone());
@@ -244,7 +252,9 @@ impl<A: App> Harness<A> {
             Some(a) => A::Msg::action_with_str(&name, a),
             None => A::Msg::action_by_name(&name),
         }
-        .unwrap_or_else(|| panic!("onMenu '{name}' resolved to no Action — reflection out of sync"));
+        .unwrap_or_else(|| {
+            panic!("onMenu '{name}' resolved to no Action — reflection out of sync")
+        });
         self.dispatch(msg);
     }
 
@@ -254,7 +264,14 @@ impl<A: App> Harness<A> {
     pub fn scroll(&mut self, test_id: &str, dy: f32) {
         let pos = self.scroll_state.entry(test_id.to_string()).or_insert(0.0);
         *pos = (*pos + dy).max(0.0);
-        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+        );
         self.laid.apply_scroll(&self.scroll_state);
         self.laid.apply_menu_anchor(self.menu_anchor);
     }
@@ -263,7 +280,9 @@ impl<A: App> Harness<A> {
     /// ListItem hover wash) — an explicit input, so hover snapshots
     /// stay byte-exact. `blur_hover()` clears it.
     pub fn hover(&mut self, sel: Selector) {
-        let item = self.find(&sel).unwrap_or_else(|| panic!("hover: no item matches {sel:?}"));
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("hover: no item matches {sel:?}"));
         self.hover = Some(item.rect.center());
     }
 
@@ -277,8 +296,9 @@ impl<A: App> Harness<A> {
     /// resource and never reaches a pixel, which is why snapshots can't
     /// cover it and this verb exists.
     pub fn cursor_over(&self, sel: Selector) -> Cursor {
-        let item =
-            self.find(&sel).unwrap_or_else(|| panic!("cursor_over: no item matches {sel:?}"));
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("cursor_over: no item matches {sel:?}"));
         let (x, y) = item.rect.center();
         self.laid.cursor_at(x, y)
     }
@@ -348,8 +368,7 @@ impl<A: App> Harness<A> {
     pub fn press_shortcut(&mut self, chord: &str) -> bool {
         let table = libra_core::build_shortcut_table::<A::Msg>(A::shortcuts())
             .unwrap_or_else(|e| panic!("press_shortcut: invalid shortcut table: {e}"));
-        let want = libra_core::parse_chord(chord)
-            .unwrap_or_else(|e| panic!("press_shortcut: {e}"));
+        let want = libra_core::parse_chord(chord).unwrap_or_else(|e| panic!("press_shortcut: {e}"));
         let (_, s) = table
             .iter()
             .find(|(c, _)| *c == want)
@@ -366,12 +385,56 @@ impl<A: App> Harness<A> {
         true
     }
 
+    /// §19.3: the app's current native menubar projection.
+    pub fn menu(&self) -> libra_core::MenuDecl {
+        self.app.menu()
+    }
+
+    /// §19.3: native context-menu projection after a right-click
+    /// `onMenu` dispatch (`None` = painted `<ContextMenu>` path).
+    pub fn context_menu(&self) -> Option<libra_core::MenuDecl> {
+        self.app.context_menu()
+    }
+
+    /// Dispatch a native-menu action by reflected name. Searches the
+    /// menubar, then the context menu. `arg` matches a String-payload
+    /// item (`click_menu("openVault", Some(path))`).
+    pub fn click_menu(&mut self, action: &str, arg: Option<&str>) {
+        let bar = self.app.menu();
+        let ctx = self.app.context_menu();
+        let found = libra_core::find_menu_action(&bar, action, arg).is_some()
+            || ctx
+                .as_ref()
+                .is_some_and(|d| libra_core::find_menu_action(d, action, arg).is_some());
+        if !found {
+            panic!(
+                "click_menu: '{action}' arg={arg:?} is not an enabled item in menu() or context_menu()"
+            );
+        }
+        let msg = match arg {
+            Some(a) => A::Msg::action_with_str(action, a.to_string()),
+            None => A::Msg::action_by_name(action),
+        }
+        .unwrap_or_else(|| {
+            panic!("click_menu: '{action}' did not resolve — reflection out of sync")
+        });
+        self.dispatch(msg);
+    }
+
     /// Render under a named theme (§11): `.theme("libra-light")`.
     /// Panics on unknown names — a typo'd theme is a broken test.
     pub fn theme(mut self, name: &str) -> Self {
-        self.theme = Theme::by_name(name)
-            .unwrap_or_else(|| panic!("unknown theme '{name}' — built in: libra-dark, libra-light"));
-        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.theme = Theme::by_name(name).unwrap_or_else(|| {
+            panic!("unknown theme '{name}' — built in: libra-dark, libra-light")
+        });
+        self.laid = rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+        );
         self
     }
 
@@ -385,7 +448,14 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|e| panic!("feed_tape: {e}"));
         // Data changed: rebuild so paint sees it (widgets read at paint,
         // but a rebuild keeps laid geometry current too).
-        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+        );
         n
     }
 
@@ -404,7 +474,14 @@ impl<A: App> Harness<A> {
 
     pub fn set_viewport(&mut self, w: u32, h: u32) {
         self.viewport = (w, h);
-        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+        );
         self.laid.apply_scroll(&self.scroll_state);
         self.laid.apply_menu_anchor(self.menu_anchor);
     }
@@ -424,7 +501,14 @@ impl<A: App> Harness<A> {
             }
         }
         self.pending.extend(effects);
-        self.laid = rebuild(&self.app, &self.ast, &self.registry, &self.renderer, self.viewport, &self.theme);
+        self.laid = rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+        );
         // Deterministic layout inputs survive the rebuild (PLAN-SCROLL / M7).
         self.laid.apply_scroll(&self.scroll_state);
         self.laid.apply_menu_anchor(self.menu_anchor);
@@ -434,7 +518,9 @@ impl<A: App> Harness<A> {
     /// dispatch its handler through the app's real action resolution.
     /// Clicking a TextInput focuses it (§10.1) instead of dispatching.
     pub fn click(&mut self, sel: Selector) {
-        let item = self.find(&sel).unwrap_or_else(|| panic!("click: no item matches {sel:?}"));
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("click: no item matches {sel:?}"));
         let (cx, cy) = item.rect.center();
         let hit = self
             .laid
@@ -442,7 +528,11 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|| panic!("click: {sel:?} is not interactive at ({cx},{cy})"));
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
-            let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+            let id = hit
+                .semantics
+                .test_id
+                .clone()
+                .expect("Input has a testId (load-enforced)");
             self.focus = Some((id, EditState::new(hit.semantics.text.clone()), name));
             return;
         }
@@ -497,7 +587,9 @@ impl<A: App> Harness<A> {
     }
 
     fn sync_focus_from_state(&mut self) {
-        let Some((id, edit, on_change)) = self.focus.take() else { return };
+        let Some((id, edit, on_change)) = self.focus.take() else {
+            return;
+        };
         let current = self
             .find(&Selector::TestId(id.clone()))
             .map(|i| i.semantics.text.clone())
@@ -537,9 +629,8 @@ impl<A: App> Harness<A> {
                 on_submit: Some(name),
                 ..
             } => {
-                let msg = A::Msg::action_by_name(name).unwrap_or_else(|| {
-                    panic!("'{name}' is not a unit Action variant")
-                });
+                let msg = A::Msg::action_by_name(name)
+                    .unwrap_or_else(|| panic!("'{name}' is not a unit Action variant"));
                 self.dispatch(msg);
             }
             libra_components::ItemKind::Textarea { .. } => {
@@ -608,7 +699,10 @@ impl<A: App> Harness<A> {
     /// Acked sets dispatch their result; fire-and-forget sets are a no-op.
     pub fn resolve_kv_set(&mut self, effect: Effect<A::Msg>, result: KvResult) {
         match effect {
-            Effect::KvSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
+            Effect::KvSet {
+                on_done: Some(ctor),
+                ..
+            } => self.dispatch(ctor(result)),
             Effect::KvSet { on_done: None, .. } => {}
             other => panic!("resolve_kv_set: not a KvSet effect: {other:?}"),
         }
@@ -632,9 +726,16 @@ impl<A: App> Harness<A> {
     /// Ack an intercepted `Effect::ClipboardSet` (PLAN-NATIVE-
     /// INTEGRATIONS) — no OS clipboard is touched in tests; the effect
     /// is the assertion surface, the result is hand-fed.
-    pub fn resolve_clipboard(&mut self, effect: Effect<A::Msg>, result: libra_core::ClipboardResult) {
+    pub fn resolve_clipboard(
+        &mut self,
+        effect: Effect<A::Msg>,
+        result: libra_core::ClipboardResult,
+    ) {
         match effect {
-            Effect::ClipboardSet { on_done: Some(ctor), .. } => self.dispatch(ctor(result)),
+            Effect::ClipboardSet {
+                on_done: Some(ctor),
+                ..
+            } => self.dispatch(ctor(result)),
             Effect::ClipboardSet { on_done: None, .. } => {}
             other => panic!("resolve_clipboard: not a ClipboardSet effect: {other:?}"),
         }
@@ -667,8 +768,13 @@ impl<A: App> Harness<A> {
     // ------------------------------------------------------------------
 
     pub fn query(&self, sel: Selector) -> NodeRef<'_> {
-        let item = self.find(&sel).unwrap_or_else(|| panic!("query: no item matches {sel:?}"));
-        NodeRef { text: item.semantics.text.clone(), _life: std::marker::PhantomData }
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("query: no item matches {sel:?}"));
+        NodeRef {
+            text: item.semantics.text.clone(),
+            _life: std::marker::PhantomData,
+        }
     }
 
     fn find(&self, sel: &Selector) -> Option<&libra_components::Item> {
@@ -695,8 +801,17 @@ impl<A: App> Harness<A> {
     /// writes `<name>.actual.png` and `<name>.diff.png` (heatmap: red
     /// where pixels differ, dimmed expected elsewhere).
     pub fn assert_snapshot(&self, name: &str) {
-        let cmds = self.laid.paint_full(&self.renderer, &self.store, self.focus_paint().as_ref(), self.hover, &self.theme, 1.0);
-        let actual = self.renderer.render_png(&cmds, self.viewport.0, self.viewport.1);
+        let cmds = self.laid.paint_full(
+            &self.renderer,
+            &self.store,
+            self.focus_paint().as_ref(),
+            self.hover,
+            &self.theme,
+            1.0,
+        );
+        let actual = self
+            .renderer
+            .render_png(&cmds, self.viewport.0, self.viewport.1);
         let path = self.snapshot_dir.join(format!("{name}.png"));
 
         if std::env::var("LIBRA_BLESS").is_ok() {
@@ -707,9 +822,15 @@ impl<A: App> Harness<A> {
             std::fs::create_dir_all(&self.snapshot_dir).expect("snapshot dir");
             std::fs::write(&path, &actual).expect("write snapshot");
             if validate {
-                eprintln!("[libra-test] validated snapshot '{name}' ({} bytes)", actual.len());
+                eprintln!(
+                    "[libra-test] validated snapshot '{name}' ({} bytes)",
+                    actual.len()
+                );
             } else {
-                eprintln!("[libra-test] recorded new snapshot '{name}' ({} bytes)", actual.len());
+                eprintln!(
+                    "[libra-test] recorded new snapshot '{name}' ({} bytes)",
+                    actual.len()
+                );
             }
             return;
         }
@@ -724,7 +845,10 @@ impl<A: App> Harness<A> {
                 &self.snapshot_dir.join(format!("{name}.diff.png")),
             ) {
                 Some((diff_path, changed)) => {
-                    format!("\n  diff:     {} ({changed} px changed)", diff_path.display())
+                    format!(
+                        "\n  diff:     {} ({changed} px changed)",
+                        diff_path.display()
+                    )
                 }
                 None => String::new(),
             };
@@ -738,8 +862,16 @@ impl<A: App> Harness<A> {
 
     /// Raw PNG bytes of the current frame (for hashing/inspection).
     pub fn frame_png(&self) -> Vec<u8> {
-        let cmds = self.laid.paint_full(&self.renderer, &self.store, self.focus_paint().as_ref(), self.hover, &self.theme, 1.0);
-        self.renderer.render_png(&cmds, self.viewport.0, self.viewport.1)
+        let cmds = self.laid.paint_full(
+            &self.renderer,
+            &self.store,
+            self.focus_paint().as_ref(),
+            self.hover,
+            &self.theme,
+            1.0,
+        );
+        self.renderer
+            .render_png(&cmds, self.viewport.0, self.viewport.1)
     }
 }
 
@@ -819,6 +951,11 @@ fn rebuild<A: App>(
     };
     let view = libra_interp::resolve(ast, &scope, registry)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
-    libra_components::layout(&view, (viewport.0 as f32, viewport.1 as f32), renderer, theme)
-        .unwrap_or_else(|e| panic!("{e}"))
+    libra_components::layout(
+        &view,
+        (viewport.0 as f32, viewport.1 as f32),
+        renderer,
+        theme,
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
 }

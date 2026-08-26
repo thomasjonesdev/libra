@@ -22,7 +22,12 @@ pub fn ok_stdout(stdout: &str) -> ProcessResult {
     }
 }
 
+pub fn open_vault_dialog(h: &mut Harness<Gloss>) {
+    h.click(by::test_id("vault-picker"));
+}
+
 pub fn open_and_list(h: &mut Harness<Gloss>, listing: &str) {
+    open_vault_dialog(h);
     h.click(by::test_id("browse-vault"));
     let pick = h.expect_effect(fx::pick_folder());
     h.resolve_folder_pick(pick, FolderPick::Picked("/tmp/gloss-fixture".into()));
@@ -33,8 +38,7 @@ pub fn open_and_list(h: &mut Harness<Gloss>, listing: &str) {
 }
 
 pub fn resolve_rules(h: &mut Harness<Gloss>, body: &str) {
-    if h
-        .pending_effects()
+    if h.pending_effects()
         .any(|e| matches!(e, libra_core::Effect::Process { .. }))
     {
         let rules = h.expect_effect(fx::process_program("gloss"));

@@ -475,7 +475,8 @@ mod tests {
     #[test]
     fn set_frontmatter_insert_inverse_is_identity() {
         let src = "---\ntitle: Hi\n---\n\nbody";
-        let (next, inv) = apply_in_memory(src.as_bytes(), &frontmatter_op("tags", "x", src)).unwrap();
+        let (next, inv) =
+            apply_in_memory(src.as_bytes(), &frontmatter_op("tags", "x", src)).unwrap();
         let (restored, _) = apply_in_memory(&next, &inv).unwrap();
         assert_eq!(restored, src.as_bytes());
     }
@@ -497,7 +498,8 @@ mod tests {
     #[test]
     fn set_frontmatter_value_does_not_collide_with_key() {
         let src = "---\ntitle: t\n---\n\n";
-        let (next, _) = apply_in_memory(src.as_bytes(), &frontmatter_op("title", "Z", src)).unwrap();
+        let (next, _) =
+            apply_in_memory(src.as_bytes(), &frontmatter_op("title", "Z", src)).unwrap();
         assert_eq!(next, b"---\ntitle: Z\n---\n\n");
     }
 }

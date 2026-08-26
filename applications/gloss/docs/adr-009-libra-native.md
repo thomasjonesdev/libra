@@ -27,9 +27,15 @@ CLI (the same binary, with `list` / `apply` subcommands).
 ## Consequences
 
 - Tests use the same harness ladder as `aws-login` and `notes`.
-- Ghost-text Tab is blocked on a future editor crate, not on CodeMirror.
+- Closed grammar: ranking, hunks, and filters are State projections. The
+  view does not compute.
+- Ghost-text Tab is Textarea paint on a plain buffer, the same split as
+  `<Markdown>`. It is not a hole in §24. See [[10-libra]] and
+  [[11-coherence]].
 - File I/O is still a framework gap. Process-to-self is the current path.
-  `Effect::File*` remains the honest next vocabulary change.
+  `Effect::FileRead` / `FileWrite` are sketched in §12.1 and are not in
+  the enum.
+- M2 (MCP) must not wait on any of the above.
 
 ## What would reverse it
 
