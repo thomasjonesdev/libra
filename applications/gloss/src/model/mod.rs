@@ -26,6 +26,7 @@ pub use projections::{
     project_search_rows, rules_preview, save_busy, save_ok, word_count_label,
 };
 pub use types::{
-    FileRow, FrontmatterField, IoKind, NoteRow, Pending, SidebarView, TabRow, AUTOSAVE_MS,
-    STORE_KEY, TOAST_MS,
+    parse_workspace_bytes, upsert_vault, FileRow, FrontmatterField, IoKind, NoteRow, Pending,
+    SidebarView, TabRow, VaultRecord, VaultRow, WorkspaceSettings, AUTOSAVE_MS, STORE_KEY,
+    TOAST_MS,
 };

@@ -4,12 +4,24 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use gloss_core::{
-    apply_op, apply_patch, find_backlinks, hash_bytes, list_notes, Journal, Patch, RelPath,
+    apply_op, apply_patch, find_backlinks, hash_bytes, list_notes, Journal, NoteId, Patch, RelPath,
     VaultPath, Workspace,
 };
+use gloss_index::Index;
 
 pub fn is_cli_command(cmd: &str) -> bool {
-    matches!(cmd, "list" | "cat" | "hash" | "apply" | "undo" | "backlinks")
+    matches!(
+        cmd,
+        "list"
+            | "cat"
+            | "hash"
+            | "apply"
+            | "undo"
+            | "backlinks"
+            | "index"
+            | "neighbors"
+            | "suggest-links"
+    )
 }
 
 pub fn run() -> ExitCode {
@@ -28,6 +40,9 @@ pub fn run_args(mut args: impl Iterator<Item = String>) -> ExitCode {
         "apply" => cmd_apply(&mut args),
         "undo" => cmd_undo(&mut args),
         "backlinks" => cmd_backlinks(&mut args),
+        "index" => cmd_index(&mut args),
+        "neighbors" => cmd_neighbors(&mut args),
+        "suggest-links" => cmd_suggest_links(&mut args),
         _ => {
             eprintln!("{}", usage());
             ExitCode::from(2)
@@ -36,7 +51,147 @@ pub fn run_args(mut args: impl Iterator<Item = String>) -> ExitCode {
 }
 
 fn usage() -> &'static str {
-    "usage:\n  gloss list --root DIR\n  gloss cat --root DIR --path REL\n  gloss hash --root DIR --path REL\n  gloss backlinks --root DIR --path REL\n  gloss apply --root DIR --patch FILE [--journal FILE]\n  gloss undo --root DIR --journal FILE"
+    "usage:\n  gloss list --root DIR\n  gloss cat --root DIR --path REL\n  gloss hash --root DIR --path REL\n  gloss backlinks --root DIR --path REL\n  gloss index --root DIR --db FILE\n  gloss neighbors --root DIR --path REL --db FILE\n  gloss suggest-links --root DIR --db FILE\n  gloss apply --root DIR --patch FILE [--journal FILE]\n  gloss undo --root DIR --journal FILE"
+}
+
+fn cmd_index(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let (root, db) = match flags_root_db(args) {
+        Ok(v) => v,
+        Err(e) => return bad(&e),
+    };
+    let mut ws = Workspace::new();
+    if let Err(e) = ws.add_root(&root, root_name(&root)) {
+        return bad(&e.to_string());
+    }
+    let mut index = match Index::open(&db) {
+        Ok(i) => i,
+        Err(e) => return bad(&e.to_string()),
+    };
+    match index.refresh(&ws, 0) {
+        Ok(stats) => {
+            println!(
+                "scanned {} updated {} unchanged {} deleted {}",
+                stats.scanned, stats.updated, stats.unchanged, stats.deleted
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => bad(&e.to_string()),
+    }
+}
+
+fn cmd_neighbors(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let items: Vec<String> = args.collect();
+    let mut root = None;
+    let mut rel = None;
+    let mut db = None;
+    let mut i = 0;
+    while i < items.len() {
+        match items[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = items.get(i).cloned();
+            }
+            "--path" => {
+                i += 1;
+                rel = items.get(i).cloned();
+            }
+            "--db" => {
+                i += 1;
+                db = items.get(i).cloned();
+            }
+            _ => return bad("unknown flag"),
+        }
+        i += 1;
+    }
+    let Some(root) = root else {
+        return bad("missing --root");
+    };
+    let Some(rel) = rel else {
+        return bad("missing --path");
+    };
+    let Some(db) = db else {
+        return bad("missing --db");
+    };
+    let mut ws = Workspace::new();
+    let id = match ws.add_root(&root, root_name(&root)) {
+        Ok(id) => id,
+        Err(e) => return bad(&e.to_string()),
+    };
+    let path = match RelPath::parse(&rel) {
+        Ok(p) => p,
+        Err(e) => return bad(&e.to_string()),
+    };
+    let index = match Index::open(&db) {
+        Ok(i) => i,
+        Err(e) => return bad(&e.to_string()),
+    };
+    match index.neighbors(&NoteId::new(id, path)) {
+        Ok(n) => {
+            for dest in n.outgoing {
+                println!("outgoing {}", dest.path);
+            }
+            for src in n.incoming {
+                println!("incoming {}", src.path);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => bad(&e.to_string()),
+    }
+}
+
+fn cmd_suggest_links(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let (root, db) = match flags_root_db(args) {
+        Ok(v) => v,
+        Err(e) => return bad(&e),
+    };
+    let mut ws = Workspace::new();
+    if let Err(e) = ws.add_root(&root, root_name(&root)) {
+        return bad(&e.to_string());
+    }
+    let mut index = match Index::open(&db) {
+        Ok(i) => i,
+        Err(e) => return bad(&e.to_string()),
+    };
+    if let Err(e) = index.refresh(&ws, 0) {
+        return bad(&e.to_string());
+    }
+    match index.suggest_links(&ws) {
+        Ok(hits) => {
+            for hit in hits {
+                println!(
+                    "{} -> {}  {} @{}",
+                    hit.src.path, hit.dst.path, hit.matched, hit.byte_start
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => bad(&e.to_string()),
+    }
+}
+
+fn flags_root_db(args: &mut impl Iterator<Item = String>) -> Result<(String, String), String> {
+    let items: Vec<String> = args.collect();
+    let mut root = None;
+    let mut db = None;
+    let mut i = 0;
+    while i < items.len() {
+        match items[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = items.get(i).cloned();
+            }
+            "--db" => {
+                i += 1;
+                db = items.get(i).cloned();
+            }
+            _ => return Err("unknown flag".into()),
+        }
+        i += 1;
+    }
+    Ok((
+        root.ok_or_else(|| "missing --root".to_string())?,
+        db.ok_or_else(|| "missing --db".to_string())?,
+    ))
 }
 
 fn cmd_backlinks(args: &mut impl Iterator<Item = String>) -> ExitCode {

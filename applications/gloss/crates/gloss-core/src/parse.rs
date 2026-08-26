@@ -147,7 +147,8 @@ fn parse_inner(inner: &str, start: usize, end: usize, embed: bool) -> Option<Wik
     })
 }
 
-fn comment_spans(src: &str) -> Vec<ByteRange> {
+/// `%%comment%%` spans. Used by the wikilink scanner and missing-link suggestions.
+pub fn comment_spans(src: &str) -> Vec<ByteRange> {
     let mut spans = Vec::new();
     let mut rest = src;
     let mut offset = 0;

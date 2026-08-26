@@ -40,22 +40,28 @@ else. See [[04-roadmap]].
 ```
 ┌─────────────────────────────────────────────┐
 │  Libra app (macOS)                          │
-│  views/gloss.lx · <Textarea>                │
-│            │ Effect::Process                │
+│  views/gloss.lx · <Markdown> · <Textarea>   │
+│            │ Effect::Process (stand-in)     │
+│            │ Effect::PickFolder             │
 │  ┌─────────┴──────────────────────────────┐ │
-│  │  gloss-core (Rust)                     │ │
-│  │  vault · patch · parse                 │ │
+│  │  gloss-core · gloss-index              │ │
+│  │  vault · patch · parse · link graph    │ │
 │  └─────────┬──────────────────────────────┘ │
 └────────────┼────────────────────────────────┘
              │
     ┌────────┴────────┐
-    │ gloss CLI / MCP │  same core
+    │ gloss CLI / MCP │  same crates
     └─────────────────┘
 ```
 
 The core is a library, not a daemon, in v1. Keep it free of `libra-platform`
 types so the CLI and a later MCP server stay mechanical. See
 [[adr-009-libra-native]].
+
+Vault bytes still leave reduce as `Effect::Process` to this binary's CLI.
+`Effect::FileRead` / `FileWrite` are sketched in §12.1 and are not in the
+enum. Do not `fs::read` inside an action to "just make it faster." The
+split of Gloss work vs Libra work is [[10-libra]].
 
 ## Components
 
@@ -81,7 +87,7 @@ assumption. See [[decisions/adr-001-multi-root]].
 
 | Concern | Choice | Notes |
 | --- | --- | --- |
-| Store | SQLite (`rusqlite`, WAL) | One DB per workspace, outside the vault |
+| Store | SQLite (`rusqlite`, WAL) | **Started** in `gloss-index`. Notes + links + title-mention suggestions. One DB per workspace, outside the vault |
 | Lexical search | `tantivy` | BM25 — still beats embeddings on proper nouns |
 | Vectors | `sqlite-vec` | Keeps one store; avoids a second index to corrupt |
 | Embeddings | `fastembed-rs`, bge-small-en-v1.5 | Local, CPU, no API cost |
@@ -111,9 +117,12 @@ what converts the propose-only constraint into a feature rather than a tax.
 
 ### L3 — Editor shell
 
-Libra `<Textarea>` for v1. Ghost-text Tab needs a markdown-aware crate on top
-of `libra-text`, not a webview. See [[adr-009-libra-native]]. The cost is a
-ceiling on WYSIWYG prose and inline completion until that crate exists.
+Libra `<Textarea>` for v1 (PLAN-TEXTAREA stage 1: hard newlines, no IME, no
+soft wrap). Preview paint is `<Markdown>` (`libra-markdown` already draws
+emphasis and wikilinks). Ghost-text Tab is the same kind of paint on a
+plain buffer. It is a Textarea overlay, not a hole in §24. See
+[[adr-009-libra-native]], [[10-libra]], and [[11-coherence]]. Do not host
+a webview to dodge it.
 
 - **Tab** — ghost text; context = current block + retrieved neighbors + open tabs
 - **Cmd+K** — inline edit on selection, returns a patch, not a replacement
@@ -160,5 +169,10 @@ trait Provider {
 }
 ```
 
-Prompt caching on the vault-context prefix is the single biggest cost lever —
-design the prompt so the stable part comes first.
+Prompt caching on the vault-context prefix is the single biggest cost lever.
+Design the prompt so the stable part comes first.
+
+`Effect::Http` can carry a whole completion. A visible token stream waits on
+PLAN-STREAM-DELIVERY. Keys do not go in the vault and should not go on a
+Process argv. BYOK needs a Keychain effect before I will point this at a
+real vault. See [[06-operations]] and [[10-libra]].

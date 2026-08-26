@@ -1,9 +1,9 @@
 //! Display projections rebuilt by the `#[project]` hook.
 
 use crate::model::{
-    frontmatter_scan_rows, frontmatter_title, project_bookmark_rows, project_file_rows,
-    project_link_rows, project_palette_rows, save_busy, save_ok, vault_name, word_count_label,
-    char_count_label, IoKind, NoteRow, SidebarView, TabRow,
+    char_count_label, frontmatter_scan_rows, frontmatter_title, project_bookmark_rows,
+    project_file_rows, project_link_rows, project_palette_rows, save_busy, save_ok, vault_name,
+    word_count_label, IoKind, NoteRow, SidebarView, TabRow, VaultRow,
 };
 use crate::state::Gloss;
 
@@ -13,6 +13,7 @@ impl Gloss {
         self.project_note_rows(&full);
         self.project_sidebar_rows();
         self.project_tabs();
+        self.project_vaults();
         self.project_chrome(&full);
         self.project_overlays();
         self.project_graph(&full);
@@ -86,6 +87,21 @@ impl Gloss {
             .collect();
     }
 
+    fn project_vaults(&mut self) {
+        self.vault_rows = self
+            .workspace
+            .vaults
+            .iter()
+            .map(|v| VaultRow {
+                id: v.path.clone(),
+                title: v.name.clone(),
+                snippet: v.path.clone(),
+                selected: v.path == self.opened_root,
+            })
+            .collect();
+        self.has_saved_vaults = !self.workspace.vaults.is_empty();
+    }
+
     fn project_chrome(&mut self, full: &str) {
         self.vault_name = vault_name(&self.vault_path);
         self.has_vault = !self.vault_path.trim().is_empty() && !self.note_paths.is_empty()
@@ -115,7 +131,11 @@ impl Gloss {
 
     fn empty_sidebar_message(&self) -> String {
         if self.vault_path.trim().is_empty() {
-            return "Browse a vault folder to begin".into();
+            return if self.has_saved_vaults {
+                "Open a vault you've used, or browse a folder".into()
+            } else {
+                "Browse a vault folder to begin".into()
+            };
         }
         if !self.sidebar_open {
             return String::new();

@@ -103,3 +103,17 @@ export-control problem, not just a privacy preference.
 
 **Mitigation:** sensitive-vault mode as a v1 feature with hard failure, not a
 warning — see [[06-operations#Sensitive-vault mode]].
+
+## R-11 · Libra gaps get treated as Gloss features
+
+The first draft assumed a webview editor. We are on Libra. Soft wrap,
+`File*`, Keychain, streaming completions, and Tab paint are framework
+changes. They have both-engines + Appendix A cost. The failure mode is
+spending a month on catalog chrome, or inventing a Process workaround
+and calling M4 done, while M2 still is not in my daily loop.
+
+**Mitigation:** [[11-coherence]] is what we are building. [[10-libra]] is
+the split. M2 does not wait on Libra. M4 exit names soft wrap and
+`File*`, not graph viz. Tab is paint, not a §24 amendment.
+**Trigger:** a PR that adds a catalog node or Effect "for Gloss" while
+`gloss-mcp` is unusable.

@@ -1,7 +1,7 @@
 //! Integration tests: intercepted Process effects for list/cat/apply.
 
-use libra_core::FolderPick;
-use libra_test::{by, fx};
+use libra_core::{Effect, FolderPick};
+use libra_test::{by, fx, Harness};
 
 use crate::common::{enter_edit, harness, ok_stdout, open_first_note, resolve_rules};
 
@@ -10,10 +10,17 @@ mod common;
 #[test]
 fn browse_picks_a_folder_and_lists() {
     let mut h = harness();
+    crate::common::open_vault_dialog(&mut h);
     h.click(by::test_id("browse-vault"));
     let pick = h.expect_effect(fx::pick_folder());
     h.resolve_folder_pick(pick, FolderPick::Picked("/tmp/gloss-fixture".into()));
     let kv = h.expect_effect(fx::kv_set(gloss::STORE_KEY));
+    let Effect::KvSet { value, .. } = &kv else {
+        panic!("expected kv set");
+    };
+    let saved = gloss::parse_workspace_bytes(value);
+    assert_eq!(saved.last_path, "/tmp/gloss-fixture");
+    assert_eq!(saved.vaults.len(), 1);
     h.resolve_kv_set(kv, libra_core::KvResult::Ok);
     let list = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(list, ok_stdout("Atlas.md\n"));
@@ -26,8 +33,23 @@ fn browse_picks_a_folder_and_lists() {
 }
 
 #[test]
+fn legacy_workspace_path_reopens_the_vault() {
+    let mut h = Harness::<gloss::Gloss>::with_viewport(gloss::VIEW, 960, 640);
+    let load = h.expect_effect(fx::kv_get(gloss::STORE_KEY));
+    h.resolve_kv_get(load, Some(b"/tmp/legacy-vault".to_vec()));
+    let list = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(list, ok_stdout("Atlas.md\n"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Atlas\n"));
+    resolve_rules(&mut h, "");
+    assert_eq!(h.state().vault_path, "/tmp/legacy-vault");
+    assert_eq!(h.state().workspace.vaults.len(), 1);
+}
+
+#[test]
 fn browse_cancel_leaves_the_path_empty() {
     let mut h = harness();
+    crate::common::open_vault_dialog(&mut h);
     h.click(by::test_id("browse-vault"));
     let pick = h.expect_effect(fx::pick_folder());
     h.resolve_folder_pick(pick, FolderPick::Cancelled);
@@ -91,7 +113,11 @@ fn undo_last_save_emits_gloss_undo() {
 #[test]
 fn select_during_save_does_not_treat_apply_as_cat() {
     let mut h = harness();
-    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n\nindex");
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n",
+        "# Atlas\n\nindex",
+    );
     enter_edit(&mut h);
     h.type_text(by::test_id("editor-body"), "!");
     let t = h.expect_effect(fx::timer());
@@ -121,9 +147,13 @@ fn select_during_save_does_not_treat_apply_as_cat() {
 #[test]
 fn new_note_emits_create_apply() {
     let mut h = harness();
+    crate::common::open_vault_dialog(&mut h);
     h.click(by::test_id("browse-vault"));
     let pick = h.expect_effect(fx::pick_folder());
-    h.resolve_folder_pick(pick, libra_core::FolderPick::Picked("/tmp/gloss-fixture".into()));
+    h.resolve_folder_pick(
+        pick,
+        libra_core::FolderPick::Picked("/tmp/gloss-fixture".into()),
+    );
     let kv = h.expect_effect(fx::kv_set(gloss::STORE_KEY));
     h.resolve_kv_set(kv, libra_core::KvResult::Ok);
     let list = h.expect_effect(fx::process_program("gloss"));
@@ -156,6 +186,8 @@ fn right_click_opens_in_a_new_tab() {
     open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
     h.click(by::text("+ 10-Inbox"));
     h.right_click(by::text("Welcome"));
+    assert!(h.context_menu().is_some());
+    h.click_menu("openInNewTab", Some("10-Inbox/Welcome.md"));
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("# Welcome\n"));
     assert_eq!(
@@ -202,8 +234,10 @@ fn reader_mode_shows_body_without_frontmatter_fences() {
     );
     assert!(h.state().has_frontmatter);
     assert_eq!(h.state().frontmatter_title, "Atlas");
-    h.query(by::test_id("frontmatter-title")).assert_text("Atlas");
-    h.query(by::test_id("reader-body")).assert_text("The atlas.\n\n## More\n\nbody");
+    h.query(by::test_id("frontmatter-title"))
+        .assert_text("Atlas");
+    h.query(by::test_id("reader-body"))
+        .assert_text("The atlas.\n\n## More\n\nbody");
 }
 
 #[test]
@@ -237,11 +271,13 @@ fn follow_wikilink_opens_the_target_note() {
 fn mode_toggle_swaps_reader_and_raw_editors() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nbody");
-    h.query(by::test_id("reader-body")).assert_text("# Atlas\n\nbody");
+    h.query(by::test_id("reader-body"))
+        .assert_text("# Atlas\n\nbody");
     h.click(by::test_id("toggle-mode"));
     h.query(by::test_id("editor-body"));
     h.click(by::test_id("toggle-mode"));
-    h.query(by::test_id("reader-body")).assert_text("# Atlas\n\nbody");
+    h.query(by::test_id("reader-body"))
+        .assert_text("# Atlas\n\nbody");
 }
 
 #[test]
@@ -249,19 +285,26 @@ fn settings_drawer_shows_the_path_and_browse() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "# Atlas\n");
     h.click(by::test_id("settings"));
-    h.query(by::test_id("settings-vault-name")).assert_text("gloss-fixture");
-    h.query(by::test_id("settings-vault-path")).assert_text("/tmp/gloss-fixture");
-    h.query(by::test_id("settings-browse")).assert_text("Browse");
+    h.query(by::test_id("settings-vault-name"))
+        .assert_text("gloss-fixture");
+    h.query(by::test_id("settings-vault-path"))
+        .assert_text("/tmp/gloss-fixture");
+}
+
+#[test]
+fn rail_opens_vault_dialog_with_saved_choices() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n", "# Atlas\n");
+    h.click(by::test_id("vault-picker"));
+    h.query(by::test_id("vault-dialog"));
+    h.query(by::text("gloss-fixture"));
+    h.query(by::test_id("browse-vault")).assert_text("Browse");
 }
 
 #[test]
 fn command_palette_opens_a_note() {
     let mut h = harness();
-    open_first_note(
-        &mut h,
-        "Atlas.md\n10-Inbox/Welcome.md\n",
-        "# Atlas\n",
-    );
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
     h.dispatch(gloss::Action::OpenCommandPalette);
     h.query(by::test_id("palette-dialog"));
     h.dispatch(gloss::Action::PaletteQueryChanged("Welcome".into()));
@@ -284,11 +327,7 @@ fn command_palette_shortcut_opens_dialog() {
 #[test]
 fn mention_dialog_opens_while_typing() {
     let mut h = harness();
-    open_first_note(
-        &mut h,
-        "Atlas.md\n10-Inbox/Welcome.md\n",
-        "# Atlas\n\n",
-    );
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n\n");
     h.type_text(by::test_id("reader-body"), "@Wel");
     h.query(by::test_id("mention-dialog"));
     h.dispatch(gloss::Action::MentionPick("10-Inbox/Welcome.md".into()));

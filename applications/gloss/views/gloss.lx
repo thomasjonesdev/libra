@@ -1,23 +1,26 @@
 <Column grow gap={0}>
   <Row grow>
     <Toolbar vertical compact testId="app-rail">
-      <Tooltip text="New note">
+      <Tooltip text="New note" position="right">
         <Button variant="ghost" icon="plus" onPress={newNote} testId="new-note" />
       </Tooltip>
-      <Tooltip text="Quick open">
+      <Tooltip text="Quick open" position="right">
         <Button variant="ghost" icon="command" onPress={openCommandPalette} testId="command-palette" />
       </Tooltip>
-      <Tooltip text="Daily note">
+      <Tooltip text="Daily note" position="right">
         <Button variant="ghost" icon="calendar" onPress={openDailyNote} testId="daily-note" />
       </Tooltip>
-      <Tooltip text="Links and backlinks">
+      <Tooltip text="Links and backlinks" position="right">
         <Button variant="ghost" icon="graph" onPress={openGraph} testId="graph" />
       </Tooltip>
-      <Tooltip text="Undo">
+      <Tooltip text="Undo" position="right">
         <Button variant="ghost" icon="undo" onPress={undo} testId="undo" />
       </Tooltip>
       <Spacer />
-      <Tooltip text="Settings">
+      <Tooltip text="Vaults" position="right">
+        <Button variant="ghost" icon="folder" onPress={openVaultPicker} testId="vault-picker" />
+      </Tooltip>
+      <Tooltip text="Settings" position="right">
         <Button variant="ghost" icon="settings" onPress={openSettings} testId="settings" />
       </Tooltip>
     </Toolbar>
@@ -26,7 +29,7 @@
         <Toolbar compact testId="list-toolbar">
           <Spacer size={18} />
           <if test={sidebar_open}>
-            <Tooltip text="Files">
+            <Tooltip text="Files" position="bottom">
               <if test={sidebar_files}>
                 <Button variant="secondary" icon="folder" onPress={showFilesView} testId="sidebar-files" />
                 <else>
@@ -34,7 +37,7 @@
                 </else>
               </if>
             </Tooltip>
-            <Tooltip text="Search">
+            <Tooltip text="Search" position="bottom">
               <if test={sidebar_search}>
                 <Button variant="secondary" icon="search" onPress={showSearchView} testId="sidebar-search" />
                 <else>
@@ -42,7 +45,7 @@
                 </else>
               </if>
             </Tooltip>
-            <Tooltip text="Bookmarks">
+            <Tooltip text="Bookmarks" position="bottom">
               <if test={sidebar_bookmarks}>
                 <Button variant="secondary" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
                 <else>
@@ -52,7 +55,7 @@
             </Tooltip>
           </if>
           <Spacer />
-          <Tooltip text="Toggle sidebar">
+          <Tooltip text="Toggle sidebar" position="bottom">
             <Button variant="ghost" icon="panel-left" onPress={toggleSidebar} testId="sidebar-toggle" />
           </Tooltip>
         </Toolbar>
@@ -72,14 +75,11 @@
                     <Text muted testId="empty">{empty_message}</Text>
                   </if>
                   <for each={file_rows} as="n" key={n.id}>
-                    <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={openInNewTab(n.id)} />
+                    <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={fileContext(n.id)} />
                   </for>
                 </Column>
               </Scroll>
-              <Row gap={6} cross="center">
-                <Text muted grow wrap testId="vault-name">{vault_name}</Text>
-                <Button variant="ghost" onPress={browseVault} testId="browse-vault">Browse</Button>
-              </Row>
+              <Text muted grow wrap testId="vault-name">{vault_name}</Text>
             </Column>
           </Panel>
         </if>
@@ -94,7 +94,7 @@
                 <Tab selected={t.selected} onPress={selectNote(t.id)} onClose={closeTab(t.id)}>{t.title}</Tab>
               </for>
             </Tabs>
-            <Tooltip text="Open next note in a new tab">
+            <Tooltip text="Open next note in a new tab" position="bottom">
               <Button variant="ghost" icon="plus" onPress={newTab} testId="new-tab" />
             </Tooltip>
           </Toolbar>
@@ -161,7 +161,6 @@
       <Text bold>Vault</Text>
       <Text testId="settings-vault-name">{vault_name}</Text>
       <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
-      <Button variant="secondary" onPress={browseVault} testId="settings-browse">Browse</Button>
       <Separator />
       <Text bold>Rules</Text>
       <Text muted size="sm">`.gloss/rules.md`</Text>
@@ -172,6 +171,20 @@
         </else>
       </if>
     </Drawer>
+  </if>
+  <if test={show_vault_picker}>
+    <Dialog title="Vaults" onDismiss={closeVaultPicker} testId="vault-dialog">
+      <if test={has_saved_vaults}>
+        <Scroll testId="vault-scroll" height={240}>
+          <Column gap={2}>
+            <for each={vault_rows} as="v" key={v.id}>
+              <ListItem title={v.title} subtitle={v.snippet} selected={v.selected} onPress={switchVault(v.id)} onMenu={removeVault(v.id)} />
+            </for>
+          </Column>
+        </Scroll>
+      </if>
+      <Button variant="secondary" onPress={browseVault} testId="browse-vault">Browse</Button>
+    </Dialog>
   </if>
   <if test={show_mention}>
     <Dialog title="Link note" onDismiss={closeMention} testId="mention-dialog">

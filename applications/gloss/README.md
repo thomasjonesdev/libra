@@ -1,9 +1,11 @@
 # Gloss
 
-A Libra app for Markdown vaults. The vault core is headless. The editor is a
-native Libra window. Writes go through one patch layer.
+Point it at your existing Markdown vault. No import. The product is a
+bundle that composes (graph, review, capture, stale docs, MCP), not an
+Obsidian skin. Writes go through one patch layer.
 
-Docs live in `docs/`. Architecture note: `architecture/sections/27.2-gloss.md`.
+What and why: `docs/11-coherence.md`. Architecture:
+`architecture/sections/27.2-gloss.md`.
 
 ## Run
 
@@ -34,5 +36,6 @@ cargo test -p gloss
 
 ## What this is not yet
 
-Index, embeddings, MCP, review surface, Tab ghost-text, audio, full graph viz.
-Those stay on the roadmap in `docs/04-roadmap.md`.
+Embeddings, MCP, review surface, Tab, audio. The index crate has notes and
+resolved links. Soft wrap and `Effect::File*` are Libra work, not missing
+rail buttons. See `docs/04-roadmap.md` and `docs/10-libra.md`.

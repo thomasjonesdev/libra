@@ -5,7 +5,10 @@
 //! Architecture: ARCHITECTURE.md §5 (State & Actions), §5.3 (purity rules
 //! for `update`), §12.1 (the Effect vocabulary).
 
+mod menu;
+
 pub use libra_reflect::LibraReflect;
+pub use menu::{collect_menu_actions, find_menu_action, validate_menu, Menu, MenuDecl, MenuItem};
 
 /// An action constructor: how an effect result becomes an action. Enum
 /// tuple variants coerce to this directly (`Action::HttpDone` is a
@@ -24,7 +27,9 @@ pub struct ProcessId(pub u64);
 /// Identifies a data-plane series (§14.2). State never holds
 /// samples — it holds handles; samples live in ring buffers read at
 /// paint time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct SeriesId(pub u32);
 
 /// The State-side view of a series (§14.2): id + view window + pause
@@ -44,7 +49,11 @@ pub struct SeriesHandle {
 
 impl SeriesHandle {
     pub fn new(id: SeriesId, window_ms: f64) -> Self {
-        SeriesHandle { id, window_ms, paused: false }
+        SeriesHandle {
+            id,
+            window_ms,
+            paused: false,
+        }
     }
 }
 
@@ -74,10 +83,18 @@ impl std::str::FromStr for SeriesHandle {
 pub enum SourceSpec {
     /// Replay a recorded `.ltape` file at `speed`× real time
     /// (`f64::INFINITY` = as fast as possible).
-    Tape { path: std::path::PathBuf, speed: f64 },
+    Tape {
+        path: std::path::PathBuf,
+        speed: f64,
+    },
     /// Deterministic synthetic sine + noise (benchmarks, demos):
     /// `rate_hz` samples/sec of `sin(2π·freq_hz·t) · amp` + seeded noise.
-    Sine { rate_hz: f64, freq_hz: f64, amp: f64, seed: u64 },
+    Sine {
+        rate_hz: f64,
+        freq_hz: f64,
+        amp: f64,
+        seed: u64,
+    },
 }
 
 /// What one vsync-coalesced frame tick tells `update` (§14.2): all the
@@ -92,7 +109,10 @@ pub struct FrameInfo {
 
 impl FrameInfo {
     pub fn at(t_ms: f64) -> Self {
-        FrameInfo { t_ms, index: (t_ms / 16.0) as u64 }
+        FrameInfo {
+            t_ms,
+            index: (t_ms / 16.0) as u64,
+        }
     }
 }
 
@@ -145,10 +165,20 @@ pub struct HttpRequest {
 
 impl HttpRequest {
     pub fn get(url: impl Into<String>) -> Self {
-        HttpRequest { method: "GET", url: url.into(), headers: vec![], body: None }
+        HttpRequest {
+            method: "GET",
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        }
     }
     pub fn post(url: impl Into<String>, body: Vec<u8>) -> Self {
-        HttpRequest { method: "POST", url: url.into(), headers: vec![], body: Some(body) }
+        HttpRequest {
+            method: "POST",
+            url: url.into(),
+            headers: vec![],
+            body: Some(body),
+        }
     }
     pub fn header(mut self, k: impl Into<String>, v: impl Into<String>) -> Self {
         self.headers.push((k.into(), v.into()));
@@ -241,38 +271,80 @@ pub struct ProcessResult {
 #[derive(Debug, Clone)]
 pub enum Effect<M> {
     // Network
-    Http { req: HttpRequest, on_done: ActionCtor<HttpResult, M> },
+    Http {
+        req: HttpRequest,
+        on_done: ActionCtor<HttpResult, M>,
+    },
 
     // Persistence (§13, executed by libra-kv via the effects runtime)
-    KvGet { key: String, on_done: ActionCtor<Option<Vec<u8>>, M> },
-    KvSet { key: String, value: Vec<u8>, on_done: Option<ActionCtor<KvResult, M>> },
-    KvDelete { key: String },
-    KvScan { prefix: String, on_done: ActionCtor<Vec<(String, Vec<u8>)>, M> },
+    KvGet {
+        key: String,
+        on_done: ActionCtor<Option<Vec<u8>>, M>,
+    },
+    KvSet {
+        key: String,
+        value: Vec<u8>,
+        on_done: Option<ActionCtor<KvResult, M>>,
+    },
+    KvDelete {
+        key: String,
+    },
+    KvScan {
+        prefix: String,
+        on_done: ActionCtor<Vec<(String, Vec<u8>)>, M>,
+    },
 
     // Time & entropy (keeping actions pure)
-    Timer { id: Option<TimerId>, after_ms: u64, action: M },
-    CancelTimer { id: TimerId },
-    Random { bytes: usize, on_done: ActionCtor<Vec<u8>, M> },
+    Timer {
+        id: Option<TimerId>,
+        after_ms: u64,
+        action: M,
+    },
+    CancelTimer {
+        id: TimerId,
+    },
+    Random {
+        bytes: usize,
+        on_done: ActionCtor<Vec<u8>, M>,
+    },
 
     // Data plane (§14): ingest threads owned by the runtime; samples
     // land in ring buffers, never in actions.
-    IngestOpen { source: SourceSpec, series: SeriesId },
-    IngestClose { series: SeriesId },
+    IngestOpen {
+        source: SourceSpec,
+        series: SeriesId,
+    },
+    IngestClose {
+        series: SeriesId,
+    },
 
     // Platform (§12.1): handled by the shell (and intercepted by the
     // harness), not the worker pool — the renderer re-resolves live.
-    SetTheme { name: String },
+    SetTheme {
+        name: String,
+    },
     /// Put text on the OS clipboard (PLAN-NATIVE-INTEGRATIONS): shell-
     /// handled (arboard), acked with a [`ClipboardResult`] when a ctor
     /// is given — "copy note" flows can report a typed outcome.
-    ClipboardSet { text: String, on_done: Option<ActionCtor<ClipboardResult, M>> },
+    ClipboardSet {
+        text: String,
+        on_done: Option<ActionCtor<ClipboardResult, M>>,
+    },
     /// Native folder sheet (PLAN-NATIVE-INTEGRATIONS / §19 `rfd`).
     /// Shell-handled on the UI thread; harness intercepts.
-    PickFolder { on_done: ActionCtor<FolderPick, M> },
+    PickFolder {
+        on_done: ActionCtor<FolderPick, M>,
+    },
 
     // Processes (§12.6): worker-pool subprocess, run-to-completion.
-    Process { id: Option<ProcessId>, command: CommandSpec, on_done: ActionCtor<ProcessResult, M> },
-    CancelProcess { id: ProcessId },
+    Process {
+        id: Option<ProcessId>,
+        command: CommandSpec,
+        on_done: ActionCtor<ProcessResult, M>,
+    },
+    CancelProcess {
+        id: ProcessId,
+    },
 }
 
 /// Outcome of [`Effect::ClipboardSet`] (PLAN-NATIVE-INTEGRATIONS).
@@ -299,31 +371,67 @@ impl<M: PartialEq> PartialEq for Effect<M> {
             (Effect::Http { req: a, .. }, Effect::Http { req: b, .. }) => a == b,
             (Effect::KvGet { key: a, .. }, Effect::KvGet { key: b, .. }) => a == b,
             (
-                Effect::KvSet { key: ka, value: va, on_done: da },
-                Effect::KvSet { key: kb, value: vb, on_done: db },
+                Effect::KvSet {
+                    key: ka,
+                    value: va,
+                    on_done: da,
+                },
+                Effect::KvSet {
+                    key: kb,
+                    value: vb,
+                    on_done: db,
+                },
             ) => ka == kb && va == vb && da.is_some() == db.is_some(),
             (Effect::KvDelete { key: a }, Effect::KvDelete { key: b }) => a == b,
             (Effect::KvScan { prefix: a, .. }, Effect::KvScan { prefix: b, .. }) => a == b,
             (
-                Effect::Timer { id: ia, after_ms: aa, action: ma },
-                Effect::Timer { id: ib, after_ms: ab, action: mb },
+                Effect::Timer {
+                    id: ia,
+                    after_ms: aa,
+                    action: ma,
+                },
+                Effect::Timer {
+                    id: ib,
+                    after_ms: ab,
+                    action: mb,
+                },
             ) => ia == ib && aa == ab && ma == mb,
             (Effect::CancelTimer { id: a }, Effect::CancelTimer { id: b }) => a == b,
             (Effect::Random { bytes: a, .. }, Effect::Random { bytes: b, .. }) => a == b,
             (
-                Effect::IngestOpen { source: sa, series: ia },
-                Effect::IngestOpen { source: sb, series: ib },
+                Effect::IngestOpen {
+                    source: sa,
+                    series: ia,
+                },
+                Effect::IngestOpen {
+                    source: sb,
+                    series: ib,
+                },
             ) => sa == sb && ia == ib,
             (Effect::IngestClose { series: a }, Effect::IngestClose { series: b }) => a == b,
             (Effect::SetTheme { name: a }, Effect::SetTheme { name: b }) => a == b,
             (
-                Effect::ClipboardSet { text: ta, on_done: da },
-                Effect::ClipboardSet { text: tb, on_done: db },
+                Effect::ClipboardSet {
+                    text: ta,
+                    on_done: da,
+                },
+                Effect::ClipboardSet {
+                    text: tb,
+                    on_done: db,
+                },
             ) => ta == tb && da.is_some() == db.is_some(),
             (Effect::PickFolder { .. }, Effect::PickFolder { .. }) => true,
             (
-                Effect::Process { id: ia, command: ca, .. },
-                Effect::Process { id: ib, command: cb, .. },
+                Effect::Process {
+                    id: ia,
+                    command: ca,
+                    ..
+                },
+                Effect::Process {
+                    id: ib,
+                    command: cb,
+                    ..
+                },
             ) => ia == ib && ca == cb,
             (Effect::CancelProcess { id: a }, Effect::CancelProcess { id: b }) => a == b,
             _ => false,
@@ -337,45 +445,74 @@ impl<M> Effect<M> {
         Effect::Http { req, on_done }
     }
     pub fn kv_get(key: impl Into<String>, on_done: ActionCtor<Option<Vec<u8>>, M>) -> Self {
-        Effect::KvGet { key: key.into(), on_done }
+        Effect::KvGet {
+            key: key.into(),
+            on_done,
+        }
     }
     pub fn kv_set(key: impl Into<String>, value: Vec<u8>) -> Self {
-        Effect::KvSet { key: key.into(), value, on_done: None }
+        Effect::KvSet {
+            key: key.into(),
+            value,
+            on_done: None,
+        }
     }
     pub fn kv_set_acked(
         key: impl Into<String>,
         value: Vec<u8>,
         on_done: ActionCtor<KvResult, M>,
     ) -> Self {
-        Effect::KvSet { key: key.into(), value, on_done: Some(on_done) }
+        Effect::KvSet {
+            key: key.into(),
+            value,
+            on_done: Some(on_done),
+        }
     }
     pub fn timer(after_ms: u64, action: M) -> Self {
-        Effect::Timer { id: None, after_ms, action }
+        Effect::Timer {
+            id: None,
+            after_ms,
+            action,
+        }
     }
     pub fn timer_id(id: TimerId, after_ms: u64, action: M) -> Self {
         Effect::Timer { id: Some(id), after_ms, action }
     }
     pub fn clipboard_set(text: impl Into<String>) -> Self {
-        Effect::ClipboardSet { text: text.into(), on_done: None }
+        Effect::ClipboardSet {
+            text: text.into(),
+            on_done: None,
+        }
     }
     pub fn clipboard_set_acked(
         text: impl Into<String>,
         on_done: ActionCtor<ClipboardResult, M>,
     ) -> Self {
-        Effect::ClipboardSet { text: text.into(), on_done: Some(on_done) }
+        Effect::ClipboardSet {
+            text: text.into(),
+            on_done: Some(on_done),
+        }
     }
     pub fn pick_folder(on_done: ActionCtor<FolderPick, M>) -> Self {
         Effect::PickFolder { on_done }
     }
     pub fn process(command: CommandSpec, on_done: ActionCtor<ProcessResult, M>) -> Self {
-        Effect::Process { id: None, command, on_done }
+        Effect::Process {
+            id: None,
+            command,
+            on_done,
+        }
     }
     pub fn process_id(
         id: ProcessId,
         command: CommandSpec,
         on_done: ActionCtor<ProcessResult, M>,
     ) -> Self {
-        Effect::Process { id: Some(id), command, on_done }
+        Effect::Process {
+            id: Some(id),
+            command,
+            on_done,
+        }
     }
 }
 
@@ -463,7 +600,10 @@ pub struct CollectionRow {
 impl CollectionRow {
     /// Opaque row: Display only, no field map.
     pub fn opaque(whole: impl Into<String>) -> Self {
-        CollectionRow { whole: whole.into(), fields: Vec::new() }
+        CollectionRow {
+            whole: whole.into(),
+            fields: Vec::new(),
+        }
     }
 
     /// Resolve a loop-scoped binding against this row.
@@ -603,7 +743,13 @@ pub struct Field<T> {
 
 impl<T: Clone + PartialEq> Field<T> {
     pub fn new(initial: T) -> Self {
-        Field { value: initial.clone(), initial, touched: false, error: None, validator: None }
+        Field {
+            value: initial.clone(),
+            initial,
+            touched: false,
+            error: None,
+            validator: None,
+        }
     }
 
     /// A pure validator: `None` = valid, `Some(msg)` = the error to
@@ -741,6 +887,20 @@ pub trait App: Sized + ReflectState {
     fn shortcuts() -> Vec<Shortcut> {
         vec![]
     }
+
+    /// Native menubar (§19.3): a state-dependent projection. Empty
+    /// (the default) leaves the host OS menu alone. The shell diffs
+    /// this after every dispatch and rebuilds only on change.
+    fn menu(&self) -> MenuDecl {
+        MenuDecl::default()
+    }
+
+    /// Native context menu (§19.3) after a right-click `onMenu`
+    /// dispatch. `None` (the default) keeps the painted `<ContextMenu>`
+    /// path. `Some` shows an OS popup; the painted menu is not opened.
+    fn context_menu(&self) -> Option<MenuDecl> {
+        None
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -760,10 +920,18 @@ pub struct Shortcut {
 
 impl Shortcut {
     pub fn action(chord: &str, action: &str) -> Self {
-        Shortcut { chord: chord.into(), action: action.into(), arg: None }
+        Shortcut {
+            chord: chord.into(),
+            action: action.into(),
+            arg: None,
+        }
     }
     pub fn with_arg(chord: &str, action: &str, arg: &str) -> Self {
-        Shortcut { chord: chord.into(), action: action.into(), arg: Some(arg.into()) }
+        Shortcut {
+            chord: chord.into(),
+            action: action.into(),
+            arg: Some(arg.into()),
+        }
     }
 }
 
@@ -799,8 +967,13 @@ pub enum ChordKey {
 
 /// Parse a §19.2 chord string: lowercase, `+`-joined, `modifier* + key`.
 pub fn parse_chord(s: &str) -> Result<Chord, String> {
-    let mut chord =
-        Chord { cmd: false, ctrl: false, alt: false, shift: false, key: ChordKey::Space };
+    let mut chord = Chord {
+        cmd: false,
+        ctrl: false,
+        alt: false,
+        shift: false,
+        key: ChordKey::Space,
+    };
     let mut key: Option<ChordKey> = None;
     for part in s.split('+') {
         match part {
@@ -880,7 +1053,11 @@ pub fn build_shortcut_table<M: ReflectAction>(
             None => M::action_by_name(&s.action).is_some(),
         };
         if !resolves {
-            let kind = if s.arg.is_some() { "String-payload" } else { "unit" };
+            let kind = if s.arg.is_some() {
+                "String-payload"
+            } else {
+                "unit"
+            };
             return Err(format!(
                 "shortcut '{}': '{}' is not a {kind} action — check the actions block (§19.2)",
                 s.chord, s.action
@@ -939,7 +1116,13 @@ mod tests {
     impl App for Counter {
         type Msg = Msg;
         fn init() -> (Self, Vec<Effect<Msg>>) {
-            (Counter { count: 0, quote: Remote::NotAsked }, vec![])
+            (
+                Counter {
+                    count: 0,
+                    quote: Remote::NotAsked,
+                },
+                vec![],
+            )
         }
         fn update(&mut self, msg: Msg) -> Vec<Effect<Msg>> {
             match msg {
@@ -949,7 +1132,10 @@ mod tests {
                 }
                 Msg::Fetch => {
                     self.quote = Remote::Loading;
-                    vec![Effect::http(HttpRequest::get("https://api.github.com/zen"), Msg::Got)]
+                    vec![Effect::http(
+                        HttpRequest::get("https://api.github.com/zen"),
+                        Msg::Got,
+                    )]
                 }
                 Msg::Got(HttpResult::Response { status: 200, body }) => {
                     self.quote = Remote::Success(String::from_utf8_lossy(&body).into_owned());
@@ -968,7 +1154,10 @@ mod tests {
         let (mut m, cmds) = Counter::init();
         assert!(cmds.is_empty());
         let cmds = m.update(Msg::Inc);
-        assert_eq!(cmds, vec![Effect::kv_set("count", 1i64.to_le_bytes().to_vec())]);
+        assert_eq!(
+            cmds,
+            vec![Effect::kv_set("count", 1i64.to_le_bytes().to_vec())]
+        );
         assert_eq!(m.field("count").as_deref(), Some("1"));
     }
 
@@ -979,9 +1168,14 @@ mod tests {
         assert!(m.quote.is_loading());
         // The effect is data: pull the ctor out and hand-feed a result —
         // this is the whole integration-test mechanism in miniature.
-        let Effect::Http { req, on_done } = &cmds[0] else { panic!("expected Http") };
+        let Effect::Http { req, on_done } = &cmds[0] else {
+            panic!("expected Http")
+        };
         assert_eq!(req.url, "https://api.github.com/zen");
-        let msg = on_done(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() });
+        let msg = on_done(HttpResult::Response {
+            status: 200,
+            body: b"Mind the gap.".to_vec(),
+        });
         m.update(msg);
         assert_eq!(m.quote.success().map(String::as_str), Some("Mind the gap."));
     }
@@ -995,7 +1189,10 @@ mod tests {
         assert_eq!(Some(e.clone()).into_effects(), vec![e.clone()]);
         let none: Vec<Effect<Msg>> = None::<Effect<Msg>>.into_effects();
         assert_eq!(none, Vec::<Effect<Msg>>::new());
-        assert_eq!(vec![e.clone(), e.clone()].into_effects(), vec![e.clone(), e]);
+        assert_eq!(
+            vec![e.clone(), e.clone()].into_effects(),
+            vec![e.clone(), e]
+        );
     }
 
     #[test]
@@ -1055,8 +1252,9 @@ mod tests {
         // Different data → unequal.
         assert_ne!(a, Effect::http(HttpRequest::get("y"), Msg::Got));
         // Acked vs fire-and-forget KvSet → unequal (presence matters).
-        let acked: Effect<Msg> =
-            Effect::kv_set_acked("k", vec![1], |_| Msg::Got(HttpResult::Failed(String::new())));
+        let acked: Effect<Msg> = Effect::kv_set_acked("k", vec![1], |_| {
+            Msg::Got(HttpResult::Failed(String::new()))
+        });
         assert_ne!(acked, Effect::kv_set("k", vec![1]));
     }
 
@@ -1072,7 +1270,9 @@ mod tests {
         assert_eq!(parse_chord("cmd+alt+down").unwrap().key, ChordKey::Down);
 
         assert!(parse_chord("cmd+shift").unwrap_err().contains("no key"));
-        assert!(parse_chord("cmd+n+m").unwrap_err().contains("more than one key"));
+        assert!(parse_chord("cmd+n+m")
+            .unwrap_err()
+            .contains("more than one key"));
         assert!(parse_chord("cmd+F5").unwrap_err().contains("unknown key"));
     }
 
@@ -1100,7 +1300,10 @@ mod tests {
     fn focused_precedence_reserves_the_editing_chords() {
         let fires = |s: &str| shortcut_fires_while_focused(&parse_chord(s).unwrap());
         assert!(!fires("n"), "un-modified keys belong to typing");
-        assert!(!fires("escape"), "escape blurs; it never dispatches while focused");
+        assert!(
+            !fires("escape"),
+            "escape blurs; it never dispatches while focused"
+        );
         assert!(!fires("cmd+c"), "clipboard is the editor's");
         assert!(!fires("cmd+z"));
         assert!(!fires("cmd+left"), "cmd+arrows are Home/End");

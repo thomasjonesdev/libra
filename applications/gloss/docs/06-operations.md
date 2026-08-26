@@ -15,6 +15,8 @@ means the things that keep a local app trustworthy on someone's real data — an
 ## Key management
 
 - **macOS Keychain, always.** `security-framework` crate, one item per provider.
+  There is no Libra Keychain effect yet. Do not put keys on a Process argv
+  so the CLI can "just read them." See [[10-libra]].
 - **Never a config file inside the vault.** People commit their vaults. A key in
   `.gloss/config.json` reaches GitHub within a week of the second user.
 - Keys are never logged, never included in crash reports, never in patch

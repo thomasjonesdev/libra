@@ -52,7 +52,11 @@ pub fn snapshot(laid: &LaidTree, scale: f64, focused_test_id: Option<&str>) -> A
             action: item.on_press.clone(),
         });
     }
-    A11ySnapshot { items, scale, focus }
+    A11ySnapshot {
+        items,
+        scale,
+        focus,
+    }
 }
 
 pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
@@ -87,7 +91,10 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
             _ => node.set_label(item.text.clone()),
         }
         if item.action.is_some()
-            && matches!(item.role, Role::Button | Role::Switch | Role::Checkbox | Role::Radio)
+            && matches!(
+                item.role,
+                Role::Button | Role::Switch | Role::Checkbox | Role::Radio
+            )
         {
             node.add_action(Action::Click);
         }
@@ -126,7 +133,10 @@ pub fn tree_update(snap: &A11ySnapshot) -> accesskit::TreeUpdate {
 pub fn action_for(snap: &A11ySnapshot, node_id: u64) -> Option<&str> {
     let idx = (node_id as usize).checked_sub(1)?;
     let item = snap.items.get(idx)?;
-    if matches!(item.role, Role::Button | Role::Switch | Role::Checkbox | Role::Radio) {
+    if matches!(
+        item.role,
+        Role::Button | Role::Switch | Role::Checkbox | Role::Radio
+    ) {
         item.action.as_deref()
     } else {
         None
@@ -172,9 +182,15 @@ mod tests {
         // Role::Container's transparent boxes.
         let mut l = laid();
         l.items.push(Item {
-            kind: ItemKind::Source(SourceDecl::Frames { on_tick: "Tick".into() }),
+            kind: ItemKind::Source(SourceDecl::Frames {
+                on_tick: "Tick".into(),
+            }),
             rect: libra_draw::Rect::new(0.0, 0.0, 0.0, 0.0),
-            semantics: Semantics { role: Role::Source, text: "frames".into(), test_id: None },
+            semantics: Semantics {
+                role: Role::Source,
+                text: "frames".into(),
+                test_id: None,
+            },
             on_press: None,
             on_press_arg: None,
             clip: None,
@@ -183,8 +199,14 @@ mod tests {
         });
         let before = snapshot(&laid(), 1.0, None).items.len();
         let after = snapshot(&l, 1.0, None).items.len();
-        assert_eq!(before, after, "adding a Source item must not change the a11y snapshot");
-        assert!(snapshot(&l, 1.0, None).items.iter().all(|i| i.role != Role::Source));
+        assert_eq!(
+            before, after,
+            "adding a Source item must not change the a11y snapshot"
+        );
+        assert!(snapshot(&l, 1.0, None)
+            .items
+            .iter()
+            .all(|i| i.role != Role::Source));
     }
 
     #[test]
@@ -209,8 +231,11 @@ mod tests {
         // The §17 claim in one assertion: what by::role finds, AT sees.
         let l = laid();
         let snap = snapshot(&l, 1.0, None);
-        let buttons_in_semantics =
-            l.items.iter().filter(|i| i.semantics.role == Role::Button).count();
+        let buttons_in_semantics = l
+            .items
+            .iter()
+            .filter(|i| i.semantics.role == Role::Button)
+            .count();
         let buttons_in_a11y = snap.items.iter().filter(|i| i.role == Role::Button).count();
         assert_eq!(buttons_in_semantics, buttons_in_a11y);
     }

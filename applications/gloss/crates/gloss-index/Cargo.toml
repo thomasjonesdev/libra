@@ -1,0 +1,13 @@
+[package]
+name = "gloss-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Derived vault index for Gloss: notes, links, incremental hash refresh"
+
+[dependencies]
+gloss-core.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

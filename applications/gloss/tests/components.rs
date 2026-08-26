@@ -9,9 +9,11 @@ mod common;
 
 #[test]
 fn empty_vault_prompt_is_visible() {
-    let h = harness();
+    let mut h = harness();
     h.query(by::test_id("empty"))
         .assert_text("Browse a vault folder to begin");
+    h.query(by::test_id("vault-picker"));
+    h.click(by::test_id("vault-picker"));
     h.query(by::test_id("browse-vault")).assert_text("Browse");
     h.query(by::test_id("vault-name")).assert_text("No vault");
 }

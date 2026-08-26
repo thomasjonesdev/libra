@@ -9,7 +9,7 @@ use libra_core::{Effect, ProcessId};
 use crate::actions::Action;
 use crate::model::{
     apply_loaded_note, full_note_text, list_cmd, expand_ancestors_into, IoKind, Pending,
-    SidebarView, STORE_KEY,
+    SidebarView, WorkspaceSettings, STORE_KEY,
 };
 
 #[derive(Default)]
@@ -41,6 +41,7 @@ pub struct Gloss {
     pub frontmatter_yaml: String,
     pub frontmatter_fields: Vec<crate::model::FrontmatterField>,
     pub show_settings: bool,
+    pub show_vault_picker: bool,
     pub show_command_palette: bool,
     pub palette_query: String,
     pub palette_rows: Vec<crate::model::NoteRow>,
@@ -64,6 +65,8 @@ pub struct Gloss {
     pub note_rows: Vec<crate::model::NoteRow>,
     pub file_rows: Vec<crate::model::FileRow>,
     pub tab_rows: Vec<crate::model::TabRow>,
+    pub vault_rows: Vec<crate::model::VaultRow>,
+    pub has_saved_vaults: bool,
 
     #[libra(skip)]
     pub loaded_body: String,
@@ -115,6 +118,12 @@ pub struct Gloss {
     pub rules_loaded: bool,
     #[libra(skip)]
     pub rules_body: String,
+    #[libra(skip)]
+    pub workspace: WorkspaceSettings,
+    #[libra(skip)]
+    pub restore_note: String,
+    #[libra(skip)]
+    pub context_path: String,
 }
 
 impl Gloss {
@@ -236,5 +245,70 @@ impl Gloss {
             Shortcut::action("cmd+e", "toggleReaderMode"),
             Shortcut::action("escape", "dismiss"),
         ]
+    }
+
+    /// §19.3 native menubar — File / Go / View, Recents from saved vaults.
+    pub fn menu(&self) -> libra_core::MenuDecl {
+        use libra_core::{Menu, MenuDecl, MenuItem};
+        let recents: Vec<MenuItem> = self
+            .workspace
+            .vaults
+            .iter()
+            .map(|v| {
+                MenuItem::action(format!("recent-{}", v.path), &v.name, "switchVault")
+                    .with_arg(&v.path)
+            })
+            .collect();
+        MenuDecl::new(vec![
+            Menu::new(
+                "file",
+                "File",
+                vec![
+                    MenuItem::action("open-vault", "Open Vault…", "openVaultPicker"),
+                    MenuItem::submenu("recents", "Open Recent", recents),
+                    MenuItem::separator(),
+                    MenuItem::action("close-vault", "Close Vault", "closeVault")
+                        .enabled(!self.vault_path.trim().is_empty()),
+                ],
+            ),
+            Menu::new(
+                "go",
+                "Go",
+                vec![
+                    MenuItem::action("quick-open", "Quick Open…", "openCommandPalette")
+                        .accelerator("cmd+k"),
+                    MenuItem::action("daily", "Daily Note", "openDailyNote").accelerator("cmd+d"),
+                    MenuItem::action("new", "New Note", "newNote").accelerator("cmd+n"),
+                    MenuItem::action("links", "Links", "openGraph").accelerator("cmd+g"),
+                ],
+            ),
+            Menu::new(
+                "view",
+                "View",
+                vec![
+                    MenuItem::action("reader", "Reader / Raw", "toggleReaderMode")
+                        .accelerator("cmd+e")
+                        .enabled(self.has_selected),
+                    MenuItem::action("settings", "Settings", "openSettings"),
+                ],
+            ),
+        ])
+    }
+
+    pub fn context_menu(&self) -> Option<libra_core::MenuDecl> {
+        use crate::model::is_folder_id;
+        use libra_core::{Menu, MenuDecl, MenuItem};
+        let id = self.context_path.trim();
+        if id.is_empty() || is_folder_id(id, &self.note_paths) {
+            return None;
+        }
+        Some(MenuDecl::new(vec![Menu::new(
+            "file-row",
+            "Note",
+            vec![
+                MenuItem::action("open", "Open", "selectFile").with_arg(id),
+                MenuItem::action("open-tab", "Open in New Tab", "openInNewTab").with_arg(id),
+            ],
+        )]))
     }
 }

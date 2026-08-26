@@ -205,3 +205,73 @@ fn backlinks_lists_inbound_wikilinks() {
     let listed = String::from_utf8(out.stdout).unwrap();
     assert!(listed.contains("10-Inbox/Welcome.md"));
 }
+
+#[test]
+fn index_then_neighbors() {
+    let tmp = tempdir().unwrap();
+    let vault = tmp.path().join("mini");
+    copy_dir(&fixture(), &vault);
+    let db = tmp.path().join("index.db");
+
+    let indexed = gloss()
+        .args(["index", "--root"])
+        .arg(&vault)
+        .args(["--db"])
+        .arg(&db)
+        .output()
+        .unwrap();
+    assert!(
+        indexed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&indexed.stderr)
+    );
+    let stats = String::from_utf8(indexed.stdout).unwrap();
+    assert!(stats.contains("updated 2"), "{stats}");
+
+    let neighbors = gloss()
+        .args(["neighbors", "--root"])
+        .arg(&vault)
+        .args(["--path", "Atlas.md", "--db"])
+        .arg(&db)
+        .output()
+        .unwrap();
+    assert!(
+        neighbors.status.success(),
+        "{}",
+        String::from_utf8_lossy(&neighbors.stderr)
+    );
+    let listed = String::from_utf8(neighbors.stdout).unwrap();
+    assert!(listed.contains("outgoing 10-Inbox/Welcome.md"), "{listed}");
+    assert!(listed.contains("incoming 10-Inbox/Welcome.md"), "{listed}");
+}
+
+#[test]
+fn suggest_links_finds_unlinked_title_mention() {
+    let tmp = tempdir().unwrap();
+    let vault = tmp.path().join("mini");
+    copy_dir(&fixture(), &vault);
+    fs::write(
+        vault.join("10-Inbox/Drift.md"),
+        "Inbox leftover. I keep meaning to put this on the Atlas.\n",
+    )
+    .unwrap();
+    let db = tmp.path().join("index.db");
+
+    let out = gloss()
+        .args(["suggest-links", "--root"])
+        .arg(&vault)
+        .args(["--db"])
+        .arg(&db)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let listed = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        listed.contains("10-Inbox/Drift.md -> Atlas.md  Atlas"),
+        "{listed}"
+    );
+}

@@ -12,6 +12,19 @@ Sequenced for an audience of one, building nights and weekends around a
 demanding day job. Every milestone has an exit criterion that is a *thing I use*,
 not a thing I finished.
 
+What and why: [[11-coherence]]. That page is the product. This page is
+the order we build it.
+
+Gloss lives in the Libra repo. M1 and M2 are almost entirely Gloss
+crates. Split framework work in [[10-libra]] before adding a catalog
+node or a new `Effect` "so Gloss can ship."
+
+**Order vs reality.** We already built a usable editor (M4) before the
+review surface (M3). Do not spend the next pass making that editor look
+like Obsidian. The first-session proof is 340 links and inbox amnesty.
+Those need M1 and M3. Daily use is MCP (M2). The window is how you
+review the bundle.
+
 ## Dependency spine
 
 ```
@@ -41,12 +54,18 @@ scanner, patch layer, and multi-root path types are in `gloss-core`.
 **Exit:** a CLI can apply and undo a multi-op patch against my real vault
 without losing a byte. Property tests prove round-trip and inverse correctness.
 
+**Libra:** none. Watcher as a new effect is optional; poll if the app is open.
+
 **Trap:** the temptation to `fs::write` "just for the importer." Don't. Once
 there are two write paths there are five.
 
 ## M1 — Index
 
-Link graph, frontmatter, chunk hashing, local embeddings, hybrid retrieval.
+**Started.** `gloss-index` persists notes + resolved wikilinks/embeds in SQLite
+(WAL), refresh is incremental on blake3, and `gloss index` / `gloss neighbors`
+read it. Title-mention missing links are queryable (`gloss suggest-links`) —
+the first "340 connections" signal, no embeddings yet. Still open: chunks,
+tantivy, sqlite-vec / embeddings, hybrid rank, cost ledger.
 
 - SQLite + tantivy + sqlite-vec, one store per workspace
 - fastembed-rs with bge-small; incremental re-embed on chunk-hash change
@@ -55,6 +74,9 @@ Link graph, frontmatter, chunk hashing, local embeddings, hybrid retrieval.
 
 **Exit:** full index of my vault rebuilds from cold in under two minutes, and
 incremental update after a single-note edit is under 200ms.
+
+**Libra:** none for the crate or the CLI. A live watcher would make
+incremental refresh while the window is open less dumb. Not a gate.
 
 ## M2 — MCP server — *first real value*
 
@@ -68,11 +90,16 @@ incremental update after a single-note edit is under 200ms.
 This is the honest milestone-one: daily-used, proves the relational engine under
 load, and validates L0/L1 before any UI exists to hide their problems.
 
+**Libra:** none. If a framework task is in the way of `gloss-mcp`, drop the
+framework task.
+
 ## R1 — Code-guide staleness *(parallel with M2)*
 
 `code_refs` in frontmatter; resolve against repo git state; flag moved/missing.
 
 **Exit:** a stale-docs report on a real repo that catches something I'd missed.
+
+**Libra:** none.
 
 ## M3 — Review surface
 
@@ -80,12 +107,18 @@ Diff generation and apply/reject. The unlock for every proactive feature.
 
 - Per-hunk accept/reject; accept-all-in-run; undo-whole-run via checkpoint
 - Rejection logging with context
-- **Then, immediately on top of it:** retroactive link pass, inbox amnesty,
-  near-duplicate merge — the [[01-overview#First-session value (the launch demo)|launch demo]] features
+- **Then, immediately on top of it:** the 340-link pass and inbox
+  amnesty from [[11-coherence]]
 
 **Exit:** the retroactive link pass runs on my vault and I accept more hunks than
-I reject. If that ratio is upside down, the ranker in M1 is wrong — stop and fix
-it rather than proceeding to M4.
+I reject. If that ratio is upside down, the ranker in M1 is wrong. Stop and fix
+it. The editor already exists, so "proceeding to M4" is not the threat. The
+threat is decorating the shell instead of fixing the ranker.
+
+**Libra:** none for a CLI review. In-window hunks are State rows first
+(`hunk_rows` + ListItem). A `Diff` catalog node only if that repeats badly.
+Cmd+K inline edit also needs the current Textarea selection in the action
+payload. See [[10-libra]].
 
 ## R2 — Audio capture *(started during M0, lands whenever it lands)*
 
@@ -94,6 +127,8 @@ whisper.cpp or MLX Parakeet for local transcription, then structuring into a
 filed note via M3's review surface. Diarization is post-v1.
 
 **Exit:** a half-hour call becomes a filed, linked, structured note I keep.
+
+**Libra:** none. Sidecar plus a patch. Filing goes through M3.
 
 ## M4 — Editor shell
 
@@ -107,6 +142,11 @@ missing: Cmd+K inline edit (blocked on M3 review surface).
 **Exit:** I write in Gloss instead of Obsidian for a week without missing
 anything badly enough to switch back.
 
+**Libra (this is the gate):** PLAN-TEXTAREA stages 2–4, especially soft wrap.
+`Effect::FileRead` / `FileWrite` so open/save is not a subprocess per note.
+Cmd+K inline edit is M3 plus selection, not more rail chrome. Graph viz is
+not on the exit list. See [[09-app-functions]] and [[10-libra]].
+
 ## M4.1 — Markdown display crate
 
 **Started.** `libra-markdown` parses CommonMark (frontmatter skip, block AST,
@@ -119,7 +159,11 @@ the substrate for M5 Tab paint later — do not start a second parser.
 
 **Exit:** opening a real vault note shows headings, paragraphs, lists, fenced
 code, bold, italic, strike, tables, math source, and wikilinks as
-components; Edit still writes through a soft-wrapped `<Textarea>`.
+components. Edit still writes through `<Textarea>`. Soft wrap is PLAN-TEXTAREA
+stage 4, not a second markdown crate.
+
+**Libra:** remaining misses are `libra-markdown` parser gaps. Do not start a
+second parser for Tab later.
 
 ## M5 — Tab
 
@@ -128,6 +172,11 @@ Context = current block + retrieved neighbors + open tabs.
 
 **Exit:** acceptance rate above 25% on my own writing.
 
+**Libra:** ghost-run paint on Textarea when M1 can retrieve neighbors.
+Streaming tokens if we want them before HTTP returns. §24 does not
+block this. The buffer stays a string. Until the paint exists, Tab
+means the model and the prompt. See [[11-coherence]].
+
 ## Deliberately after v1
 
 Mobile capture · sync · diarization · custom Tab model · hosted subscription ·
@@ -135,7 +184,7 @@ teams and shared vaults · Windows/Linux · plugin API.
 
 ## Reassessment gate
 
-After M2 + R1, stop and ask whether anyone other than me wants the MCP server and
-the stale-docs report. That answer decides whether Gloss is a product with the
-[[01-overview#The wedge vault-as-codebase-guide|engineering wedge]] or a very
-good personal tool. Both are acceptable outcomes; conflating them is not.
+After M2 + R1, stop and ask whether anyone other than me wants the MCP
+server and the stale-docs report. That answer decides whether Gloss is
+a product or a very good personal tool. Both are acceptable. Conflating
+them is not. The claims themselves stay [[11-coherence]].

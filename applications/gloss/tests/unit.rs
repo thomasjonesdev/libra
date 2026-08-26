@@ -295,7 +295,10 @@ fn opening_an_already_open_note_does_not_duplicate_tabs() {
     s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
     s.open_tabs = vec!["Atlas.md".into(), "Welcome.md".into()];
     reduce(&mut s, Action::SelectNote("Welcome.md".into()));
-    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+    assert_eq!(
+        s.open_tabs,
+        vec!["Atlas.md".to_string(), "Welcome.md".to_string()]
+    );
     assert_eq!(s.selected_path, "Welcome.md");
 }
 
@@ -306,7 +309,10 @@ fn new_tab_then_select_appends() {
     s.open_tabs = vec!["Atlas.md".into()];
     reduce(&mut s, Action::NewTab);
     reduce(&mut s, Action::SelectNote("Welcome.md".into()));
-    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+    assert_eq!(
+        s.open_tabs,
+        vec!["Atlas.md".to_string(), "Welcome.md".to_string()]
+    );
 }
 
 #[test]
@@ -315,7 +321,10 @@ fn open_in_new_tab_appends() {
     s.note_paths = vec!["Atlas.md".into(), "Welcome.md".into()];
     s.open_tabs = vec!["Atlas.md".into()];
     reduce(&mut s, Action::OpenInNewTab("Welcome.md".into()));
-    assert_eq!(s.open_tabs, vec!["Atlas.md".to_string(), "Welcome.md".to_string()]);
+    assert_eq!(
+        s.open_tabs,
+        vec!["Atlas.md".to_string(), "Welcome.md".to_string()]
+    );
 }
 
 #[test]
@@ -378,7 +387,10 @@ fn toggle_reader_mode_round_trips_full_file() {
 #[test]
 fn wikilink_resolves_exact_stem_and_case() {
     let paths = vec!["Atlas.md".into(), "10-Inbox/Welcome.md".into()];
-    assert_eq!(resolve_wikilink("Atlas", &paths).as_deref(), Some("Atlas.md"));
+    assert_eq!(
+        resolve_wikilink("Atlas", &paths).as_deref(),
+        Some("Atlas.md")
+    );
     assert_eq!(
         resolve_wikilink("Welcome", &paths).as_deref(),
         Some("10-Inbox/Welcome.md")
@@ -405,10 +417,7 @@ fn follow_wikilink_opens_the_resolved_note() {
 
 #[test]
 fn daily_note_paths_prefer_existing_locations() {
-    let paths = vec![
-        "10-Inbox/2026-08-25.md".into(),
-        "Atlas.md".into(),
-    ];
+    let paths = vec!["10-Inbox/2026-08-25.md".into(), "Atlas.md".into()];
     assert_eq!(
         resolve_daily_note("2026-08-25", &paths).as_deref(),
         Some("10-Inbox/2026-08-25.md")
@@ -433,10 +442,7 @@ fn mention_pick_inserts_wikilink() {
     reduce(&mut s, Action::BodyChanged("see @Wel".into()));
     assert!(s.show_mention);
     assert_eq!(s.mention_query, "Wel");
-    reduce(
-        &mut s,
-        Action::MentionPick("10-Inbox/Welcome.md".into()),
-    );
+    reduce(&mut s, Action::MentionPick("10-Inbox/Welcome.md".into()));
     assert!(!s.show_mention);
     assert_eq!(s.editor_body, "see [[Welcome]]");
 }
@@ -468,9 +474,30 @@ fn rules_load_populates_settings_excerpt() {
 fn shortcuts_table_is_valid() {
     let shortcuts = Gloss::shortcuts();
     assert_eq!(shortcuts.len(), 7);
-    assert!(
-        shortcuts
-            .iter()
-            .any(|s| s.chord == "cmd+k" && s.action == "openCommandPalette")
-    );
+    assert!(shortcuts
+        .iter()
+        .any(|s| s.chord == "cmd+k" && s.action == "openCommandPalette"));
+}
+
+#[test]
+fn workspace_bytes_migrate_a_legacy_path() {
+    let s = gloss::parse_workspace_bytes(b"/tmp/old-vault");
+    assert_eq!(s.last_path, "/tmp/old-vault");
+    assert_eq!(s.vaults.len(), 1);
+    assert_eq!(s.vaults[0].path, "/tmp/old-vault");
+    assert_eq!(s.vaults[0].name, "old-vault");
+}
+
+#[test]
+fn workspace_bytes_read_json_list() {
+    let raw = br#"{"last_path":"/a","vaults":[{"path":"/a","name":"a","last_note":"n.md"}]}"#;
+    let s = gloss::parse_workspace_bytes(raw);
+    assert_eq!(s.last_path, "/a");
+    assert_eq!(s.vaults[0].last_note, "n.md");
+}
+
+#[test]
+fn menu_decl_validates() {
+    let s = Gloss::default();
+    assert!(libra_core::validate_menu::<gloss::Action>(&s.menu()).is_ok());
 }

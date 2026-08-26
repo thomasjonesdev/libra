@@ -3,8 +3,8 @@
 use libra_core::{Effect, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    apply_create_cmd, backlinks_cmd, cat_cmd, file_stem, parse_list, rules_cmd,
-    IoKind, NoteRow, Pending, TOAST_MS,
+    apply_create_cmd, backlinks_cmd, cat_cmd, file_stem, parse_list, rules_cmd, upsert_vault,
+    IoKind, NoteRow, Pending, VaultRecord, TOAST_MS,
 };
 use crate::state::Gloss;
 
@@ -210,10 +210,16 @@ impl Gloss {
         }
         self.open_tabs
             .retain(|p| self.note_paths.iter().any(|n| n == p));
+        let restore = std::mem::take(&mut self.restore_note);
         if self.selected_path.is_empty() {
-            if let Some(first) = self.note_paths.first().cloned() {
+            let next = if !restore.is_empty() && self.note_paths.iter().any(|p| p == &restore) {
+                Some(restore)
+            } else {
+                self.note_paths.first().cloned()
+            };
+            if let Some(path) = next {
                 self.pending = Pending::Rules;
-                self.begin_cat(first)
+                self.begin_cat(path)
             } else {
                 self.begin_load_rules()
             }
@@ -317,6 +323,52 @@ impl Gloss {
         self.show_mention = false;
         self.mention_at = 0;
         self.mention_query.clear();
+    }
+
+    pub(super) fn persist_workspace(&self) -> Effect<Action> {
+        Effect::kv_set(
+            crate::model::STORE_KEY,
+            serde_json::to_vec(&self.workspace).unwrap_or_else(|_| b"{}".to_vec()),
+        )
+    }
+
+    pub(super) fn snapshot_open_vault(&mut self) {
+        let path = self.opened_root.trim();
+        if path.is_empty() {
+            return;
+        }
+        upsert_vault(
+            &mut self.workspace,
+            VaultRecord {
+                path: path.to_string(),
+                name: crate::model::vault_name(path),
+                last_note: self.selected_path.clone(),
+                sort_alpha: self.sort_alpha,
+                split_list: self.split_list,
+                reader_mode: self.reader_mode,
+            },
+        );
+    }
+
+    pub(super) fn apply_vault_record(&mut self, rec: &VaultRecord) {
+        self.vault_path = rec.path.clone();
+        self.opened_root = rec.path.clone();
+        self.sort_alpha = rec.sort_alpha;
+        self.split_list = rec.split_list;
+        self.reader_mode = rec.reader_mode;
+        self.restore_note = rec.last_note.clone();
+        self.can_undo = false;
+        self.rules_loaded = false;
+        self.rules_body.clear();
+    }
+
+    pub(super) fn clear_session_notes(&mut self) {
+        self.note_paths.clear();
+        self.open_tabs.clear();
+        self.history_back.clear();
+        self.history_forward.clear();
+        self.context_path.clear();
+        self.clear_selection();
     }
 
     pub(super) fn navigate_history(&mut self, back: bool) -> Option<Effect<Action>> {

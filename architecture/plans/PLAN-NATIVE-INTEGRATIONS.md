@@ -72,7 +72,7 @@ Not always Effects — sometimes layout/input plumbing:
 | **N4** | `Share` + document clipboard relationship |
 | **N5** | Safe-area insets plumbing + `<SafeArea>` |
 | **N6** | `WindowOp` subset used by real apps — [[PLAN-RESIDENCY]] R3 needs `Show`/`Hide`/`Raise`/`Quit`; build the variant **once**, in whichever lands first |
-| **N7** | Menubar / context menu via `muda` when chrome catalog needs it — reuses [[PLAN-RESIDENCY]] R1's `muda` dependency and action-name validation |
+| **N7** | **Started.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. See [[19.3-native-menus|§19.3]] |
 
 ## Design rules
 
