@@ -16,6 +16,7 @@ mod app;
 mod build;
 mod dev;
 mod manifest;
+mod new;
 mod package;
 mod test;
 
@@ -25,6 +26,7 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.split_first() {
+        Some((cmd, rest)) if cmd == "new" => new::new(rest),
         Some((cmd, rest)) if cmd == "check" => check(rest),
         Some((cmd, rest)) if cmd == "dev" => dev::dev(rest),
         Some((cmd, rest)) if cmd == "build" => build::build(rest),
@@ -32,22 +34,20 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "test" => test::test(rest),
         _ => {
             eprintln!("usage:");
-            eprintln!("  libra check [paths…]          validate .lx markup (default: .)");
+            eprintln!("  libra new <path> [--name crate] [--path checkout | --git url]");
+            eprintln!("  libra check [paths…]          validate .lx markup (default: workspace)");
             eprintln!("  libra dev [path] [-- args…]   run app in debug with view hot reload");
             eprintln!("  libra build [path] [-p crate] release binary (codegen + LTO)");
             eprintln!("  libra package [-p crate] [--target macos|windows|linux] [--format …]  platform bundle");
-            eprintln!("  libra test [filter…] [flags]  run the test suite (see --help in §18.1)");
+            eprintln!("  libra test [path] [filter…]   run tests (no path = workspace)");
             ExitCode::from(2)
         }
     }
 }
 
 fn check(paths: &[String]) -> ExitCode {
-    let roots: Vec<PathBuf> = if paths.is_empty() {
-        vec![PathBuf::from(".")]
-    } else {
-        paths.iter().map(PathBuf::from).collect()
-    };
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let roots = check_roots(paths, &cwd);
 
     let mut files = Vec::new();
     for root in &roots {
@@ -65,7 +65,9 @@ fn check(paths: &[String]) -> ExitCode {
         match std::fs::read_to_string(file) {
             Ok(source) => match libra_markup::parse_file(&source) {
                 Ok(libra_markup::LxFile::View(_)) => println!("  ok   {}", file.display()),
-                Ok(libra_markup::LxFile::Component(_)) => println!("  ok   {} (component)", file.display()),
+                Ok(libra_markup::LxFile::Component(_)) => {
+                    println!("  ok   {} (component)", file.display())
+                }
                 Err(e) => {
                     errors += 1;
                     // The parser's spans are line:col; prefix the file for
@@ -92,6 +94,20 @@ fn check(paths: &[String]) -> ExitCode {
     }
 }
 
+/// No paths → the `[workspace]` root containing `cwd` (everything), or
+/// `.` when there isn't one. Extra paths are a scope, same as
+/// `libra test templates/app`.
+fn check_roots(paths: &[String], cwd: &Path) -> Vec<PathBuf> {
+    if paths.is_empty() {
+        match app::find_workspace_root(cwd) {
+            Ok(root) => vec![root],
+            Err(_) => vec![PathBuf::from(".")],
+        }
+    } else {
+        paths.iter().map(PathBuf::from).collect()
+    }
+}
+
 fn collect_lx(path: &Path, out: &mut Vec<PathBuf>) {
     if path.is_file() {
         if path.extension().is_some_and(|e| e == "lx") {
@@ -99,7 +115,9 @@ fn collect_lx(path: &Path, out: &mut Vec<PathBuf>) {
         }
         return;
     }
-    let Ok(entries) = std::fs::read_dir(path) else { return };
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
     for entry in entries.flatten() {
         let p = entry.path();
         // Skip build output and VCS internals.
@@ -108,5 +126,29 @@ fn collect_lx(path: &Path, out: &mut Vec<PathBuf>) {
             continue;
         }
         collect_lx(&p, out);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repo root")
+    }
+
+    #[test]
+    fn check_no_paths_uses_workspace_root() {
+        let roots = check_roots(&[], &repo_root().join("examples/counter"));
+        assert_eq!(roots, vec![repo_root()]);
+    }
+
+    #[test]
+    fn check_paths_are_a_scope() {
+        let roots = check_roots(&["templates/app".into()], &repo_root());
+        assert_eq!(roots, vec![PathBuf::from("templates/app")]);
     }
 }

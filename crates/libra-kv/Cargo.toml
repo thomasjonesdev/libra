@@ -3,6 +3,9 @@ name = "libra-kv"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra key-value effect backend"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
 redb.workspace = true

@@ -17,14 +17,15 @@ pub mod icon;
 mod menu;
 
 use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use libra_components::{caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use libra_core::{
-    shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction, Sub,
+    shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction,
+    Rehydrate, RehydrateReport, Sub,
 };
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -37,7 +38,7 @@ use tiny_skia::Pixmap;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
 
@@ -234,6 +235,43 @@ impl<A> From<&'static str> for ViewDriver<A> {
     }
 }
 
+/// Newest `.lx` mtime under the view directory (PLAN-SDK S3). `path`
+/// is the root view file from `app!`; its parent is polled so a
+/// composed component edit reloads too. A directory path is scanned
+/// directly.
+fn watch_signature(path: &Path) -> Option<SystemTime> {
+    let dir = if path.is_dir() { path } else { path.parent()? };
+    max_lx_mtime(dir).or_else(|| std::fs::metadata(path).ok()?.modified().ok())
+}
+
+fn max_lx_mtime(dir: &Path) -> Option<SystemTime> {
+    let mut newest: Option<SystemTime> = None;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                if entry.file_name() != "target" && entry.file_name() != ".git" {
+                    stack.push(p);
+                }
+                continue;
+            }
+            if p.extension().is_some_and(|e| e == "lx") {
+                if let Ok(mtime) = std::fs::metadata(&p).and_then(|m| m.modified()) {
+                    newest = Some(match newest {
+                        Some(prev) => prev.max(mtime),
+                        None => mtime,
+                    });
+                }
+            }
+        }
+    }
+    newest
+}
+
 /// Run an app in a native window until it is closed (embedded view,
 /// no persistence) — the Phase 0 signature, kept for simple apps.
 pub fn run<A: App + 'static>(
@@ -257,18 +295,18 @@ where
     run_inner::<A>(view.into(), opts, None, None)
 }
 
-/// `run_with` plus §18.2 model rehydration: on exit the model snapshots
-/// to `<app-data>/model.json`; the next launch restores it (then still
-/// runs `init`'s cmds — startup effects are the app's declared contract
-/// either way). A snapshot that no longer parses (model shape changed)
-/// is discarded with a note — defaults win, the session doesn't crash.
-/// Requires `app_id` (for the snapshot location).
+/// `run_with` plus §18.2 model rehydration: on exit — window close or
+/// SIGTERM/SIGINT — the model snapshots to `<app-data>/model.json`. The
+/// next launch restores it field by field (new or unreadable fields
+/// become `Default` and are named; removed keys are ignored and named),
+/// then still runs `init`'s cmds. A snapshot that is not a JSON object
+/// is discarded. Requires `app_id` (for the snapshot location).
 pub fn run_rehydrating<A>(
     view: impl Into<ViewDriver<A>>,
     opts: Options,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
-    A: App + serde::Serialize + serde::de::DeserializeOwned + 'static,
+    A: App + serde::Serialize + Rehydrate + 'static,
     A::Msg: Send + 'static,
 {
     let view = view.into();
@@ -279,13 +317,15 @@ where
     let path = snapshot_path(&app_id).ok_or("no home directory for model snapshot")?;
 
     let rehydrated: Option<A> = match std::fs::read_to_string(&path) {
-        Ok(json) => match serde_json::from_str(&json) {
-            Ok(model) => Some(model),
-            Err(e) => {
-                eprintln!("[libra] model snapshot no longer parses ({e}); starting fresh");
+        Ok(json) => {
+            let (model, report) = A::rehydrate(&json);
+            explain_rehydrate(&report);
+            if report.invalid {
                 None
+            } else {
+                Some(model)
             }
-        },
+        }
         Err(_) => None, // first run
     };
 
@@ -307,6 +347,85 @@ where
 
 fn snapshot_path(app_id: &str) -> Option<std::path::PathBuf> {
     directories::ProjectDirs::from("", "", app_id).map(|d| d.data_dir().join("model.json"))
+}
+
+fn explain_rehydrate(report: &RehydrateReport) {
+    if report.invalid {
+        eprintln!("[libra] model snapshot was not a JSON object; starting fresh");
+        return;
+    }
+    if report.defaulted.is_empty() && report.removed.is_empty() {
+        eprintln!("[libra] model rehydrated from previous session");
+        return;
+    }
+    if !report.defaulted.is_empty() {
+        eprintln!(
+            "[libra] rehydrated; defaulted fields: {}",
+            report.defaulted.join(", ")
+        );
+    }
+    if !report.removed.is_empty() {
+        eprintln!(
+            "[libra] rehydrated; ignored removed fields: {}",
+            report.removed.join(", ")
+        );
+    }
+}
+
+/// Write end of the pipe the signal handler uses. `-1` until armed.
+static PERSIST_WRITE_FD: AtomicI32 = AtomicI32::new(-1);
+static PERSIST_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+extern "C" fn on_persist_signal(_: libc::c_int) {
+    PERSIST_REQUESTED.store(true, Ordering::SeqCst);
+    let fd = PERSIST_WRITE_FD.load(Ordering::SeqCst);
+    if fd >= 0 {
+        let byte = [1u8];
+        unsafe {
+            libc::write(fd, byte.as_ptr() as *const libc::c_void, 1);
+        }
+    }
+}
+
+/// Wake the shell on SIGTERM/SIGINT so it can snapshot before exit (§18.2).
+/// The handler only writes a byte; a thread turns that into a user event.
+/// Installed only for `run_rehydrating` — `run_with` must still die on
+/// the default signal.
+fn arm_persist_on_signal<M: Send + 'static>(proxy: EventLoopProxy<menu::ShellEvent<M>>) {
+    #[cfg(unix)]
+    {
+        let mut fds = [0i32; 2];
+        if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+            return;
+        }
+        PERSIST_WRITE_FD.store(fds[1], Ordering::SeqCst);
+        unsafe {
+            libc::signal(libc::SIGTERM, on_persist_signal as libc::sighandler_t);
+            libc::signal(libc::SIGINT, on_persist_signal as libc::sighandler_t);
+        }
+        let read_fd = fds[0];
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 8];
+            loop {
+                let n = unsafe {
+                    libc::read(read_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+                };
+                if n <= 0 {
+                    break;
+                }
+                let _ = proxy.send_event(menu::ShellEvent::PersistAndExit);
+            }
+        });
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = proxy;
+    }
+}
+
+fn persist_requested() -> bool {
+    PERSIST_REQUESTED.swap(false, Ordering::SeqCst)
 }
 
 type SaveHook<A> = Box<dyn Fn(&A)>;
@@ -352,16 +471,13 @@ where
         (ast, registry, None)
     };
     let (app, init_cmds) = A::init();
-    let app = match rehydrated {
-        Some(model) => {
-            eprintln!("[libra] model rehydrated from previous session");
-            model
-        }
-        None => app,
-    };
+    let app = rehydrated.unwrap_or(app);
 
     let event_loop = EventLoop::<menu::ShellEvent<A::Msg>>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
+    if save_hook.is_some() {
+        arm_persist_on_signal(proxy.clone());
+    }
     let menu_proxy = proxy.clone();
     muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
         let _ = menu_proxy.send_event(menu::ShellEvent::Menu(event.id));
@@ -382,12 +498,13 @@ where
     };
     let a11y_sink = Arc::clone(&sink);
     let effects = Effects::new(sink, kv).with_process_allowlist(opts.process_allowlist.clone());
+    let wake_proxy = event_loop.create_proxy();
+    effects.set_stream_wake(Arc::new(move || {
+        let _ = wake_proxy.send_event(menu::ShellEvent::Streams);
+    }));
     effects.execute_all(init_cmds);
 
-    let watch_mtime = opts
-        .watch
-        .as_deref()
-        .and_then(|p| std::fs::metadata(p).ok()?.modified().ok());
+    let watch_mtime = opts.watch.as_deref().and_then(watch_signature);
     let theme_mtime = opts
         .theme_file
         .as_deref()
@@ -443,6 +560,7 @@ where
         markup_intervals: Vec::new(),
         running_intervals: Vec::new(),
         markup_streams: Vec::new(),
+        pumping_streams: false,
         focus: None,
         modifiers: ModifiersState::empty(),
         theme,
@@ -572,6 +690,8 @@ struct Shell<A: App> {
     /// event delivery yet, PLAN-SOURCES), collected so `has_source`/a
     /// future differ can see them.
     markup_streams: Vec<(String, String)>,
+    /// Re-entry guard: delivering a stream line relayouts, which pumps again.
+    pumping_streams: bool,
     /// §10.1 focus: focused Input id + editing state + onChange name.
     focus: Option<(String, EditState, String)>,
     modifiers: ModifiersState,
@@ -626,6 +746,13 @@ where
             |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
         let has_instant_action =
             |m: &str| A::Msg::action_with_instant(m, LxInstant::at(0.0)).is_some();
+        let has_stream_event_action = |m: &str| {
+            A::Msg::action_with_stream_event(
+                m,
+                libra_core::StreamEvent::Dropped(0),
+            )
+            .is_some()
+        };
         let scope = Scope {
             field: &field,
             has_action: &has_action,
@@ -633,6 +760,7 @@ where
             collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
             has_instant_action: &has_instant_action,
+            has_stream_event_action: &has_stream_event_action,
             binding_ctx: "State",
         };
         let view_result = if let Some(build) = self.view_build {
@@ -707,6 +835,7 @@ where
                     // row, or disables a control changes the affordance
                     // without any pointer motion to notice it.
                     self.sync_cursor();
+                    self.pump_streams();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
             },
@@ -821,6 +950,37 @@ where
             self.next_frame_at = Instant::now();
         }
         self.frames_active = want;
+    }
+
+    /// Drain stream buffers for mounted `<Stream>` ids and dispatch each
+    /// event as an action (§12.5, PLAN-STREAM-DELIVERY). Unmounted ids
+    /// are killed by the runtime. A line's own relayout re-enters this
+    /// method; the guard keeps that from nesting.
+    fn pump_streams(&mut self) {
+        if self.pumping_streams || self.gfx.is_none() {
+            return;
+        }
+        self.pumping_streams = true;
+        for _ in 0..8 {
+            let mounted: Vec<String> = self.markup_streams.iter().map(|(id, _)| id.clone()).collect();
+            let batch = self.effects.sync_streams(&mounted);
+            if batch.is_empty() {
+                break;
+            }
+            for (id, event) in batch {
+                let handler = self
+                    .markup_streams
+                    .iter()
+                    .find(|(mounted_id, _)| mounted_id == &id)
+                    .map(|(_, name)| name.clone());
+                let Some(handler) = handler else { continue };
+                let Some(msg) = A::Msg::action_with_stream_event(&handler, event) else {
+                    continue;
+                };
+                self.dispatch(msg);
+            }
+        }
+        self.pumping_streams = false;
     }
 
     /// §12.5: diff `markup_intervals` against the running set, starting
@@ -996,7 +1156,9 @@ where
             // used here: the whole window is one softbuffer surface, so
             // it would steal Split and text drags.
             let chrome = self.opts.frameless && laid.chrome_drag_at(lx, ly);
-            if self.focus.take().is_some() {
+            if self.focus.is_some() {
+                self.dispatch_focused_submit();
+                self.focus = None;
                 self.request_redraw();
             }
             if chrome {
@@ -1008,7 +1170,11 @@ where
         };
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
-            let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+            let id = hit
+                .semantics
+                .test_id
+                .clone()
+                .expect("Input has a testId (load-enforced)");
             let text = hit.semantics.text.clone();
             let focus = self.focus_paint();
             let byte = caret_byte_at(hit, lx, ly, &self.renderer, &self.theme, focus.as_ref())
@@ -1017,6 +1183,10 @@ where
                 .focus
                 .as_ref()
                 .is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
+            let switching = self.focus.as_ref().is_some_and(|(fid, _, _)| fid != &id);
+            if switching {
+                self.dispatch_focused_submit();
+            }
             let shift = self.modifiers.shift_key();
             if !already {
                 self.focus = Some((id.clone(), EditState::new(text), name));
@@ -1034,10 +1204,12 @@ where
             self.drag = Some(DragTarget::Text);
             return;
         }
+        let on_press_arg = hit.on_press_arg.clone();
+        self.dispatch_focused_submit();
         self.focus = None;
         // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch the
         // String-payload action with the resolved loop-binding value.
-        let msg = match hit.on_press_arg.clone() {
+        let msg = match on_press_arg {
             Some(arg) => A::Msg::action_with_str(&name, arg).unwrap_or_else(|| {
                 panic!("handler '{name}' resolved to no String-payload Action — reflection out of sync")
             }),
@@ -1175,7 +1347,9 @@ where
     }
 
     fn drag_move(&mut self) {
-        let Some(target) = self.drag.clone() else { return };
+        let Some(target) = self.drag.clone() else {
+            return;
+        };
         if matches!(target, DragTarget::Text) {
             self.text_drag_move();
             return;
@@ -1316,10 +1490,10 @@ where
                 self.apply_edit(EditOp::Insert('\n'));
                 return;
             }
-            // `<Search onSubmit>` (§7.1): Enter submits the unit
-            // action. The query is already in State via onChange.
+            // `<Search onSubmit>` / `<Input onSubmit>` (§7.1): Enter submits
+            // the unit action. The value is already in State via onChange.
             Key::Named(NamedKey::Enter) => {
-                if let Some(name) = self.focused_search_submit() {
+                if let Some(name) = self.focused_text_submit() {
                     let msg = A::Msg::action_by_name(&name)
                         .unwrap_or_else(|| panic!("'{name}' is not a unit Action variant"));
                     self.dispatch(msg);
@@ -1430,9 +1604,19 @@ where
         })
     }
 
-    /// Unit-action name for Enter on a focused `<Search onSubmit>`
-    /// (§7.1). `None` if focus is not a Search, or Search omitted it.
-    fn focused_search_submit(&self) -> Option<String> {
+    fn dispatch_focused_submit(&mut self) {
+        let Some(name) = self.focused_text_submit() else {
+            return;
+        };
+        let msg = A::Msg::action_by_name(&name)
+            .unwrap_or_else(|| panic!("'{name}' is not a unit Action variant"));
+        self.dispatch(msg);
+    }
+
+    /// Unit-action name for Enter on a focused `<Search onSubmit>` or
+    /// `<Input onSubmit>` (§7.1). `None` if focus is not a Search/Input,
+    /// or the control omitted it.
+    fn focused_text_submit(&self) -> Option<String> {
         let (id, ..) = self.focus.as_ref()?;
         let laid = self.laid.as_ref()?;
         laid.items.iter().find_map(|i| {
@@ -1441,21 +1625,26 @@ where
             }
             match &i.kind {
                 libra_components::ItemKind::Search { on_submit, .. } => on_submit.clone(),
+                libra_components::ItemKind::Input { on_submit, .. } => on_submit.clone(),
                 _ => None,
             }
         })
     }
 
-    /// Dev hot reload: swap the AST if the watched file changed; on a
-    /// parse error keep the last good view and overlay the diagnostic.
+    #[allow(dead_code)]
+    fn focused_search_submit(&self) -> Option<String> {
+        self.focused_text_submit()
+    }
+
+    /// Dev hot reload: swap the AST if any `.lx` under the view
+    /// directory changed (PLAN-SDK S3 — the watch path is the root
+    /// view file; its parent directory is polled). On a parse error
+    /// keep the last good view and overlay the diagnostic.
     fn check_watch(&mut self) {
         let Some(path) = self.opts.watch.clone() else {
             return;
         };
-        let Some(mtime) = std::fs::metadata(&path)
-            .ok()
-            .and_then(|m| m.modified().ok())
-        else {
+        let Some(mtime) = watch_signature(&path) else {
             return;
         };
         if Some(mtime) == self.watch_mtime {
@@ -1643,6 +1832,13 @@ where
         buffer.present().expect("present");
         self.frame_stats.record(t0.elapsed());
     }
+
+    fn persist_and_exit(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(save) = &self.save_hook {
+            save(&self.app);
+        }
+        event_loop.exit();
+    }
 }
 
 impl<A: App + 'static> ApplicationHandler<menu::ShellEvent<A::Msg>> for Shell<A>
@@ -1715,10 +1911,15 @@ where
     /// (via the EventLoopProxy) and dispatch on the main thread — same
     /// causal path as §4.2's loop. Frame ticks run from `about_to_wait`
     /// while the display loop is active.
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: menu::ShellEvent<A::Msg>) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: menu::ShellEvent<A::Msg>) {
         match event {
             menu::ShellEvent::App(msg) => self.dispatch(msg),
             menu::ShellEvent::Menu(id) => self.dispatch_menu(id),
+            menu::ShellEvent::PersistAndExit => {
+                PERSIST_REQUESTED.store(false, Ordering::SeqCst);
+                self.persist_and_exit(event_loop);
+            }
+            menu::ShellEvent::Streams => self.pump_streams(),
         }
     }
 
@@ -1728,12 +1929,7 @@ where
             gfx.a11y.process_event(&window, &event);
         }
         match event {
-            WindowEvent::CloseRequested => {
-                if let Some(save) = &self.save_hook {
-                    save(&self.app);
-                }
-                event_loop.exit();
-            }
+            WindowEvent::CloseRequested => self.persist_and_exit(event_loop),
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 // The window may have moved to a different-refresh-rate
                 // monitor (Stage 1) — cadence is cheap to recompute.
@@ -1790,6 +1986,10 @@ where
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if persist_requested() {
+            self.persist_and_exit(event_loop);
+            return;
+        }
         if self.opts.watch.is_some() || self.opts.theme_file.is_some() {
             if Instant::now() >= self.next_watch_check {
                 self.check_watch();
@@ -2039,5 +2239,18 @@ mod tests {
         assert_eq!(cmds.len(), 3);
         assert!(matches!(&cmds[1], DrawCmd::Rect { rect, .. } if rect.w == 400.0));
         assert!(matches!(&cmds[2], DrawCmd::Text { content, .. } if content.contains("cuont")));
+    }
+
+    #[test]
+    fn watch_signature_sees_a_sibling_lx() {
+        let dir = std::env::temp_dir().join(format!("libra-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("components")).unwrap();
+        let root = dir.join("app.lx");
+        std::fs::write(&root, "<Column/>").unwrap();
+        std::fs::write(dir.join("components/card.lx"), "<props/>").unwrap();
+        assert!(watch_signature(&root).is_some());
+        assert!(max_lx_mtime(&dir).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -7,7 +7,7 @@
 //! Click on a Button dispatches the same action a pointer click would,
 //! via the effects sink (main-thread delivery through the event loop).
 
-use libra_components::{LaidTree, Role};
+use libra_components::{ItemKind, LaidTree, Role};
 
 /// The flat semantic snapshot the adapter serves: rebuilt on every
 /// relayout, cloned into TreeUpdates on demand.
@@ -34,6 +34,9 @@ pub fn snapshot(laid: &LaidTree, scale: f64, focused_test_id: Option<&str>) -> A
     let mut items = Vec::with_capacity(laid.items.len());
     let mut focus = None;
     for item in &laid.items {
+        if matches!(item.kind, ItemKind::LinkTarget) {
+            continue;
+        }
         if item.semantics.role == Role::Container {
             continue; // transparent boxes carry no semantics yet
         }

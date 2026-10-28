@@ -1,0 +1,26 @@
+<props chrome_background: String, newNote: Action, openCommandPalette: Action, openDailyNote: Action, openGraph: Action, undo: Action, openVaultPicker: Action, openSettings: Action />
+
+<Toolbar vertical compact background={chrome_background} testId="app-rail">
+  <Tooltip text="New note" position="right">
+    <Button variant="ghost" icon="plus" onPress={newNote} testId="new-note" />
+  </Tooltip>
+  <Tooltip text="Quick open" position="right">
+    <Button variant="ghost" icon="command" onPress={openCommandPalette} testId="command-palette" />
+  </Tooltip>
+  <Tooltip text="Daily note" position="right">
+    <Button variant="ghost" icon="calendar" onPress={openDailyNote} testId="daily-note" />
+  </Tooltip>
+  <Tooltip text="Links and backlinks" position="right">
+    <Button variant="ghost" icon="graph" onPress={openGraph} testId="graph" />
+  </Tooltip>
+  <Tooltip text="Undo" position="right">
+    <Button variant="ghost" icon="undo" onPress={undo} testId="undo" />
+  </Tooltip>
+  <Spacer />
+  <Tooltip text="Vaults" position="right">
+    <Button variant="ghost" icon="folder" onPress={openVaultPicker} testId="vault-picker" />
+  </Tooltip>
+  <Tooltip text="Settings" position="right">
+    <Button variant="ghost" icon="settings" onPress={openSettings} testId="settings" />
+  </Tooltip>
+</Toolbar>

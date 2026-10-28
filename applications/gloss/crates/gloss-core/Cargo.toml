@@ -3,6 +3,7 @@ name = "gloss-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Headless vault core for Gloss: paths, parse, patch layer"
 
 [dependencies]

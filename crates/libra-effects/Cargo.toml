@@ -3,9 +3,12 @@ name = "libra-effects"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra effect runtime"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-kv.workspace = true
 libra-data.workspace = true
 ureq.workspace = true

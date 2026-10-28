@@ -1,0 +1,18 @@
+<props sidebar_search: Bool, query: String, queryChanged: Action(String), clearQuery: Action, children: slot />
+
+<Panel grow gap={0} padding={0} raised flush>
+  <Column grow gap={4} padding={4}>
+    <if test={sidebar_search}>
+      <Row gap={6} cross="center">
+        <Search value={query} placeholder="Search notes…" onChange={queryChanged} testId="search" />
+        <Button variant="ghost" icon="close" onPress={clearQuery} testId="clear-search" />
+      </Row>
+      <Separator />
+    </if>
+    <Scroll testId="note-scroll">
+      <Column gap={2}>
+        <slot/>
+      </Column>
+    </Scroll>
+  </Column>
+</Panel>

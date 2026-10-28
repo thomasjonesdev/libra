@@ -22,6 +22,8 @@ quitting, one instance rather than five, and optional start-at-login. Claims the
 
 **Read before writing code:** [[19-platform-integration|§19]] (native chrome vs
 Libra-rendered content — the policy this plan lives or dies by),
+[[19.4-desktop-os-matrix|§19.4]] (implement each OS or return typed
+`Unsupported`; R1 sequencing is not a permanent Windows skip),
 [[19.2-keyboard-shortcuts-declarations-not-handlers|§19.2]] (the
 declarations-not-handlers precedent, and the one place this plan departs from
 it), [[20-packaging|§20]] + [[PLAN-PACKAGE]] (app identity),

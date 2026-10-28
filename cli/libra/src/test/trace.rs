@@ -23,19 +23,18 @@ pub struct Entry {
     pub artifact: Option<String>,
 }
 
-/// Scan the SDK crates + example apps under `repo_root` for
-/// `#[libra::verifies(...)]` annotations and build the trace entries. The
-/// scan is scoped to `crates/` + `examples/` (matching the coverage
-/// scanner) — the CLI's own build tooling is not verification evidence.
+/// Scan the workspace under `repo_root` for `#[libra::verifies(...)]`
+/// annotations (PLAN-SDK S3 — not hardcoded to `crates/` + `examples/`).
 pub fn collect(repo_root: &Path) -> Vec<Entry> {
     let mut files = Vec::new();
-    collect_rs(&repo_root.join("crates"), &mut files);
-    collect_rs(&repo_root.join("examples"), &mut files);
+    collect_rs(repo_root, &mut files);
     files.sort();
 
     let mut entries = Vec::new();
     for file in &files {
-        let Ok(src) = std::fs::read_to_string(file) else { continue };
+        let Ok(src) = std::fs::read_to_string(file) else {
+            continue;
+        };
         let rel = file
             .strip_prefix(repo_root)
             .unwrap_or(file)
@@ -49,8 +48,6 @@ pub fn collect(repo_root: &Path) -> Vec<Entry> {
 /// Parse the annotations in one source file (split out for testing).
 pub fn scan_source(src: &str, rel_path: &str, out: &mut Vec<Entry>) {
     let lines: Vec<&str> = src.lines().collect();
-    let app = app_of(rel_path);
-
     for (i, line) in lines.iter().enumerate() {
         if !line.contains("verifies") || !line.contains('(') {
             continue;
@@ -73,7 +70,7 @@ pub fn scan_source(src: &str, rel_path: &str, out: &mut Vec<Entry>) {
         else {
             continue;
         };
-        let artifact = artifact_in_body(&lines, fn_line, app);
+        let artifact = artifact_in_body(&lines, fn_line, rel_path);
         out.push(Entry {
             reqs,
             test: name,
@@ -137,7 +134,9 @@ code{{font:12px ui-monospace,monospace}}</style>\
 }
 
 fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let p = entry.path();
         let name = entry.file_name();
@@ -180,22 +179,16 @@ fn fn_name(line: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// Look inside a test fn's body (from `fn_line` up to the next top-level
-/// `fn`/EOF, bounded) for the first `assert_snapshot("<name>")` and map it
-/// to `examples/<app>/tests/snapshots/<name>.png`.
-fn artifact_in_body(lines: &[&str], fn_line: usize, app: Option<&str>) -> Option<String> {
-    let app = app?;
+/// Look inside a test fn's body for the first `assert_snapshot("<name>")`
+/// and map it to `<tests-dir>/snapshots/<name>.png` beside that source.
+fn artifact_in_body(lines: &[&str], fn_line: usize, rel_path: &str) -> Option<String> {
     for line in lines.iter().skip(fn_line + 1).take(400) {
-        if fn_name(line).is_some() && !line.trim_start().starts_with("fn ") {
-            // reached what looks like a following item — stop scanning
-        }
         if let Some(idx) = line.find("assert_snapshot(") {
             let after = &line[idx..];
             if let Some(name) = string_literals(after).into_iter().next() {
-                return Some(format!("examples/{app}/tests/snapshots/{name}.png"));
+                return Some(snapshot_artifact(rel_path, &name));
             }
         }
-        // A line that dedents to a bare `}` at column 0 ends the fn.
         if line == &"}" {
             break;
         }
@@ -203,18 +196,26 @@ fn artifact_in_body(lines: &[&str], fn_line: usize, app: Option<&str>) -> Option
     None
 }
 
-/// `examples/<app>/…` → `Some("<app>")`.
-fn app_of(rel_path: &str) -> Option<&str> {
-    let mut comps = Path::new(rel_path).components();
-    if comps.next()?.as_os_str() == "examples" {
-        comps.next().map(|c| c.as_os_str().to_str().unwrap_or(""))
-    } else {
-        None
-    }
+/// `examples/gallery/tests/foo.rs` + `workbench` →
+/// `examples/gallery/tests/snapshots/workbench.png`.
+fn snapshot_artifact(rel_path: &str, name: &str) -> String {
+    let p = Path::new(rel_path);
+    let dir = match p.parent() {
+        Some(parent) if parent.file_name().is_some_and(|n| n == "tests") => {
+            parent.join("snapshots")
+        }
+        Some(parent) => parent.join("snapshots"),
+        None => PathBuf::from("tests/snapshots"),
+    };
+    dir.join(format!("{name}.png"))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]

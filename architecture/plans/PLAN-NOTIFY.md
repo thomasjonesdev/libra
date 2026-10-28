@@ -21,7 +21,9 @@ pointer here rather than a second description.
 **Read before writing code:** [[12.1-effect-vocabulary|§12.1]] (the sketched
 `Notify(Notification)` shape this refines), [[PLAN-NATIVE-INTEGRATIONS]] (design
 rules 1–4 apply verbatim), [[19-platform-integration|§19]] (native chrome
-policy), [[appendix-a-determinism-checklist|Appendix A]].
+policy), [[19.4-desktop-os-matrix|§19.4]] (three-OS: native API or typed
+`Unsupported` — Linux D-Bus / macOS signed `.app` / Windows AUMID),
+[[appendix-a-determinism-checklist|Appendix A]].
 
 ## Why it is more than a one-liner
 

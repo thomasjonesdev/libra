@@ -3,6 +3,8 @@ name = "libra-markdown"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
 description = "Display-only CommonMark parse for Libra <Markdown> and Gloss preview"
 
 [dependencies]

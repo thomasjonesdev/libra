@@ -91,7 +91,7 @@ fn chrome_fits_at_720_and_1280() {
 }
 
 #[test]
-fn vault_chip_stays_visible_on_a_long_list() {
+fn vault_name_shows_in_the_status_bar() {
     let mut h = harness_at(720, 640);
     let listing = (0..80)
         .map(|i| format!("note-{i:02}.md"))
@@ -100,41 +100,27 @@ fn vault_chip_stays_visible_on_a_long_list() {
     open_first_note(&mut h, &format!("{listing}\n"), "# n\n");
     h.query(by::test_id("vault-name")).assert_text("gloss-fixture");
     let laid = h.laid();
-    assert!(
-        !laid
-            .items
-            .iter()
-            .any(|i| i.semantics.test_id.as_deref() == Some("search")),
-        "files view hides the search field"
-    );
+    let status_bar = laid
+        .items
+        .iter()
+        .find(|i| i.semantics.test_id.as_deref() == Some("status-bar"))
+        .expect("status bar");
     let chip = laid
         .items
         .iter()
         .find(|i| i.semantics.test_id.as_deref() == Some("vault-name"))
         .expect("vault name");
     assert!(
-        chip.rect.y + chip.rect.h <= laid.height + 1.0,
-        "vault name {} sits past viewport {}",
-        chip.rect.y + chip.rect.h,
-        laid.height
+        chip.rect.y >= status_bar.rect.y - 1.0
+            && chip.rect.y + chip.rect.h <= status_bar.rect.y + status_bar.rect.h + 1.0,
+        "vault name should sit inside the status bar"
+    );
+    assert!(
+        chip.rect.x >= status_bar.rect.x,
+        "vault name should live inside the status bar"
     );
 
     h.click(by::test_id("sidebar-search"));
-    let laid = h.laid();
-    let filter = laid
-        .items
-        .iter()
-        .find(|i| i.semantics.test_id.as_deref() == Some("search"))
-        .expect("search view shows the filter");
-    let chip = laid
-        .items
-        .iter()
-        .find(|i| i.semantics.test_id.as_deref() == Some("vault-name"))
-        .expect("vault name");
-    assert!(
-        filter.rect.y + filter.rect.h <= chip.rect.y + 0.5,
-        "filter bottom {} should be above vault name {}",
-        filter.rect.y + filter.rect.h,
-        chip.rect.y
-    );
+    h.query(by::test_id("vault-name")).assert_text("gloss-fixture");
+    h.query(by::test_id("search"));
 }

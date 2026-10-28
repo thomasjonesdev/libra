@@ -1,0 +1,8 @@
+<props chrome_background: String, toggleSidebar: Action />
+
+<Toolbar compact background={chrome_background} testId="list-toolbar">
+  <Spacer size={18} />
+  <Tooltip text="Toggle sidebar" position="bottom">
+    <Button variant="ghost" icon="panel-left" onPress={toggleSidebar} testId="sidebar-toggle" />
+  </Tooltip>
+</Toolbar>

@@ -1,0 +1,33 @@
+<props chrome_background: String, sidebar_files: Bool, sidebar_search: Bool, sidebar_bookmarks: Bool, showFilesView: Action, showSearchView: Action, showBookmarksView: Action, toggleSidebar: Action />
+
+<Toolbar compact background={chrome_background} testId="list-toolbar">
+  <Spacer size={18} />
+  <Tooltip text="Files" position="bottom">
+    <if test={sidebar_files}>
+      <Button variant="secondary" icon="folder" onPress={showFilesView} testId="sidebar-files" />
+      <else>
+        <Button variant="ghost" icon="folder" onPress={showFilesView} testId="sidebar-files" />
+      </else>
+    </if>
+  </Tooltip>
+  <Tooltip text="Search" position="bottom">
+    <if test={sidebar_search}>
+      <Button variant="secondary" icon="search" onPress={showSearchView} testId="sidebar-search" />
+      <else>
+        <Button variant="ghost" icon="search" onPress={showSearchView} testId="sidebar-search" />
+      </else>
+    </if>
+  </Tooltip>
+  <Tooltip text="Bookmarks" position="bottom">
+    <if test={sidebar_bookmarks}>
+      <Button variant="secondary" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
+      <else>
+        <Button variant="ghost" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
+      </else>
+    </if>
+  </Tooltip>
+  <Spacer />
+  <Tooltip text="Toggle sidebar" position="bottom">
+    <Button variant="ghost" icon="panel-left" onPress={toggleSidebar} testId="sidebar-toggle" />
+  </Tooltip>
+</Toolbar>

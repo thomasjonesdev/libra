@@ -6,14 +6,15 @@
 //!
 //! Architecture: ARCHITECTURE.md §6.4 (one grammar, two engines).
 
+use libra_components::{
+    BoxStyle, DrawerSide, IconName, InputVariant, TextSize, Tone, TooltipPosition, Variant,
+    ViewNode,
+};
+use libra_core::CollectionRow;
 use libra_markup::{
     is_catalog_element, Attr, AttrValue, ComponentDef, ComponentRegistry, Inline, Node, PropParam,
     PropType, Span,
 };
-use libra_components::{
-    BoxStyle, DrawerSide, IconName, TextSize, Tone, TooltipPosition, Variant, ViewNode,
-};
-use libra_core::CollectionRow;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -30,7 +31,10 @@ impl std::fmt::Display for InterpError {
 impl std::error::Error for InterpError {}
 
 fn err(span: Span, msg: impl Into<String>) -> InterpError {
-    InterpError { message: msg.into(), span }
+    InterpError {
+        message: msg.into(),
+        span,
+    }
 }
 
 /// §3.3's grammar-level rule, mirrored from libra-codegen so both
@@ -83,14 +87,22 @@ pub struct Scope<'a> {
     /// `<Interval every={ms} onTick={name}>`)? See
     /// `ReflectAction::action_with_instant`.
     pub has_instant_action: &'a dyn Fn(&str) -> bool,
+    /// Does this name resolve to a `StreamEvent`-payload handler
+    /// (§12.5's `<Stream onEvent={name}>`)? See
+    /// `ReflectAction::action_with_stream_event`.
+    pub has_stream_event_action: &'a dyn Fn(&str) -> bool,
     /// `"State"` or `"props"` — controls binding-not-found diagnostics (§7.2).
     pub binding_ctx: &'static str,
 }
 
 /// Resolve a view tree. Pass an empty [`ComponentRegistry`] when no composed
 /// components are in scope.
-pub fn resolve(ast: &Node, scope: &Scope, registry: &ComponentRegistry) -> Result<ViewNode, InterpError> {
-    element(ast, scope, registry, None)
+pub fn resolve(
+    ast: &Node,
+    scope: &Scope,
+    registry: &ComponentRegistry,
+) -> Result<ViewNode, InterpError> {
+    element(ast, scope, registry, None, scope)
 }
 
 /// Resolve a list of children into a flat list of ViewNodes — `<for>`
@@ -103,6 +115,7 @@ fn resolve_children(
     scope: &Scope,
     registry: &ComponentRegistry,
     slot_children: Option<&[Node]>,
+    call_site: &Scope,
     parent_name: &str,
     parent_span: Span,
 ) -> Result<Vec<ViewNode>, InterpError> {
@@ -116,12 +129,12 @@ fn resolve_children(
     for c in children {
         match c {
             Node::Element { name, .. } if name == "for" => {
-                out.extend(resolve_for(c, scope, registry, slot_children)?)
+                out.extend(resolve_for(c, scope, registry, slot_children, call_site)?)
             }
             Node::Element { name, .. } if name == "if" => {
-                out.extend(resolve_if(c, scope, registry, slot_children)?)
+                out.extend(resolve_if(c, scope, registry, slot_children, call_site)?)
             }
-            _ => out.extend(resolve_nodes(c, scope, registry, slot_children)?),
+            _ => out.extend(resolve_nodes(c, scope, registry, slot_children, call_site)?),
         }
     }
     Ok(out)
@@ -143,8 +156,17 @@ fn resolve_for(
     scope: &Scope,
     registry: &ComponentRegistry,
     slot_children: Option<&[Node]>,
+    call_site: &Scope,
 ) -> Result<Vec<ViewNode>, InterpError> {
-    let Node::Element { attrs, children, span, .. } = node else { unreachable!() };
+    let Node::Element {
+        attrs,
+        children,
+        span,
+        ..
+    } = node
+    else {
+        unreachable!()
+    };
 
     let mut each: Option<(String, Span)> = None;
     let mut as_name: Option<String> = None;
@@ -160,8 +182,12 @@ fn resolve_for(
     let (path, espan) = each.ok_or_else(|| err(*span, "<for> requires each={someCollection}"))?;
     let as_name =
         as_name.ok_or_else(|| err(*span, "<for> requires as=\"name\" (the loop variable)"))?;
-    let (key_path, kspan) = key
-        .ok_or_else(|| err(*span, "<for> requires key={...} — identity for reordering (§6.2)"))?;
+    let (key_path, kspan) = key.ok_or_else(|| {
+        err(
+            *span,
+            "<for> requires key={...} — identity for reordering (§6.2)",
+        )
+    })?;
     validate_loop_key(&key_path, &as_name, kspan)?;
 
     let items = (scope.collection_rows)(&path)
@@ -188,6 +214,7 @@ fn resolve_for(
             collection_rows: scope.collection_rows,
             has_frame_info_action: scope.has_frame_info_action,
             has_instant_action: scope.has_instant_action,
+            has_stream_event_action: scope.has_stream_event_action,
             binding_ctx: scope.binding_ctx,
         };
         out.extend(resolve_children(
@@ -195,6 +222,7 @@ fn resolve_for(
             &iter_scope,
             registry,
             slot_children,
+            call_site,
             "for",
             *span,
         )?);
@@ -210,9 +238,7 @@ fn validate_loop_key(key_path: &str, as_name: &str, span: Span) -> Result<(), In
     let Some(field) = key_path.strip_prefix(&format!("{as_name}.")) else {
         return Err(err(
             span,
-            format!(
-                "<for>: key={{{key_path}}} — key must be {{{as_name}}} or {{{as_name}.field}}"
-            ),
+            format!("<for>: key={{{key_path}}} — key must be {{{as_name}}} or {{{as_name}.field}}"),
         ));
     };
     if field.is_empty() || field.contains('.') {
@@ -236,8 +262,17 @@ fn resolve_if(
     scope: &Scope,
     registry: &ComponentRegistry,
     slot_children: Option<&[Node]>,
+    call_site: &Scope,
 ) -> Result<Vec<ViewNode>, InterpError> {
-    let Node::Element { attrs, children, span, .. } = node else { unreachable!() };
+    let Node::Element {
+        attrs,
+        children,
+        span,
+        ..
+    } = node
+    else {
+        unreachable!()
+    };
 
     let mut test: Option<(String, Span)> = None;
     for a in attrs {
@@ -248,11 +283,19 @@ fn resolve_if(
     }
     let (path, tspan) = test.ok_or_else(|| err(*span, "<if> requires test={someBoolField}"))?;
     let (then_kids, else_kids) = split_if_branches(children, *span)?;
-    let value = (scope.field)(&path)
-        .ok_or_else(|| err(tspan, format!("no field '{path}' on State")))?;
+    let value =
+        (scope.field)(&path).ok_or_else(|| err(tspan, format!("no field '{path}' on State")))?;
     let take_then = value == "true";
     let branch = if take_then { then_kids } else { else_kids };
-    resolve_children(branch, scope, registry, slot_children, "if", *span)
+    resolve_children(
+        branch,
+        scope,
+        registry,
+        slot_children,
+        call_site,
+        "if",
+        *span,
+    )
 }
 
 /// Resolved prop values at a component call site (§7.2).
@@ -267,12 +310,18 @@ struct PropBindings {
 fn resolve_unit_handler(scope: &Scope, name: &str, span: Span) -> Result<String, InterpError> {
     if scope.binding_ctx == "props" {
         return (scope.field)(name).ok_or_else(|| {
-            err(span, format!("no prop '{name}' — components resolve handlers only against props (§7.2)"))
+            err(
+                span,
+                format!("no prop '{name}' — components resolve handlers only against props (§7.2)"),
+            )
         });
     }
     require_camel_case(name, span)?;
     if !(scope.has_action)(name) {
-        return Err(err(span, format!("no action '{name}' on Action — check the enum")));
+        return Err(err(
+            span,
+            format!("no action '{name}' on Action — check the enum"),
+        ));
     }
     Ok(name.to_string())
 }
@@ -316,17 +365,19 @@ fn expand_component_call(
         collection_rows: &|_| None,
         has_frame_info_action: &|_| false,
         has_instant_action: &|_| false,
+        has_stream_event_action: &|_| false,
         binding_ctx: "props",
     };
     let mut out = Vec::new();
-    for body in &def.body {
-        out.extend(resolve_nodes(
-            body,
-            &prop_scope,
-            registry,
-            slot_children.as_deref(),
-        )?);
-    }
+    out.extend(resolve_children(
+        &def.body,
+        &prop_scope,
+        registry,
+        slot_children.as_deref(),
+        outer,
+        &def.name,
+        def.props_span,
+    )?);
     Ok(out)
 }
 
@@ -335,8 +386,15 @@ fn resolve_nodes(
     scope: &Scope,
     registry: &ComponentRegistry,
     slot_children: Option<&[Node]>,
+    call_site: &Scope,
 ) -> Result<Vec<ViewNode>, InterpError> {
-    let Node::Element { name, attrs, children, span } = node else {
+    let Node::Element {
+        name,
+        attrs,
+        children,
+        span,
+    } = node
+    else {
         return Err(err(
             Span { line: 0, col: 0 },
             "text content is only allowed inside <Text>, <Button>, and <Badge>",
@@ -344,6 +402,9 @@ fn resolve_nodes(
     };
     if !is_catalog_element(name) {
         if let Some(def) = registry.get(name) {
+            // Bind the call against the current scope, not the scope outside
+            // `<for>`. A component inside a loop has to see `{row.field}`.
+            // The component body still resolves only against its own props.
             return expand_component_call(name, attrs, children, def, scope, registry, *span);
         }
         return Err(err(
@@ -351,7 +412,13 @@ fn resolve_nodes(
             format!("unknown component <{name}> — no component file defines it (§7.2)"),
         ));
     }
-    Ok(vec![element(node, scope, registry, slot_children)?])
+    Ok(vec![element(
+        node,
+        scope,
+        registry,
+        slot_children,
+        call_site,
+    )?])
 }
 
 fn bind_call_props(
@@ -419,13 +486,15 @@ fn bind_one_prop(
         PropType::String => {
             let v = match &attr.value {
                 AttrValue::Str(s) => s.clone(),
-                AttrValue::Ident(path) => (outer.field)(path).ok_or_else(|| {
-                    err(attr.span, format!("no field '{path}' on State"))
-                })?,
+                AttrValue::Ident(path) => (outer.field)(path)
+                    .ok_or_else(|| err(attr.span, format!("no field '{path}' on State")))?,
                 _ => {
                     return Err(err(
                         attr.span,
-                        format!("prop '{}' on {comp_name} expects a string or {{binding}}", param.name),
+                        format!(
+                            "prop '{}' on {comp_name} expects a string or {{binding}}",
+                            param.name
+                        ),
                     ))
                 }
             };
@@ -435,9 +504,8 @@ fn bind_one_prop(
             let v = match &attr.value {
                 AttrValue::Num(n) => n.to_string(),
                 AttrValue::Ident(path) => {
-                    let s = (outer.field)(path).ok_or_else(|| {
-                        err(attr.span, format!("no field '{path}' on State"))
-                    })?;
+                    let s = (outer.field)(path)
+                        .ok_or_else(|| err(attr.span, format!("no field '{path}' on State")))?;
                     s.parse::<f32>().map_err(|_| {
                         err(
                             attr.span,
@@ -452,7 +520,10 @@ fn bind_one_prop(
                 _ => {
                     return Err(err(
                         attr.span,
-                        format!("prop '{}' on {comp_name} expects a number or {{binding}}", param.name),
+                        format!(
+                            "prop '{}' on {comp_name} expects a number or {{binding}}",
+                            param.name
+                        ),
                     ))
                 }
             };
@@ -462,13 +533,15 @@ fn bind_one_prop(
             let v = match &attr.value {
                 AttrValue::Flag => "true".to_string(),
                 AttrValue::Ident(path) => {
-                    let s = (outer.field)(path).ok_or_else(|| {
-                        err(attr.span, format!("no field '{path}' on State"))
-                    })?;
+                    let s = (outer.field)(path)
+                        .ok_or_else(|| err(attr.span, format!("no field '{path}' on State")))?;
                     if s != "true" && s != "false" {
                         return Err(err(
                             attr.span,
-                            format!("Bool prop '{}' expects Display \"true\" or \"false\"", param.name),
+                            format!(
+                                "Bool prop '{}' expects Display \"true\" or \"false\"",
+                                param.name
+                            ),
                         ));
                     }
                     s
@@ -508,10 +581,16 @@ fn bind_one_prop(
                             format!("'{name}' is not a String-payload Action variant"),
                         ));
                     }
-                    let _ = (outer.field)(arg).ok_or_else(|| err(attr.span, format!("no binding '{arg}'")))?;
+                    let _ = (outer.field)(arg)
+                        .ok_or_else(|| err(attr.span, format!("no binding '{arg}'")))?;
                     name.clone()
                 }
-                _ => return Err(err(attr.span, "Action(String) prop expects {handler} or {handler(arg)}")),
+                _ => {
+                    return Err(err(
+                        attr.span,
+                        "Action(String) prop expects {handler} or {handler(arg)}",
+                    ))
+                }
             };
             bindings.str_actions.insert(name.clone());
             bindings.display.insert(param.name.clone(), name);
@@ -571,7 +650,13 @@ fn split_if_branches<'a>(
                     "<if>: <else> must be the last child (nothing after </else>)",
                 ));
             }
-            let Node::Element { attrs, children: else_kids, span: espan, .. } = &children[i] else {
+            let Node::Element {
+                attrs,
+                children: else_kids,
+                span: espan,
+                ..
+            } = &children[i]
+            else {
                 unreachable!()
             };
             if !attrs.is_empty() {
@@ -587,8 +672,15 @@ fn element(
     scope: &Scope,
     registry: &ComponentRegistry,
     slot_children: Option<&[Node]>,
+    call_site: &Scope,
 ) -> Result<ViewNode, InterpError> {
-    let Node::Element { name, attrs, children, span } = node else {
+    let Node::Element {
+        name,
+        attrs,
+        children,
+        span,
+    } = node
+    else {
         return Err(err(
             Span { line: 0, col: 0 },
             "text content is only allowed inside <Text>, <Button>, and <Badge>",
@@ -600,13 +692,27 @@ fn element(
             return Err(err(*span, "<slot/> takes no attributes"));
         }
         let Some(slot_children) = slot_children else {
-            return Err(err(*span, "<slot/> is only valid in a component with a slot prop"));
+            return Err(err(
+                *span,
+                "<slot/> is only valid in a component with a slot prop",
+            ));
         };
-        let nodes = resolve_children(slot_children, scope, registry, None, "slot", *span)?;
+        let nodes = resolve_children(
+            slot_children,
+            call_site,
+            registry,
+            None,
+            call_site,
+            "slot",
+            *span,
+        )?;
         if nodes.len() == 1 {
             return Ok(nodes.into_iter().next().unwrap());
         }
-        return Ok(ViewNode::Column { style: BoxStyle::default(), children: nodes });
+        return Ok(ViewNode::Column {
+            style: BoxStyle::default(),
+            children: nodes,
+        });
     }
 
     if !is_catalog_element(name) {
@@ -633,7 +739,7 @@ fn element(
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(if name == "Column" {
                 ViewNode::Column { style, children: kids }
             } else {
@@ -899,7 +1005,7 @@ fn element(
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Tabs { children: kids, test_id })
         }
 
@@ -915,11 +1021,16 @@ fn element(
                     ("vertical", AttrValue::Flag) => vertical = true,
                     ("compact", AttrValue::Flag) => compact = true,
                     ("background", AttrValue::Str(s)) => background = Some(s.clone()),
+                    ("background", AttrValue::Ident(p)) => {
+                        background = Some((scope.field)(p).ok_or_else(|| {
+                            err(a.span, format!("no binding '{p}' in scope"))
+                        })?)
+                    }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Toolbar { vertical, compact, background, children: kids, test_id })
         }
 
@@ -933,7 +1044,7 @@ fn element(
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::StatusBar { children: kids, test_id })
         }
 
@@ -1133,7 +1244,7 @@ fn element(
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(if name == "Card" {
                 ViewNode::Card { style, children: kids }
             } else {
@@ -1313,17 +1424,13 @@ fn element(
                         }
                     }
                     ("onDismiss", AttrValue::Ident(m)) => {
-                        require_camel_case(m, a.span)?;
-                        if !(scope.has_action)(m) {
-                            return Err(err(a.span, format!("no action '{m}' on Action — check the enum")));
-                        }
-                        on_dismiss = Some(m.clone());
+                        on_dismiss = Some(resolve_unit_handler(scope, m, a.span)?);
                     }
                     ("testId", AttrValue::Str(v)) => test_id = Some(v.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Drawer { side, on_dismiss, test_id, children: kids })
         }
 
@@ -1331,7 +1438,7 @@ fn element(
         // §7.1 (PLAN-CATALOG): hierarchy trail — chevron auto-
         // inserted by build(); children are BreadcrumbItem.
         "Breadcrumb" => {
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Breadcrumb { children: kids })
         }
 
@@ -1461,7 +1568,7 @@ fn element(
                 }
             }
             let current = current.ok_or_else(|| err(*span, "<Stepper> requires current={0-based step index}"))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Stepper { current, children: kids })
         }
 
@@ -1492,7 +1599,7 @@ fn element(
         // (unlike Stepper, not position-derived); the container draws
         // the connector.
         "Timeline" => {
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Timeline { children: kids })
         }
 
@@ -1603,7 +1710,7 @@ fn element(
             }
             let text =
                 text.ok_or_else(|| err(*span, "<Tooltip> requires text={binding} or text=\"…\""))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Tooltip { text, position, children: kids })
         }
 
@@ -1631,7 +1738,7 @@ fn element(
             }
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<ContextMenu> requires testId=\"…\" (its anchor identity)"))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::ContextMenu { on_dismiss, test_id, children: kids })
         }
 
@@ -1641,6 +1748,7 @@ fn element(
         // Display); `testId` is the drag identity.
         "Split" => {
             let mut fraction = 0.5f32;
+            let mut left_min = None;
             let mut on_resize: Option<(String, Span)> = None;
             let mut test_id = None;
             for a in attrs {
@@ -1652,6 +1760,14 @@ fn element(
                         fraction = s.parse::<f32>().map_err(|_| {
                             err(a.span, format!("field '{path}' is not a number — <Split fraction> expects 0..1"))
                         })?;
+                    }
+                    ("leftMin", AttrValue::Num(v)) => left_min = Some(*v),
+                    ("leftMin", AttrValue::Ident(path)) => {
+                        let s = (scope.field)(path)
+                            .ok_or_else(|| err(a.span, format!("no field '{path}' on State")))?;
+                        left_min = Some(s.parse::<f32>().map_err(|_| {
+                            err(a.span, format!("field '{path}' is not a number — <Split leftMin> expects px"))
+                        })?);
                     }
                     ("onResize", AttrValue::Ident(m)) => on_resize = Some((m.clone(), a.span)),
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
@@ -1669,14 +1785,14 @@ fn element(
             }
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Split> requires testId=\"…\" (its drag identity)"))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             if kids.len() != 2 {
                 return Err(err(
                     *span,
                     format!("<Split> takes exactly two children (panes), got {}", kids.len()),
                 ));
             }
-            Ok(ViewNode::Split { fraction, on_resize: msg, test_id, children: kids })
+            Ok(ViewNode::Split { fraction, left_min, on_resize: msg, test_id, children: kids })
         }
 
         // §7.1 (PLAN-CATALOG / PLAN-NOTES-APP M6): the in-tree modal.
@@ -1696,14 +1812,7 @@ fn element(
                         })?)
                     }
                     ("onDismiss", AttrValue::Ident(m)) => {
-                        require_camel_case(m, a.span)?;
-                        if !(scope.has_action)(m) {
-                            return Err(err(
-                                a.span,
-                                format!("no action '{m}' on Action — check the enum"),
-                            ));
-                        }
-                        on_dismiss = Some(m.clone());
+                        on_dismiss = Some(resolve_unit_handler(scope, m, a.span)?);
                     }
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
@@ -1711,7 +1820,7 @@ fn element(
             }
             let title = title
                 .ok_or_else(|| err(*span, "<Dialog> requires title={binding} or title=\"…\""))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Dialog { title, on_dismiss, test_id, children: kids })
         }
 
@@ -1727,7 +1836,7 @@ fn element(
             }
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Scroll> requires testId=\"…\" (its scroll-position key)"))?;
-            let kids = resolve_children(children, scope, registry, slot_children, name, *span)?;
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
             Ok(ViewNode::Scroll { height, test_id, children: kids })
         }
 
@@ -1763,12 +1872,54 @@ fn element(
             let mut value: Option<(String, Span)> = None;
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
+            let mut on_submit: Option<String> = None;
+            let mut variant = InputVariant::Field;
+            let mut size = TextSize::Md;
+            let mut bold = false;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("onSubmit", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("no action '{m}' on Action — check the enum"),
+                            ));
+                        }
+                        on_submit = Some(m.clone());
+                    }
+                    ("variant", AttrValue::Str(s)) => {
+                        variant = match s.as_str() {
+                            "field" => InputVariant::Field,
+                            "plain" => InputVariant::Plain,
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!(
+                                        "unknown variant \"{other}\" — expected \"field\" or \"plain\""
+                                    ),
+                                ))
+                            }
+                        }
+                    }
+                    ("size", AttrValue::Str(s)) => {
+                        size = match s.as_str() {
+                            "sm" => TextSize::Sm,
+                            "md" => TextSize::Md,
+                            "xl" => TextSize::Xl,
+                            other => {
+                                return Err(err(
+                                    a.span,
+                                    format!("unknown size \"{other}\" — expected \"sm\", \"md\" or \"xl\""),
+                                ))
+                            }
+                        }
+                    }
+                    ("bold", AttrValue::Flag) => bold = true,
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     _ => return Err(unknown_attr(name, a)),
                 }
@@ -1786,11 +1937,18 @@ fn element(
                     format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
                 ));
             }
-            // Focus identity until structural IDs arrive with the
-            // reconciler — required, load-time enforced.
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Input> requires testId=\"…\" (focus identity)"))?;
-            Ok(ViewNode::Input { value, placeholder, on_change: msg, test_id })
+            Ok(ViewNode::Input {
+                value,
+                placeholder,
+                on_change: msg,
+                on_submit,
+                variant,
+                size,
+                bold,
+                test_id,
+            })
         }
 
         // §7.1 (PLAN-CATALOG wave 3): Input chrome + optional Enter
@@ -1857,6 +2015,7 @@ fn element(
             let mut on_press: Option<(String, Option<String>, Span)> = None;
             let mut on_menu: Option<(String, Option<String>, Span)> = None;
             let mut inset = 0.0f32;
+            let mut grow = false;
             let mut test_id = None;
             let resolve = |path: &str, aspan: Span| -> Result<String, InterpError> {
                 (scope.field)(path)
@@ -1880,6 +2039,7 @@ fn element(
                     ("onMenu", AttrValue::Call { name: m, arg }) => {
                         on_menu = Some((m.clone(), Some(arg.clone()), a.span))
                     }
+                    ("grow", AttrValue::Flag) => grow = true,
                     ("inset", AttrValue::Num(v)) => inset = (*v).max(0.0),
                     ("inset", AttrValue::Ident(p)) => {
                         let s = resolve(p, a.span)?;
@@ -1957,6 +2117,7 @@ fn element(
                 on_menu,
                 on_menu_arg,
                 inset,
+                grow,
                 test_id,
             })
         }
@@ -1968,12 +2129,25 @@ fn element(
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
             let mut test_id: Option<String> = None;
+            let mut markdown = false;
+            let mut on_wikilink = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    ("markdown", AttrValue::Flag) => markdown = true,
+                    ("onWikilink", AttrValue::Ident(m)) => {
+                        require_camel_case(m, a.span)?;
+                        if !(scope.has_str_action)(m) {
+                            return Err(err(
+                                a.span,
+                                format!("'{m}' is not a String-payload Action variant (need `{m}(String)`)"),
+                            ));
+                        }
+                        on_wikilink = Some(m.clone());
+                    }
                     _ => return Err(unknown_attr(name, a)),
                 }
             }
@@ -1992,7 +2166,7 @@ fn element(
             }
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Textarea> requires testId=\"…\" (focus identity)"))?;
-            Ok(ViewNode::Textarea { value, placeholder, on_change: msg, test_id })
+            Ok(ViewNode::Textarea { value, placeholder, on_change: msg, test_id, markdown, on_wikilink })
         }
 
         // §7.1 Layout (PLAN-CATALOG wave 1): pure layout — fixed room
@@ -2100,10 +2274,12 @@ fn element(
             let (msg, mspan) =
                 on_event.ok_or_else(|| err(*span, "<Stream> requires onEvent={someAction}"))?;
             require_camel_case(&msg, mspan)?;
-            if !(scope.has_str_action)(&msg) {
+            if !(scope.has_stream_event_action)(&msg) {
                 return Err(err(
                     mspan,
-                    format!("'{msg}' is not a String-payload Action variant (need `{msg}(String)`)"),
+                    format!(
+                        "'{msg}' is not a StreamEvent-payload Action variant (need `{msg}(StreamEvent)`)"
+                    ),
                 ));
             }
             Ok(ViewNode::SourceStream { id: id_value, on_event: msg })
@@ -2179,14 +2355,20 @@ fn parse_tone(t: &str, span: Span) -> Result<Tone, InterpError> {
 }
 
 fn unknown_attr(el: &str, a: &Attr) -> InterpError {
-    err(a.span, format!("unknown or invalid attribute '{}' on <{el}>", a.name))
+    err(
+        a.span,
+        format!("unknown or invalid attribute '{}' on <{el}>", a.name),
+    )
 }
 
 fn text_content(children: &[Node], scope: &Scope, span: Span) -> Result<String, InterpError> {
     let mut out = String::new();
     for (i, child) in children.iter().enumerate() {
         let Node::Text(inlines) = child else {
-            return Err(err(span, "nested elements inside text content are not allowed in Phase 0"));
+            return Err(err(
+                span,
+                "nested elements inside text content are not allowed in Phase 0",
+            ));
         };
         for (j, inline) in inlines.iter().enumerate() {
             if (i, j) != (0, 0) && !out.is_empty() {
@@ -2230,6 +2412,7 @@ mod tests {
             collection_rows: &|_| None,
             has_frame_info_action: &|_| false,
             has_instant_action: &|_| false,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         }
     }
@@ -2250,7 +2433,9 @@ mod tests {
         let field = |p: &str| (p == "count").then(|| "7".to_string());
         let has_action = |m: &str| m == "increment";
         let view = resolve(&ast, &scope_ok(&field, &has_action), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(
             children[0],
             ViewNode::Text {
@@ -2311,6 +2496,7 @@ mod tests {
             collection_rows: &|_| None,
             has_frame_info_action: &|_| false,
             has_instant_action: &|_| false,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         }
     }
@@ -2321,8 +2507,17 @@ mod tests {
         let field = |p: &str| (p == "item").then(|| "todo-42".to_string());
         let has_str = |m: &str| m == "toggle";
         let view = resolve(&ast, &scope_item(&field, &has_str), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        let ViewNode::Button { on_press, on_press_arg, .. } = &children[0] else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        let ViewNode::Button {
+            on_press,
+            on_press_arg,
+            ..
+        } = &children[0]
+        else {
+            panic!()
+        };
         assert_eq!(on_press, "toggle");
         assert_eq!(on_press_arg.as_deref(), Some("todo-42"));
     }
@@ -2366,28 +2561,40 @@ mod tests {
             collection_rows,
             has_frame_info_action: &|_| false,
             has_instant_action: &|_| false,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         }
     }
 
     fn opaque_items(items: Vec<&str>) -> Vec<CollectionRow> {
-        items.into_iter().map(|s| CollectionRow::opaque(s.to_string())).collect()
+        items
+            .into_iter()
+            .map(|s| CollectionRow::opaque(s.to_string()))
+            .collect()
     }
 
     #[test]
     fn for_loop_expands_into_one_node_per_item_bound_to_the_loop_variable() {
-        let ast = parse(
-            r#"<Column><for each={items} as="x" key={x}><Text>{x}</Text></for></Column>"#,
-        )
-        .unwrap();
+        let ast =
+            parse(r#"<Column><for each={items} as="x" key={x}><Text>{x}</Text></for></Column>"#)
+                .unwrap();
         let field = |_: &str| None;
         let items = opaque_items(vec!["a", "b", "c"]);
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let view = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(children.len(), 3);
         for (i, expected) in ["a", "b", "c"].iter().enumerate() {
-            let ViewNode::Text { content, .. } = &children[i] else { panic!() };
+            let ViewNode::Text { content, .. } = &children[i] else {
+                panic!()
+            };
             assert_eq!(content, expected);
         }
     }
@@ -2405,9 +2612,18 @@ mod tests {
         let field = |p: &str| (p == "count").then(|| "7".to_string());
         let items = opaque_items(vec!["a"]);
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        let view = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        let ViewNode::Text { content, .. } = &children[0] else {
+            panic!()
+        };
         assert_eq!(content, "a - 7");
     }
 
@@ -2416,17 +2632,28 @@ mod tests {
         let ast = parse(r#"<Column><for as="x" key={x}><Text>{x}</Text></for></Column>"#).unwrap();
         let field = |_: &str| None;
         let collection_rows = |_: &str| None;
-        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires each="));
     }
 
     #[test]
     fn for_requires_key() {
-        let ast = parse(r#"<Column><for each={items} as="x"><Text>{x}</Text></for></Column>"#).unwrap();
+        let ast =
+            parse(r#"<Column><for each={items} as="x"><Text>{x}</Text></for></Column>"#).unwrap();
         let field = |_: &str| None;
         let items = opaque_items(vec!["a"]);
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires key="));
     }
 
@@ -2442,9 +2669,18 @@ mod tests {
             fields: vec![("id".into(), "1".into()), ("label".into(), "Alpha".into())],
         }];
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let view = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        let view = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        let ViewNode::Text { content, .. } = &children[0] else {
+            panic!()
+        };
         assert_eq!(content, "Alpha");
     }
 
@@ -2457,7 +2693,12 @@ mod tests {
         let field = |_: &str| None;
         let items = opaque_items(vec!["a"]);
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("one field segment"), "{}", e.message);
     }
 
@@ -2470,7 +2711,12 @@ mod tests {
         let field = |_: &str| None;
         let items = opaque_items(vec!["a"]);
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
-        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("key must be {x}"), "{}", e.message);
     }
 
@@ -2483,15 +2729,28 @@ mod tests {
         let field = |_: &str| None;
         let items = vec![CollectionRow {
             whole: "1".into(),
-            fields: vec![("id".into(), "1".into()), ("text".into(), "Buy milk".into())],
+            fields: vec![
+                ("id".into(), "1".into()),
+                ("text".into(), "Buy milk".into()),
+            ],
         }];
         let collection_rows = move |p: &str| (p == "items").then(|| items.clone());
         let mut scope = scope_with_collection(&field, &collection_rows);
         let has_str = |m: &str| m == "complete";
         scope.has_str_action = &has_str;
         let view = resolve(&ast, &scope, &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        let ViewNode::Button { on_press, on_press_arg, label, .. } = &children[0] else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        let ViewNode::Button {
+            on_press,
+            on_press_arg,
+            label,
+            ..
+        } = &children[0]
+        else {
+            panic!()
+        };
         assert_eq!(on_press, "complete");
         assert_eq!(on_press_arg.as_deref(), Some("1"));
         assert_eq!(label, "Buy milk");
@@ -2505,7 +2764,12 @@ mod tests {
         .unwrap();
         let field = |_: &str| None;
         let collection_rows = |_: &str| None;
-        let e = resolve(&ast, &scope_with_collection(&field, &collection_rows), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_collection(&field, &collection_rows),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("no collection 'nonexistent' on State"));
     }
 
@@ -2517,6 +2781,7 @@ mod tests {
             collection_rows: &|_| None,
             has_frame_info_action,
             has_instant_action: &|_| false,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         }
     }
@@ -2529,6 +2794,7 @@ mod tests {
             collection_rows: &|_| None,
             has_frame_info_action: &|_| false,
             has_instant_action,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         }
     }
@@ -2537,16 +2803,33 @@ mod tests {
     fn frames_resolves_to_a_source_node_when_on_tick_names_a_real_handler() {
         let ast = parse(r#"<Column><Frames onTick={frame} /></Column>"#).unwrap();
         let has_frame_info_action = |m: &str| m == "frame";
-        let view = resolve(&ast, &scope_with_frame_info(&has_frame_info_action), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        assert_eq!(children, vec![ViewNode::SourceFrames { on_tick: "frame".into() }]);
+        let view = resolve(
+            &ast,
+            &scope_with_frame_info(&has_frame_info_action),
+            &empty_registry(),
+        )
+        .unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        assert_eq!(
+            children,
+            vec![ViewNode::SourceFrames {
+                on_tick: "frame".into()
+            }]
+        );
     }
 
     #[test]
     fn frames_requires_on_tick() {
         let ast = parse(r#"<Column><Frames /></Column>"#).unwrap();
         let has_frame_info_action = |_: &str| true;
-        let e = resolve(&ast, &scope_with_frame_info(&has_frame_info_action), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &ast,
+            &scope_with_frame_info(&has_frame_info_action),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires onTick="));
     }
 
@@ -2554,8 +2837,17 @@ mod tests {
     fn frames_on_tick_must_name_a_frame_info_handler() {
         let ast = parse(r#"<Column><Frames onTick={notAHandler} /></Column>"#).unwrap();
         let has_frame_info_action = |_: &str| false;
-        let e = resolve(&ast, &scope_with_frame_info(&has_frame_info_action), &empty_registry()).unwrap_err();
-        assert!(e.message.contains("not a FrameInfo-payload Action variant"), "{}", e.message);
+        let e = resolve(
+            &ast,
+            &scope_with_frame_info(&has_frame_info_action),
+            &empty_registry(),
+        )
+        .unwrap_err();
+        assert!(
+            e.message.contains("not a FrameInfo-payload Action variant"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]
@@ -2577,13 +2869,21 @@ mod tests {
             collection_rows: &collection_rows,
             has_frame_info_action: &has_frame_info_action,
             has_instant_action: &|_| false,
+            has_stream_event_action: &|_| false,
             binding_ctx: "State",
         };
         let view = resolve(&ast, &scope, &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(children.len(), 2);
         for child in &children {
-            assert_eq!(child, &ViewNode::SourceFrames { on_tick: "frame".into() });
+            assert_eq!(
+                child,
+                &ViewNode::SourceFrames {
+                    on_tick: "frame".into()
+                }
+            );
         }
     }
 
@@ -2595,9 +2895,13 @@ mod tests {
         .unwrap();
         let field = |p: &str| (p == "running").then(|| "true".to_string());
         let view = resolve(&ast, &scope_ok(&field, &|_| true), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(children.len(), 1);
-        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        let ViewNode::Text { content, .. } = &children[0] else {
+            panic!()
+        };
         assert_eq!(content, "on");
     }
 
@@ -2609,8 +2913,12 @@ mod tests {
         .unwrap();
         let field = |p: &str| (p == "running").then(|| "false".to_string());
         let view = resolve(&ast, &scope_ok(&field, &|_| true), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
-        let ViewNode::Text { content, .. } = &children[0] else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
+        let ViewNode::Text { content, .. } = &children[0] else {
+            panic!()
+        };
         assert_eq!(content, "off");
     }
 
@@ -2619,7 +2927,9 @@ mod tests {
         let ast = parse(r#"<Column><if test={running}><Text>on</Text></if></Column>"#).unwrap();
         let field = |p: &str| (p == "running").then(|| "false".to_string());
         let view = resolve(&ast, &scope_ok(&field, &|_| true), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert!(children.is_empty());
     }
 
@@ -2634,11 +2944,21 @@ mod tests {
     fn interval_resolves_to_a_source_node_when_on_tick_names_a_real_handler() {
         let ast = parse(r#"<Column><Interval every={1000} onTick={poll} /></Column>"#).unwrap();
         let has_instant_action = |m: &str| m == "poll";
-        let view = resolve(&ast, &scope_with_instant(&has_instant_action), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let view = resolve(
+            &ast,
+            &scope_with_instant(&has_instant_action),
+            &empty_registry(),
+        )
+        .unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(
             children,
-            vec![ViewNode::SourceInterval { every_ms: 1000, on_tick: "poll".into() }]
+            vec![ViewNode::SourceInterval {
+                every_ms: 1000,
+                on_tick: "poll".into()
+            }]
         );
     }
 
@@ -2646,62 +2966,127 @@ mod tests {
     fn interval_requires_every_and_on_tick() {
         let has_instant_action = |_: &str| true;
         let missing_every = parse(r#"<Column><Interval onTick={poll} /></Column>"#).unwrap();
-        let e = resolve(&missing_every, &scope_with_instant(&has_instant_action), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &missing_every,
+            &scope_with_instant(&has_instant_action),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires every="), "{}", e.message);
 
         let missing_on_tick = parse(r#"<Column><Interval every={1000} /></Column>"#).unwrap();
-        let e = resolve(&missing_on_tick, &scope_with_instant(&has_instant_action), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &missing_on_tick,
+            &scope_with_instant(&has_instant_action),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires onTick="), "{}", e.message);
     }
 
     #[test]
     fn interval_on_tick_must_name_an_instant_handler() {
-        let ast = parse(r#"<Column><Interval every={1000} onTick={notAHandler} /></Column>"#).unwrap();
+        let ast =
+            parse(r#"<Column><Interval every={1000} onTick={notAHandler} /></Column>"#).unwrap();
         let has_instant_action = |_: &str| false;
-        let e = resolve(&ast, &scope_with_instant(&has_instant_action), &empty_registry()).unwrap_err();
-        assert!(e.message.contains("not an Instant-payload Action variant"), "{}", e.message);
+        let e = resolve(
+            &ast,
+            &scope_with_instant(&has_instant_action),
+            &empty_registry(),
+        )
+        .unwrap_err();
+        assert!(
+            e.message.contains("not an Instant-payload Action variant"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]
-    fn stream_resolves_to_a_source_node_with_the_resolved_id_and_a_str_handler() {
+    fn stream_resolves_to_a_source_node_with_the_resolved_id_and_a_stream_handler() {
         let ast = parse(r#"<Column><Stream id={feed} onEvent={packet} /></Column>"#).unwrap();
         let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
-        let has_str = |m: &str| m == "packet";
-        let view = resolve(&ast, &scope_item(&field, &has_str), &empty_registry()).unwrap();
-        let ViewNode::Column { children, .. } = view else { panic!() };
+        let has_stream = |m: &str| m == "packet";
+        let view = resolve(&ast, &scope_stream(&field, &has_stream), &empty_registry()).unwrap();
+        let ViewNode::Column { children, .. } = view else {
+            panic!()
+        };
         assert_eq!(
             children,
-            vec![ViewNode::SourceStream { id: "telemetry".into(), on_event: "packet".into() }]
+            vec![ViewNode::SourceStream {
+                id: "telemetry".into(),
+                on_event: "packet".into()
+            }]
         );
     }
 
     #[test]
     fn stream_requires_id_and_on_event() {
-        let has_str = |_: &str| true;
+        let has_stream = |_: &str| true;
         let missing_id = parse(r#"<Column><Stream onEvent={packet} /></Column>"#).unwrap();
-        let e = resolve(&missing_id, &scope_item(&|_| None, &has_str), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &missing_id,
+            &scope_stream(&|_| None, &has_stream),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires id="), "{}", e.message);
 
         let missing_on_event = parse(r#"<Column><Stream id={feed} /></Column>"#).unwrap();
         let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
-        let e = resolve(&missing_on_event, &scope_item(&field, &has_str), &empty_registry()).unwrap_err();
+        let e = resolve(
+            &missing_on_event,
+            &scope_stream(&field, &has_stream),
+            &empty_registry(),
+        )
+        .unwrap_err();
         assert!(e.message.contains("requires onEvent="), "{}", e.message);
     }
 
     #[test]
-    fn stream_on_event_must_name_a_str_handler() {
+    fn stream_on_event_must_name_a_stream_event_handler() {
         let ast = parse(r#"<Column><Stream id={feed} onEvent={notAHandler} /></Column>"#).unwrap();
         let field = |p: &str| (p == "feed").then(|| "telemetry".to_string());
-        let has_str = |_: &str| false;
-        let e = resolve(&ast, &scope_item(&field, &has_str), &empty_registry()).unwrap_err();
-        assert!(e.message.contains("not a String-payload Action variant"), "{}", e.message);
+        let has_stream = |_: &str| false;
+        let e = resolve(&ast, &scope_stream(&field, &has_stream), &empty_registry()).unwrap_err();
+        assert!(
+            e.message
+                .contains("not a StreamEvent-payload Action variant"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]
     fn stream_id_must_resolve_to_a_real_binding() {
         let ast = parse(r#"<Column><Stream id={gone} onEvent={packet} /></Column>"#).unwrap();
-        let has_str = |m: &str| m == "packet";
-        let e = resolve(&ast, &scope_item(&|_| None, &has_str), &empty_registry()).unwrap_err();
-        assert!(e.message.contains("no field 'gone' on State"), "{}", e.message);
+        let has_stream = |m: &str| m == "packet";
+        let e = resolve(
+            &ast,
+            &scope_stream(&|_| None, &has_stream),
+            &empty_registry(),
+        )
+        .unwrap_err();
+        assert!(
+            e.message.contains("no field 'gone' on State"),
+            "{}",
+            e.message
+        );
+    }
+
+    fn scope_stream<'a>(
+        field: &'a dyn Fn(&str) -> Option<String>,
+        has_stream_event_action: &'a dyn Fn(&str) -> bool,
+    ) -> Scope<'a> {
+        Scope {
+            field,
+            has_action: &|_| false,
+            has_str_action: &|_| false,
+            collection_rows: &|_| None,
+            has_frame_info_action: &|_| false,
+            has_instant_action: &|_| false,
+            has_stream_event_action,
+            binding_ctx: "State",
+        }
     }
 }

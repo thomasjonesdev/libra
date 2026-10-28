@@ -23,7 +23,10 @@ pub fn formats_for_target(target: &str, format: &str) -> Vec<String> {
     if format != "default" {
         return vec![format.to_string()];
     }
-    default_formats(target).into_iter().map(str::to_string).collect()
+    default_formats(target)
+        .into_iter()
+        .map(str::to_string)
+        .collect()
 }
 
 /// Release binary filename inside `target/release/`.

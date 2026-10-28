@@ -32,9 +32,26 @@ Budgets are CI-enforced (criterion benches + frame-timing assertions in snapshot
 
 Two standing benchmark apps: `dashboard` (data-plane stress: 16 series × 10 kHz tape) and `log-explorer` (1M-line corpus, live filter).
 
+## Per-app budgets in the harness
+
+The frame-timing half of the above is available to any app test through the
+autopilot ([[PLAN-AUTOPILOT]]): `.budget(Budget::new().p95_ms(150.0).max_ms(1_500.0))`
+asserts over a whole run, and a failure names the interaction behind the worst
+frame. Because these are wall-clock they are opt-in per test and belong at the
+regression-in-kind threshold, not at a tight one — the clip-mask regression put
+single frames past a second, which no reasonable machine variance reaches.
+
+**Growth guards are the machine-independent half.** `.bounded("history", 500, …)`
+measures app state rather than time, so it is deterministic everywhere and is
+the leak check that belongs in a committed test. Process RSS is not: it reports
+allocator behavior as much as app behavior. A run that holds every collection
+bounded across hundreds of interactions is the property "memory climbs while I
+use it" actually reduces to.
+
 ## In code
 
 - `examples/dashboard` — `cargo run -p dashboard --release -- bench` (the §22 budget check)
+- `crates/libra-test/src/autopilot.rs` — `Budget` + bounded metrics for per-app runs
 - Root `Cargo.toml` `[profile.dev.package.*]` — paint-path crates (tiny-skia / fontdue / taffy + `libra-raster` / `libra-draw` / `libra-data` / `libra-components` / `libra-platform`) stay at `opt-level = 2` in plain debug so live windows remain within the damage-tracked budget without a special profile. App logic stays opt-level 0.
 
 ---

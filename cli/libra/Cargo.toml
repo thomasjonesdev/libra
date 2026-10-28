@@ -1,8 +1,15 @@
 [package]
-name = "libra-cli"
+name = "libra-ui-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Libra CLI: new, dev, check, test, build, package"
+
+# `template/` is untracked, and `cargo package` only ships git-tracked
+# files. List it so `libra new` still embeds the starter (PLAN-SDK S4).
+include = ["src/**/*", "template/**/*"]
 
 [[bin]]
 name = "libra"
@@ -13,6 +20,7 @@ libra-markup.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 toml.workspace = true
+libc.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

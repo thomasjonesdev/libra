@@ -18,7 +18,12 @@ impl Session {
 
 impl Session {
     fn start() -> (Session, Vec<libra_core::Effect<Action>>) {
-        (Session { status: "starting…".into() }, vec![])
+        (
+            Session {
+                status: "starting…".into(),
+            },
+            vec![],
+        )
     }
 }
 
@@ -47,7 +52,9 @@ fn window_field_is_optional_and_falls_back() {
 #[test]
 fn actions_dispatch_through_the_explicit_init_state() {
     let mut h = libra_test::Harness::<Session>::render(VIEW);
-    h.query(libra_test::by::test_id("status")).assert_text("starting…");
+    h.query(libra_test::by::test_id("status"))
+        .assert_text("starting…");
     h.dispatch(Action::Ready);
-    h.query(libra_test::by::test_id("status")).assert_text("ready");
+    h.query(libra_test::by::test_id("status"))
+        .assert_text("ready");
 }

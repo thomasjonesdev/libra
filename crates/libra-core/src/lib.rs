@@ -57,6 +57,18 @@ impl SeriesHandle {
     }
 }
 
+/// Zero handle. §18.2 per-field restore uses this when a snapshot has
+/// no readable `SeriesHandle` (new field, or a value that no longer parses).
+impl Default for SeriesHandle {
+    fn default() -> Self {
+        SeriesHandle {
+            id: SeriesId(0),
+            window_ms: 0.0,
+            paused: false,
+        }
+    }
+}
+
 impl std::fmt::Display for SeriesHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}|{}|{}", self.id.0, self.window_ms, self.paused)
@@ -264,11 +276,52 @@ pub struct ProcessResult {
     pub finished_at_unix_ms: u64,
 }
 
+/// One event from an open stream (PLAN-STREAM-DELIVERY, §12.3). Ordinary
+/// action payloads — replay and tests see them like every other action.
+/// Events from one stream arrive in source order; nothing is promised
+/// across streams.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamEvent {
+    /// One complete line, terminator stripped. `stderr` is set when
+    /// [`Capture::Both`] read the line from stderr, so the pipes stay
+    /// distinguishable.
+    Line { text: String, stderr: bool },
+    /// Raw bytes, for a source that is not line-oriented.
+    Chunk(Vec<u8>),
+    /// The runtime dropped `n` events because no handler was mounted
+    /// and the buffer was full. Loss is reported, never silent.
+    Dropped(u32),
+    /// Source ended. Terminal — no further events for this id.
+    Closed(StreamClose),
+}
+
+/// Why a stream ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamClose {
+    /// Spawn-backed: the child exited. Same status vocabulary as §12.6.
+    Process(ProcessStatus),
+    /// `CloseStream`, or the child was killed because the handler unmounted.
+    Cancelled,
+    Failed(String),
+}
+
+/// Which pipes feed a [`Effect::Spawn`] stream. Stderr is opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capture {
+    Stdout,
+    Stderr,
+    Both,
+}
+
 /// Effect descriptions (ARCHITECTURE.md §12.1, Phase-1 subset).
 /// Actions return these; the runtime executes them; tests intercept
 /// them and hand-feed results back. Closed and versioned — grows in
 /// later phases (Ws*, File*, Spawn, Interval, ingest…).
+///
+/// `non_exhaustive` so a new variant is not a breaking match for
+/// downstream crates (PLAN-SDK S4). Matches outside this crate need `_`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Effect<M> {
     // Network
     Http {
@@ -317,6 +370,13 @@ pub enum Effect<M> {
     IngestClose {
         series: SeriesId,
     },
+    /// One sample into a ring (§14.2). The runtime writes it; `update`
+    /// never keeps the value. `t_ms` is session time the app already holds.
+    Sample {
+        series: SeriesId,
+        t_ms: f64,
+        value: f64,
+    },
 
     // Platform (§12.1): handled by the shell (and intercepted by the
     // harness), not the worker pool — the renderer re-resolves live.
@@ -344,6 +404,22 @@ pub enum Effect<M> {
     },
     CancelProcess {
         id: ProcessId,
+    },
+
+    /// Long-running process whose output is delivered as [`StreamEvent`]s
+    /// on `stream` (PLAN-STREAM-DELIVERY). Same [`CommandSpec`] rules as
+    /// [`Effect::Process`] (§12.6): argv, allowlist, output never logged.
+    /// The mounted `<Stream onEvent>` is the handler — there is no ctor
+    /// here, because the element may not exist until after this effect runs.
+    Spawn {
+        stream: String,
+        command: CommandSpec,
+        capture: Capture,
+    },
+    /// Kill the child for `stream` and deliver [`StreamClose::Cancelled`]
+    /// if a handler is still mounted.
+    CloseStream {
+        stream: String,
     },
 }
 
@@ -409,6 +485,18 @@ impl<M: PartialEq> PartialEq for Effect<M> {
                 },
             ) => sa == sb && ia == ib,
             (Effect::IngestClose { series: a }, Effect::IngestClose { series: b }) => a == b,
+            (
+                Effect::Sample {
+                    series: sa,
+                    t_ms: ta,
+                    value: va,
+                },
+                Effect::Sample {
+                    series: sb,
+                    t_ms: tb,
+                    value: vb,
+                },
+            ) => sa == sb && ta == tb && va == vb,
             (Effect::SetTheme { name: a }, Effect::SetTheme { name: b }) => a == b,
             (
                 Effect::ClipboardSet {
@@ -434,6 +522,19 @@ impl<M: PartialEq> PartialEq for Effect<M> {
                 },
             ) => ia == ib && ca == cb,
             (Effect::CancelProcess { id: a }, Effect::CancelProcess { id: b }) => a == b,
+            (
+                Effect::Spawn {
+                    stream: sa,
+                    command: ca,
+                    capture: pa,
+                },
+                Effect::Spawn {
+                    stream: sb,
+                    command: cb,
+                    capture: pb,
+                },
+            ) => sa == sb && ca == cb && pa == pb,
+            (Effect::CloseStream { stream: a }, Effect::CloseStream { stream: b }) => a == b,
             _ => false,
         }
     }
@@ -476,7 +577,11 @@ impl<M> Effect<M> {
         }
     }
     pub fn timer_id(id: TimerId, after_ms: u64, action: M) -> Self {
-        Effect::Timer { id: Some(id), after_ms, action }
+        Effect::Timer {
+            id: Some(id),
+            after_ms,
+            action,
+        }
     }
     pub fn clipboard_set(text: impl Into<String>) -> Self {
         Effect::ClipboardSet {
@@ -512,6 +617,21 @@ impl<M> Effect<M> {
             id: Some(id),
             command,
             on_done,
+        }
+    }
+    pub fn sample(series: SeriesId, t_ms: f64, value: f64) -> Self {
+        Effect::Sample { series, t_ms, value }
+    }
+    pub fn spawn(stream: impl Into<String>, command: CommandSpec, capture: Capture) -> Self {
+        Effect::Spawn {
+            stream: stream.into(),
+            command,
+            capture,
+        }
+    }
+    pub fn close_stream(stream: impl Into<String>) -> Self {
+        Effect::CloseStream {
+            stream: stream.into(),
         }
     }
 }
@@ -577,6 +697,82 @@ impl<T, E> Remote<T, E> {
 impl<T, E> Default for Remote<T, E> {
     fn default() -> Self {
         Remote::NotAsked
+    }
+}
+
+/// What [`Rehydrate::rehydrate`] could not keep from a model snapshot
+/// (ARCHITECTURE.md §18.2). A clean snapshot has every vec empty and
+/// `invalid == false`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RehydrateReport {
+    /// Fields missing from the snapshot, or present but not readable as
+    /// the current type. Each one came back as `Default`.
+    pub defaulted: Vec<String>,
+    /// Keys the snapshot still has that this state struct no longer reads.
+    pub removed: Vec<String>,
+    /// The bytes were not a JSON object. Callers should keep `init`
+    /// instead of the all-default value returned alongside this flag.
+    pub invalid: bool,
+}
+
+/// Per-field restore of a serde model snapshot (§18.2). Generated by
+/// `#[libra::state]` for every named field that serde would deserialize.
+/// A new field, or a field whose stored JSON no longer matches its type,
+/// becomes `Default` and is named on the report. Removed fields are
+/// ignored and named. Nested values follow that field's own serde
+/// rules; if the nested value will not parse, the whole field defaults.
+pub trait Rehydrate: Sized {
+    fn rehydrate(json: &str) -> (Self, RehydrateReport);
+}
+
+/// Parse a snapshot into an object map. `Err` means the caller should
+/// start fresh (`RehydrateReport::invalid`).
+#[doc(hidden)]
+pub fn snapshot_object(json: &str) -> Result<serde_json::Map<String, serde_json::Value>, ()> {
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(serde_json::Value::Object(map)) => Ok(map),
+        _ => Err(()),
+    }
+}
+
+/// Read one state field. Missing and unreadable values default, and the
+/// JSON key is recorded on `report.defaulted`.
+#[doc(hidden)]
+pub fn take_field<T>(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    report: &mut RehydrateReport,
+) -> T
+where
+    T: serde::de::DeserializeOwned + Default,
+{
+    match obj.get(key) {
+        None => {
+            report.defaulted.push(key.to_string());
+            T::default()
+        }
+        Some(value) => match serde_json::from_value(value.clone()) {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                report.defaulted.push(key.to_string());
+                T::default()
+            }
+        },
+    }
+}
+
+/// Record snapshot keys that are not in `kept` (fields this state no
+/// longer deserializes).
+#[doc(hidden)]
+pub fn note_removed(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    kept: &[&str],
+    report: &mut RehydrateReport,
+) {
+    for key in obj.keys() {
+        if !kept.contains(&key.as_str()) {
+            report.removed.push(key.clone());
+        }
     }
 }
 
@@ -720,6 +916,15 @@ pub trait ReflectAction: Sized {
     /// a different runtime-supplied payload type.
     fn action_with_instant(name: &str, instant: Instant) -> Option<Self> {
         let _ = (name, instant);
+        None
+    }
+
+    /// Resolve a handler name to an action carrying a [`StreamEvent`]
+    /// (§12.5's `<Stream id onEvent={name}>`). Derived for
+    /// single-`StreamEvent` tuple variants. Default `None` keeps
+    /// hand-written impls source-compatible.
+    fn action_with_stream_event(name: &str, event: StreamEvent) -> Option<Self> {
+        let _ = (name, event);
         None
     }
 
@@ -1310,5 +1515,34 @@ mod tests {
         assert!(fires("cmd+n"), "unclaimed cmd chords fire while typing");
         assert!(fires("cmd+backspace"));
         assert!(fires("cmd+alt+down"));
+    }
+}
+
+#[cfg(test)]
+mod rehydrate_tests {
+    use super::{note_removed, snapshot_object, take_field, RehydrateReport};
+
+    #[test]
+    fn take_field_defaults_missing_and_unreadable_values() {
+        let obj = snapshot_object(r#"{"count": 3, "label": 1}"#).unwrap();
+        let mut report = RehydrateReport::default();
+        let count: i64 = take_field(&obj, "count", &mut report);
+        let label: String = take_field(&obj, "label", &mut report);
+        let extra: bool = take_field(&obj, "extra", &mut report);
+        assert_eq!(count, 3);
+        assert_eq!(label, "");
+        assert!(!extra);
+        assert_eq!(
+            report.defaulted,
+            vec!["label".to_string(), "extra".to_string()]
+        );
+        note_removed(&obj, &["count", "label"], &mut report);
+        assert_eq!(report.removed, Vec::<String>::new());
+    }
+
+    #[test]
+    fn snapshot_object_rejects_non_objects() {
+        assert!(snapshot_object("[]").is_err());
+        assert!(snapshot_object("not json").is_err());
     }
 }

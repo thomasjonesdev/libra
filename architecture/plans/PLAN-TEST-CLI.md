@@ -40,7 +40,10 @@ This matches the "managed but ejectable" CLI ethos of [[18.1-cli|§18.1]].
 ## CLI surface
 
 ```
-libra test [FILTER…]              substring filter on test names (`libra test Button`)
+libra test [path] [FILTER…]       no path = workspace; an existing crate /
+                                  `Cargo.toml` path is a scope (pins
+                                  `--manifest-path`). Other positionals are
+                                  substring filters (`libra test Button`)
   -p, --package <crate>           scope to one crate/app (repeatable)
   --kind <k>                      unit | component | integration | snapshot
   --component <Name>              gallery workbench + component tests for one component

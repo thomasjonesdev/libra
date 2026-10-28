@@ -90,6 +90,7 @@ Resolve `§N.N` / `ARCHITECTURE.md §N.N` citations here.
 | 19.1 | `sections/19.1-touch.md` |
 | 19.2 | `sections/19.2-keyboard-shortcuts-declarations-not-handlers.md` |
 | 19.3 | `sections/19.3-native-menus.md` |
+| 19.4 | `sections/19.4-desktop-os-matrix.md` |
 | 20 | `sections/20-packaging.md` |
 | 21 | `sections/21-crate-layout.md` |
 | 22 | `sections/22-performance-budgets.md` |

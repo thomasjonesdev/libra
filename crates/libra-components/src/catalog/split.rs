@@ -24,6 +24,7 @@ pub const PANE_MIN: f32 = 160.0;
 pub(crate) fn build(
     cx: &mut BuildCx,
     fraction: f32,
+    left_min: Option<f32>,
     on_resize: &str,
     test_id: &str,
     children: &[ViewNode],
@@ -31,6 +32,7 @@ pub(crate) fn build(
     // Engines validate arity; guard here for hand-built trees.
     debug_assert_eq!(children.len(), 2, "<Split> takes exactly two children");
     let fraction = fraction.clamp(0.05, 0.95);
+    let left_min = left_min.unwrap_or(PANE_MIN);
 
     let left = cx.child(&children[0])?;
     let right = cx.child(&children[1])?;
@@ -44,8 +46,8 @@ pub(crate) fn build(
     let mut ls = cx.tree.style(left)?.clone();
     ls.size.width = percent(fraction);
     ls.flex_grow = 0.0;
-    ls.flex_shrink = 1.0;
-    ls.min_size.width = length(PANE_MIN);
+    ls.flex_shrink = 0.0;
+    ls.min_size.width = length(left_min);
     cx.tree.set_style(left, ls)?;
     let mut rs = cx.tree.style(right)?.clone();
     rs.size.width = auto();

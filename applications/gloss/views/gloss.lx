@@ -1,214 +1,173 @@
 <Column grow gap={0}>
   <Row grow>
-    <Toolbar vertical compact testId="app-rail">
-      <Tooltip text="New note" position="right">
-        <Button variant="ghost" icon="plus" onPress={newNote} testId="new-note" />
-      </Tooltip>
-      <Tooltip text="Quick open" position="right">
-        <Button variant="ghost" icon="command" onPress={openCommandPalette} testId="command-palette" />
-      </Tooltip>
-      <Tooltip text="Daily note" position="right">
-        <Button variant="ghost" icon="calendar" onPress={openDailyNote} testId="daily-note" />
-      </Tooltip>
-      <Tooltip text="Links and backlinks" position="right">
-        <Button variant="ghost" icon="graph" onPress={openGraph} testId="graph" />
-      </Tooltip>
-      <Tooltip text="Undo" position="right">
-        <Button variant="ghost" icon="undo" onPress={undo} testId="undo" />
-      </Tooltip>
-      <Spacer />
-      <Tooltip text="Vaults" position="right">
-        <Button variant="ghost" icon="folder" onPress={openVaultPicker} testId="vault-picker" />
-      </Tooltip>
-      <Tooltip text="Settings" position="right">
-        <Button variant="ghost" icon="settings" onPress={openSettings} testId="settings" />
-      </Tooltip>
-    </Toolbar>
-    <Split fraction={split_list} onResize={listSplitChanged} testId="list-split">
-      <Column grow gap={0}>
-        <Toolbar compact testId="list-toolbar">
-          <Spacer size={18} />
-          <if test={sidebar_open}>
-            <Tooltip text="Files" position="bottom">
-              <if test={sidebar_files}>
-                <Button variant="secondary" icon="folder" onPress={showFilesView} testId="sidebar-files" />
-                <else>
-                  <Button variant="ghost" icon="folder" onPress={showFilesView} testId="sidebar-files" />
-                </else>
+    <AppRail chrome_background={chrome_background} newNote={newNote} openCommandPalette={openCommandPalette} openDailyNote={openDailyNote} openGraph={openGraph} undo={undo} openVaultPicker={openVaultPicker} openSettings={openSettings} />
+    <if test={sidebar_open}>
+      <Split fraction={split_list} leftMin={240} onResize={listSplitChanged} testId="list-split">
+        <Column grow gap={0}>
+          <SidebarToolbar chrome_background={chrome_background} sidebar_files={sidebar_files} sidebar_search={sidebar_search} sidebar_bookmarks={sidebar_bookmarks} showFilesView={showFilesView} showSearchView={showSearchView} showBookmarksView={showBookmarksView} toggleSidebar={toggleSidebar} />
+          <SidebarPanel sidebar_search={sidebar_search} query={query} queryChanged={queryChanged} clearQuery={clearQuery}>
+            <Column gap={2}>
+              <if test={file_rows.isEmpty}>
+                <Text muted testId="empty">{empty_message}</Text>
               </if>
-            </Tooltip>
-            <Tooltip text="Search" position="bottom">
-              <if test={sidebar_search}>
-                <Button variant="secondary" icon="search" onPress={showSearchView} testId="sidebar-search" />
-                <else>
-                  <Button variant="ghost" icon="search" onPress={showSearchView} testId="sidebar-search" />
-                </else>
-              </if>
-            </Tooltip>
-            <Tooltip text="Bookmarks" position="bottom">
-              <if test={sidebar_bookmarks}>
-                <Button variant="secondary" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
-                <else>
-                  <Button variant="ghost" icon="bookmark" onPress={showBookmarksView} testId="sidebar-bookmarks" />
-                </else>
-              </if>
-            </Tooltip>
-          </if>
-          <Spacer />
-          <Tooltip text="Toggle sidebar" position="bottom">
-            <Button variant="ghost" icon="panel-left" onPress={toggleSidebar} testId="sidebar-toggle" />
-          </Tooltip>
-        </Toolbar>
-        <if test={sidebar_open}>
-          <Panel grow gap={0} padding={0} raised flush>
-            <Column grow gap={4} padding={4}>
-              <if test={sidebar_search}>
-                <Row gap={6} cross="center">
-                  <Search value={query} placeholder="Search notes…" onChange={queryChanged} testId="search" />
-                  <Button variant="ghost" icon="close" onPress={clearQuery} testId="clear-search" />
-                </Row>
-                <Separator />
-              </if>
-              <Scroll testId="note-scroll">
-                <Column gap={2}>
-                  <if test={file_rows.isEmpty}>
-                    <Text muted testId="empty">{empty_message}</Text>
-                  </if>
-                  <for each={file_rows} as="n" key={n.id}>
-                    <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={fileContext(n.id)} />
-                  </for>
-                </Column>
-              </Scroll>
-              <Text muted grow wrap testId="vault-name">{vault_name}</Text>
-            </Column>
-          </Panel>
-        </if>
-      </Column>
-      <Column grow gap={0} padding={0}>
-        <if test={has_vault}>
-          <Toolbar compact background="surface" testId="editor-toolbar">
-            <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
-            <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
-            <Tabs testId="editor-tabs">
-              <for each={tab_rows} as="t" key={t.id}>
-                <Tab selected={t.selected} onPress={selectNote(t.id)} onClose={closeTab(t.id)}>{t.title}</Tab>
+              <for each={file_rows} as="n" key={n.id}>
+                <ListItem title={n.title} selected={n.selected} inset={n.inset} onPress={selectFile(n.id)} onMenu={fileContext(n.id)} />
               </for>
-            </Tabs>
-            <Tooltip text="Open next note in a new tab" position="bottom">
-              <Button variant="ghost" icon="plus" onPress={newTab} testId="new-tab" />
-            </Tooltip>
-          </Toolbar>
-        </if>
-        <Column grow gap={4} padding={4}>
-          <if test={has_selected}>
-            <Row gap={8} cross="center">
-              <Heading level={2} testId="note-title">{selected_title}</Heading>
-              <Spacer />
-              <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
-            </Row>
-            <Scroll testId="editor-scroll">
-              <if test={reader_mode}>
-                <Column grow padding={48} gap={16}>
-                  <if test={has_frontmatter}>
-                    <Column gap={10}>
-                      <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
-                      <if test={has_frontmatter_title}>
-                        <Heading level={2} testId="frontmatter-title">{frontmatter_title}</Heading>
-                      </if>
-                      <for each={frontmatter_fields} as="f" key={f.key}>
-                        <Row gap={12} cross="center">
-                          <Text muted size="sm">{f.key}</Text>
-                          <Text grow wrap size="sm">{f.value}</Text>
-                        </Row>
-                      </for>
-                      <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
+            </Column>
+          </SidebarPanel>
+        </Column>
+        <Column grow gap={0} padding={0}>
+          <if test={has_vault}>
+            <Toolbar compact background="surface" testId="editor-toolbar">
+              <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
+              <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
+              <Tabs testId="editor-tabs">
+                <for each={tab_rows} as="t" key={t.id}>
+                  <Tab selected={t.selected} onPress={selectNote(t.id)} onClose={closeTab(t.id)}>{t.title}</Tab>
+                </for>
+              </Tabs>
+              <Tooltip text="Open next note in a new tab" position="bottom">
+                <Button variant="ghost" icon="plus" onPress={newTab} testId="new-tab" />
+              </Tooltip>
+              <if test={has_selected}>
+                <Spacer />
+                <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
+              </if>
+            </Toolbar>
+          </if>
+          <Column grow gap={0} padding={0}>
+            <if test={has_selected}>
+              <Scroll testId="editor-scroll">
+                <if test={reader_mode}>
+                  <Column grow padding={24} gap={8}>
+                    <Input variant="plain" size="xl" bold value={title_draft} onChange={titleChanged} onSubmit={titleSubmitted} testId="note-title" />
+                    <if test={has_frontmatter}>
+                      <Column gap={10}>
+                        <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
+                        <for each={frontmatter_fields} as="f" key={f.key}>
+                          <Row gap={12} cross="center">
+                            <Text muted size="sm">{f.key}</Text>
+                            <Text grow wrap size="sm">{f.value}</Text>
+                          </Row>
+                        </for>
+                        <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
+                      </Column>
+                      <Separator />
+                    </if>
+                    <Textarea markdown value={editor_body} onWikilink={followWikilink} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
+                  </Column>
+                  <else>
+                    <Column grow padding={24} gap={8}>
+                      <Input variant="plain" size="xl" bold value={title_draft} onChange={titleChanged} onSubmit={titleSubmitted} testId="note-title" />
+                      <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
                     </Column>
-                    <Separator />
+                  </else>
+                </if>
+              </Scroll>
+              <else>
+                <Text muted testId="editor-empty">Select a note</Text>
+              </else>
+            </if>
+          </Column>
+          <EditorStatusBar vault_name={vault_name} status={status} word_count={word_count} char_count={char_count} save_busy={save_busy} save_ok={save_ok} />
+        </Column>
+      </Split>
+      <else>
+        <Row grow gap={0}>
+          <Column gap={0}>
+            <CollapsedSidebarToolbar chrome_background={chrome_background} toggleSidebar={toggleSidebar} />
+          </Column>
+          <Column grow gap={0} padding={0}>
+            <if test={has_vault}>
+              <Toolbar compact background="surface" testId="editor-toolbar">
+                <Button variant="ghost" onPress={goBack} testId="go-back">Back</Button>
+                <Button variant="ghost" onPress={goForward} testId="go-forward">Fwd</Button>
+                <Tabs testId="editor-tabs">
+                  <for each={tab_rows} as="t" key={t.id}>
+                    <Tab selected={t.selected} onPress={selectNote(t.id)} onClose={closeTab(t.id)}>{t.title}</Tab>
+                  </for>
+                </Tabs>
+                <Tooltip text="Open next note in a new tab" position="bottom">
+                  <Button variant="ghost" icon="plus" onPress={newTab} testId="new-tab" />
+                </Tooltip>
+                <if test={has_selected}>
+                  <Spacer />
+                  <Button variant="ghost" onPress={toggleReaderMode} testId="toggle-mode">{mode_label}</Button>
+                </if>
+              </Toolbar>
+            </if>
+            <Column grow gap={0} padding={0}>
+              <if test={has_selected}>
+                <Scroll testId="editor-scroll">
+                  <if test={reader_mode}>
+                    <Column grow padding={24} gap={8}>
+                      <Input variant="plain" size="xl" bold value={title_draft} onChange={titleChanged} onSubmit={titleSubmitted} testId="note-title" />
+                      <if test={has_frontmatter}>
+                        <Column gap={10}>
+                          <Text bold size="sm" muted testId="frontmatter-panel">Properties</Text>
+                          <for each={frontmatter_fields} as="f" key={f.key}>
+                            <Row gap={12} cross="center">
+                              <Text muted size="sm">{f.key}</Text>
+                              <Text grow wrap size="sm">{f.value}</Text>
+                            </Row>
+                          </for>
+                          <Textarea value={frontmatter_yaml} placeholder="title: …" onChange={frontmatterChanged} testId="frontmatter-yaml" />
+                        </Column>
+                        <Separator />
+                      </if>
+                      <Textarea markdown value={editor_body} onWikilink={followWikilink} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
+                    </Column>
+                    <else>
+                      <Column grow padding={24} gap={8}>
+                        <Input variant="plain" size="xl" bold value={title_draft} onChange={titleChanged} onSubmit={titleSubmitted} testId="note-title" />
+                        <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
+                      </Column>
+                    </else>
                   </if>
-                  <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="reader-body" />
-                </Column>
+                </Scroll>
                 <else>
-                  <Textarea value={editor_body} placeholder="write a note…" onChange={bodyChanged} testId="editor-body" />
+                  <Text muted testId="editor-empty">Select a note</Text>
                 </else>
               </if>
-            </Scroll>
-            <else>
-              <Text muted testId="editor-empty">Select a note</Text>
-            </else>
-          </if>
-        </Column>
-      </Column>
-    </Split>
-  </Row>
-  <StatusBar testId="status-bar">
-    <Text size="sm" muted grow wrap testId="status">{status}</Text>
-    <Text size="sm" muted testId="word-count">{word_count}</Text>
-    <Text size="sm" muted testId="char-count">{char_count}</Text>
-    <if test={save_busy}>
-      <Icon name="loader" muted testId="save-icon" />
-      <else>
-        <if test={save_ok}>
-          <Icon name="check" muted testId="save-icon" />
-        </if>
+            </Column>
+            <EditorStatusBar vault_name={vault_name} status={status} word_count={word_count} char_count={char_count} save_busy={save_busy} save_ok={save_ok} />
+          </Column>
+        </Row>
       </else>
     </if>
-  </StatusBar>
+  </Row>
   <if test={toast_err}>
     <Toast tone="danger" title={toast_title} onDismiss={dismissToast} testId="toast">{status}</Toast>
   </if>
   <if test={show_settings}>
-    <Drawer side="right" onDismiss={closeSettings} testId="settings-drawer">
-      <Text bold>Vault</Text>
-      <Text testId="settings-vault-name">{vault_name}</Text>
-      <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
-      <Separator />
-      <Text bold>Rules</Text>
-      <Text muted size="sm">`.gloss/rules.md`</Text>
-      <if test={has_rules}>
-        <Text wrap testId="settings-rules">{rules_excerpt}</Text>
-        <else>
-          <Text muted testId="settings-rules-empty">No rules file yet</Text>
-        </else>
-      </if>
-    </Drawer>
+    <SettingsDrawer vault_name={vault_name} vault_path={vault_path} has_rules={has_rules} rules_excerpt={rules_excerpt} closeSettings={closeSettings} />
   </if>
   <if test={show_vault_picker}>
-    <Dialog title="Vaults" onDismiss={closeVaultPicker} testId="vault-dialog">
-      <if test={has_saved_vaults}>
-        <Scroll testId="vault-scroll" height={240}>
-          <Column gap={2}>
-            <for each={vault_rows} as="v" key={v.id}>
-              <ListItem title={v.title} subtitle={v.snippet} selected={v.selected} onPress={switchVault(v.id)} onMenu={removeVault(v.id)} />
-            </for>
-          </Column>
-        </Scroll>
-      </if>
-      <Button variant="secondary" onPress={browseVault} testId="browse-vault">Browse</Button>
-    </Dialog>
+    <VaultPickerDialog has_saved_vaults={has_saved_vaults} closeVaultPicker={closeVaultPicker} browseVault={browseVault}>
+      <Column gap={2}>
+        <for each={vault_rows} as="v" key={v.id}>
+          <ListItem title={v.title} subtitle={v.snippet} selected={v.selected} onPress={switchVault(v.id)} onMenu={removeVault(v.id)} />
+        </for>
+      </Column>
+    </VaultPickerDialog>
   </if>
   <if test={show_mention}>
-    <Dialog title="Link note" onDismiss={closeMention} testId="mention-dialog">
-      <Search value={mention_query} placeholder="note name…" onChange={mentionQueryChanged} testId="mention-search" />
-      <Scroll testId="mention-scroll" height={240}>
-        <Column gap={2}>
-          <for each={mention_rows} as="n" key={n.id}>
-            <ListItem title={n.title} subtitle={n.snippet} onPress={mentionPick(n.id)} />
-          </for>
-        </Column>
-      </Scroll>
-    </Dialog>
+    <MentionDialog query={mention_query} mentionQueryChanged={mentionQueryChanged} dismiss={closeMention}>
+      <Column gap={2}>
+        <for each={mention_rows} as="n" key={n.id}>
+          <ListItem title={n.title} subtitle={n.snippet} onPress={mentionPick(n.id)} />
+        </for>
+      </Column>
+    </MentionDialog>
   </if>
   <if test={show_command_palette}>
-    <Dialog title="Open note" onDismiss={closeCommandPalette} testId="palette-dialog">
-      <Search value={palette_query} placeholder="note name…" onChange={paletteQueryChanged} testId="palette-search" />
-      <Scroll testId="palette-scroll" height={280}>
-        <Column gap={2}>
-          <for each={palette_rows} as="n" key={n.id}>
-            <ListItem title={n.title} subtitle={n.snippet} onPress={palettePick(n.id)} />
-          </for>
-        </Column>
-      </Scroll>
-    </Dialog>
+    <CommandPaletteDialog query={palette_query} paletteQueryChanged={paletteQueryChanged} dismiss={closeCommandPalette}>
+      <Column gap={2}>
+        <for each={palette_rows} as="n" key={n.id}>
+          <ListItem title={n.title} subtitle={n.snippet} onPress={palettePick(n.id)} />
+        </for>
+      </Column>
+    </CommandPaletteDialog>
   </if>
   <if test={show_graph}>
     <Drawer side="right" onDismiss={closeGraph} testId="graph-drawer">

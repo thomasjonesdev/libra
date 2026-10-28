@@ -27,10 +27,14 @@ pub struct Renderer {
     mono: fontdue::Font,
 }
 
-const FONT_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Medium.ttf");
-const FONT_BOLD: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Bold.ttf");
-const FONT_ITALIC: &[u8] = include_bytes!("../../../assets/fonts/WorkSans-Italic.ttf");
-const FONT_MONO: &[u8] = include_bytes!("../../../assets/fonts/SpaceMono-Regular.ttf");
+// Inside this crate so `cargo package` can publish the bytes (PLAN-SDK S4).
+// Same files as `assets/fonts/` — do not edit one copy without the other.
+const FONT_REGULAR: &[u8] = include_bytes!("../fonts/WorkSans-Medium.ttf");
+const FONT_BOLD: &[u8] = include_bytes!("../fonts/WorkSans-Bold.ttf");
+const FONT_ITALIC: &[u8] = include_bytes!("../fonts/WorkSans-Italic.ttf");
+const FONT_MONO: &[u8] = include_bytes!("../fonts/SpaceMono-Regular.ttf");
+/// Editor tab stops — control chars like `\t` are expanded, not drawn as glyphs.
+const TAB_WIDTH: usize = 4;
 
 impl Renderer {
     pub fn new() -> Self {
@@ -74,9 +78,22 @@ impl Renderer {
     /// Advance width of a single-line run.
     fn advance_width(&self, text: &str, px: f32, style: FontStyle) -> f32 {
         let font = self.font(style);
+        let space_w = font.metrics(' ', px).advance_width;
         let mut w = 0.0f32;
+        let mut col = 0usize;
         for ch in text.chars() {
+            if ch == '\t' {
+                let spaces = TAB_WIDTH - (col % TAB_WIDTH);
+                w += space_w * spaces as f32;
+                col += spaces;
+                continue;
+            }
             w += font.metrics(ch, px).advance_width;
+            if ch == '\n' {
+                col = 0;
+            } else {
+                col += 1;
+            }
         }
         w.ceil()
     }
@@ -94,16 +111,25 @@ impl Renderer {
     /// which is what keeps the damage replay byte-identical to a full render.
     fn replay(&self, pixmap: &mut Pixmap, cmds: &[DrawCmd], width: u32, height: u32, damage: Option<Rect>) {
         let mut clip_stack: Vec<Rect> = Vec::new();
-        let mut clip: Option<Clip> = None;
+        let mut bounds: Option<(i32, i32, i32, i32)> = None;
+        // Allocated on the first clip, so unclipped frames never pay for it.
+        let mut clip_mask: Option<ClipMask> = None;
+        let retarget = |stack: &[Rect], mask: &mut Option<ClipMask>| {
+            let b = clip_from_stack(stack).map(|r| clip_bounds(r, width, height));
+            if let Some(b) = b {
+                mask.get_or_insert_with(|| ClipMask::new(width, height)).set(b);
+            }
+            b
+        };
         for cmd in cmds {
             match cmd {
                 DrawCmd::PushClip { rect } => {
                     clip_stack.push(*rect);
-                    clip = clip_from_stack(&clip_stack).map(|r| Clip::new(r, width, height));
+                    bounds = retarget(&clip_stack, &mut clip_mask);
                 }
                 DrawCmd::PopClip => {
                     clip_stack.pop();
-                    clip = clip_from_stack(&clip_stack).map(|r| Clip::new(r, width, height));
+                    bounds = retarget(&clip_stack, &mut clip_mask);
                 }
                 DrawCmd::Clear(c) => match damage {
                     Some(d) => fill_rect_exact(
@@ -122,6 +148,10 @@ impl Renderer {
                         None => true,
                     };
                     if draw_it {
+                        let clip = bounds.map(|bounds| Clip {
+                            bounds,
+                            mask: clip_mask.as_ref().expect("mask set with bounds").mask(),
+                        });
                         self.draw(pixmap, cmd, clip.as_ref());
                     }
                 }
@@ -167,7 +197,7 @@ impl Renderer {
                 &Self::paint(color),
                 &Stroke { width, ..Stroke::default() },
                 Transform::identity(),
-                clip.map(|c| &c.mask),
+                clip.map(|c| c.mask),
             );
         }
     }
@@ -188,13 +218,13 @@ impl Renderer {
 
     fn fill_rect(&self, pixmap: &mut Pixmap, r: Rect, color: Color, clip: Option<&Clip>) {
         if let Some(rect) = tiny_skia::Rect::from_xywh(r.x, r.y, r.w, r.h) {
-            pixmap.fill_rect(rect, &Self::paint(color), Transform::identity(), clip.map(|c| &c.mask));
+            pixmap.fill_rect(rect, &Self::paint(color), Transform::identity(), clip.map(|c| c.mask));
         }
     }
 
     fn fill_rrect(&self, pixmap: &mut Pixmap, r: Rect, radius: f32, color: Color, clip: Option<&Clip>) {
         if let Some(path) = rrect_path(r, radius) {
-            pixmap.fill_path(&path, &Self::paint(color), FillRule::Winding, Transform::identity(), clip.map(|c| &c.mask));
+            pixmap.fill_path(&path, &Self::paint(color), FillRule::Winding, Transform::identity(), clip.map(|c| c.mask));
         }
     }
 
@@ -216,7 +246,7 @@ impl Renderer {
                 &Self::paint(color),
                 &Stroke { width, ..Stroke::default() },
                 Transform::identity(),
-                clip.map(|c| &c.mask),
+                clip.map(|c| c.mask),
             );
         }
     }
@@ -234,15 +264,41 @@ impl Renderer {
         clip: Option<&Clip>,
     ) {
         let font = self.font(style);
+        let space_w = font.metrics(' ', px).advance_width;
         let baseline = y + self.ascent(px, style);
+        let (pw, ph) = (pixmap.width() as i32, pixmap.height() as i32);
         let mut pen = x;
+        let mut col = 0usize;
         for ch in text.chars() {
-            let (metrics, coverage) = font.rasterize(ch, px);
-            // Glyph bitmap top-left in pixmap space:
+            if ch == '\t' {
+                let spaces = TAB_WIDTH - (col % TAB_WIDTH);
+                pen += space_w * spaces as f32;
+                col += spaces;
+                continue;
+            }
+            // Metrics first, outline second: `rasterize` is the expensive
+            // half, and a Textarea inside a Scroll lays out the *whole*
+            // document, so most glyphs in a long note land off-frame or
+            // outside the scroll clip. `blend_glyph` would skip every one of
+            // their pixels anyway — culling here just skips the outline work
+            // too, which keeps frame cost proportional to visible text rather
+            // than document length.
+            let metrics = font.metrics(ch, px);
             let gx = (pen + metrics.xmin as f32).round() as i32;
             let gy = (baseline - metrics.ymin as f32 - metrics.height as f32).round() as i32;
-            blend_glyph(pixmap, gx, gy, metrics.width, metrics.height, &coverage, color, clip);
+            let (gx1, gy1) = (gx + metrics.width as i32, gy + metrics.height as i32);
+            let offscreen = gx1 <= 0 || gx >= pw || gy1 <= 0 || gy >= ph;
+            let clipped_out = clip.is_some_and(|c| c.excludes_box(gx, gy, gx1, gy1));
+            if !offscreen && !clipped_out {
+                let (_, coverage) = font.rasterize(ch, px);
+                blend_glyph(pixmap, gx, gy, metrics.width, metrics.height, &coverage, color, clip);
+            }
             pen += metrics.advance_width;
+            if ch == '\n' {
+                col = 0;
+            } else {
+                col += 1;
+            }
         }
     }
 }
@@ -437,37 +493,79 @@ impl TextMeasurer for Renderer {
 /// for the manual coverage blits (text, strips); `mask` is the tiny-skia clip
 /// for the path fills — both derived from the *same* integer rect, so every
 /// draw path clips to identical pixels (byte-equivalence, Appendix A).
-struct Clip {
+struct Clip<'a> {
     bounds: (i32, i32, i32, i32), // x0, y0, x1, y1
-    mask: tiny_skia::Mask,
+    mask: &'a tiny_skia::Mask,
 }
 
-impl Clip {
-    fn new(rect: Rect, width: u32, height: u32) -> Clip {
-        let x0 = (rect.x.floor() as i32).clamp(0, width as i32);
-        let y0 = (rect.y.floor() as i32).clamp(0, height as i32);
-        let x1 = ((rect.x + rect.w).ceil() as i32).clamp(0, width as i32);
-        let y1 = ((rect.y + rect.h).ceil() as i32).clamp(0, height as i32);
-        let mut mask = tiny_skia::Mask::new(width, height).expect("nonzero mask");
-        if x1 > x0 && y1 > y0 {
-            let mut pb = PathBuilder::new();
-            pb.move_to(x0 as f32, y0 as f32);
-            pb.line_to(x1 as f32, y0 as f32);
-            pb.line_to(x1 as f32, y1 as f32);
-            pb.line_to(x0 as f32, y1 as f32);
-            pb.close();
-            if let Some(path) = pb.finish() {
-                // Non-AA rect fill: coverage is exactly 255 inside the integer
-                // rect, 0 outside — matching the `bounds` check the blits use.
-                mask.fill_path(&path, FillRule::Winding, false, Transform::identity());
-            }
-        }
-        Clip { bounds: (x0, y0, x1, y1), mask }
-    }
-
+impl Clip<'_> {
     fn contains(&self, x: i32, y: i32) -> bool {
         let (x0, y0, x1, y1) = self.bounds;
         x >= x0 && x < x1 && y >= y0 && y < y1
+    }
+
+    /// Does the integer pixel box `[x0,x1) × [y0,y1)` miss the clip entirely?
+    /// Blits over it would write nothing, so callers can skip the work.
+    fn excludes_box(&self, x0: i32, y0: i32, x1: i32, y1: i32) -> bool {
+        let (cx0, cy0, cx1, cy1) = self.bounds;
+        x1 <= cx0 || x0 >= cx1 || y1 <= cy0 || y0 >= cy1
+    }
+}
+
+fn clip_bounds(rect: Rect, width: u32, height: u32) -> (i32, i32, i32, i32) {
+    let x0 = (rect.x.floor() as i32).clamp(0, width as i32);
+    let y0 = (rect.y.floor() as i32).clamp(0, height as i32);
+    let x1 = ((rect.x + rect.w).ceil() as i32).clamp(0, width as i32);
+    let y1 = ((rect.y + rect.h).ceil() as i32).clamp(0, height as i32);
+    (x0, y0, x1, y1)
+}
+
+/// The one clip mask a replay reuses for every clip it encounters.
+///
+/// A mask is a full `width * height` byte buffer, and a UI frame pushes a clip
+/// per scroll view, list row, and text field — allocating one per Push/PopClip
+/// cost hundreds of megabytes of allocate-touch-free per frame on a HiDPI
+/// window. Only one clip is ever active, so one buffer suffices: switching
+/// clips rewrites the two rects involved instead of the whole frame.
+struct ClipMask {
+    mask: tiny_skia::Mask,
+    /// The rect currently set to 255, so it can be cleared without touching
+    /// the rest of the buffer.
+    filled: Option<(i32, i32, i32, i32)>,
+}
+
+impl ClipMask {
+    fn new(width: u32, height: u32) -> ClipMask {
+        ClipMask { mask: tiny_skia::Mask::new(width, height).expect("nonzero mask"), filled: None }
+    }
+
+    /// Point the mask at `bounds`: coverage 255 inside, 0 outside — the same
+    /// buffer a non-AA rect fill of the integer rect produces, and the same
+    /// pixels the `bounds` check the manual blits use accepts.
+    fn set(&mut self, bounds: (i32, i32, i32, i32)) {
+        if self.filled == Some(bounds) {
+            return;
+        }
+        let stride = self.mask.width() as usize;
+        let data = self.mask.data_mut();
+        let mut span = |(x0, y0, x1, y1): (i32, i32, i32, i32), v: u8| {
+            for y in y0..y1 {
+                let row = y as usize * stride;
+                data[row + x0 as usize..row + x1 as usize].fill(v);
+            }
+        };
+        if let Some(prev) = self.filled.take() {
+            span(prev, 0);
+        }
+        let (x0, y0, x1, y1) = bounds;
+        if x1 > x0 && y1 > y0 {
+            span(bounds, 255);
+            self.filled = Some(bounds);
+        }
+    }
+
+    fn mask(&self) -> &tiny_skia::Mask {
+        &self.mask
     }
 }
 
@@ -630,6 +728,25 @@ mod tests {
     use super::*;
     use libra_draw::tokens;
 
+    /// Checkout copy and the published copy must stay the same bytes
+    /// (PLAN-SDK S4). Skipped when the assets tree is not beside the crate.
+    #[test]
+    fn bundled_fonts_match_checkout_assets() {
+        let assets = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts");
+        if !assets.join("WorkSans-Medium.ttf").is_file() {
+            return;
+        }
+        for (name, bytes) in [
+            ("WorkSans-Medium.ttf", FONT_REGULAR),
+            ("WorkSans-Bold.ttf", FONT_BOLD),
+            ("WorkSans-Italic.ttf", FONT_ITALIC),
+            ("SpaceMono-Regular.ttf", FONT_MONO),
+        ] {
+            let on_disk = std::fs::read(assets.join(name)).unwrap();
+            assert_eq!(on_disk, bytes, "{name}");
+        }
+    }
+
     #[test]
     fn rendering_is_bit_reproducible() {
         let r = Renderer::new();
@@ -685,6 +802,54 @@ mod tests {
         let (w1, h) = r.measure("+", 14.0, FontStyle::Regular);
         let (w2, _) = r.measure("++", 14.0, FontStyle::Regular);
         assert!(w1 > 0.0 && h > 0.0 && w2 > w1);
+    }
+
+    #[test]
+    fn tab_advances_like_spaces_not_a_glyph() {
+        let r = Renderer::new();
+        let (tab_w, _) = r.measure("\t", 14.0, FontStyle::Regular);
+        let (spaces_w, _) = r.measure("    ", 14.0, FontStyle::Regular);
+        assert!((tab_w - spaces_w).abs() < 0.01, "{tab_w} vs {spaces_w}");
+        let tab_cmds = vec![
+            DrawCmd::Clear(tokens::BG),
+            DrawCmd::Text {
+                x: 10.0,
+                y: 10.0,
+                content: "\t".into(),
+                px: 14.0,
+                style: FontStyle::Regular,
+                color: Color::rgb(0, 0, 0),
+            },
+        ];
+        let space_cmds = vec![
+            DrawCmd::Clear(tokens::BG),
+            DrawCmd::Text {
+                x: 10.0,
+                y: 10.0,
+                content: "    ".into(),
+                px: 14.0,
+                style: FontStyle::Regular,
+                color: Color::rgb(0, 0, 0),
+            },
+        ];
+        let tab_px = r.render(&tab_cmds, 80, 40);
+        let space_px = r.render(&space_cmds, 80, 40);
+        fn count_dark(p: &Pixmap) -> usize {
+            let mut dark = 0usize;
+            for y in 0..p.height() {
+                for x in 0..p.width() {
+                    if p.pixel(x, y).unwrap().red() < 200 {
+                        dark += 1;
+                    }
+                }
+            }
+            dark
+        }
+        assert_eq!(
+            count_dark(&tab_px),
+            count_dark(&space_px),
+            "tab should paint the same invisible whitespace as four spaces"
+        );
     }
 
     /// Deterministic pseudo-random cmd list — text, rects, rrects,
@@ -829,6 +994,51 @@ mod tests {
         let incremental = cache.as_ref().unwrap().pixmap().encode_png().unwrap();
         let full = r.render(&moved, w, h).encode_png().unwrap();
         assert_eq!(incremental, full, "interior Clear-clip diverged from full render");
+    }
+
+    /// A replay reuses one clip mask buffer for every clip it meets instead of
+    /// allocating a full-frame mask per Push/PopClip. Retargeting it must land
+    /// on exactly the buffer a fresh mask would have, with no residue from the
+    /// previous clip — otherwise clipped drawing silently depends on replay
+    /// order (Appendix A).
+    #[test]
+    fn retargeted_clip_mask_equals_a_freshly_built_one() {
+        let (w, h) = (64u32, 48u32);
+        // How the mask used to be built: a non-AA fill of the integer rect.
+        let fresh = |(x0, y0, x1, y1): (i32, i32, i32, i32)| {
+            let mut mask = tiny_skia::Mask::new(w, h).expect("mask");
+            if x1 > x0 && y1 > y0 {
+                let mut pb = PathBuilder::new();
+                pb.move_to(x0 as f32, y0 as f32);
+                pb.line_to(x1 as f32, y0 as f32);
+                pb.line_to(x1 as f32, y1 as f32);
+                pb.line_to(x0 as f32, y1 as f32);
+                pb.close();
+                let path = pb.finish().expect("rect path");
+                mask.fill_path(&path, FillRule::Winding, false, Transform::identity());
+            }
+            mask.data().to_vec()
+        };
+
+        let rects = [
+            Rect::new(3.0, 5.0, 40.0, 30.0),
+            Rect::new(20.0, 2.0, 44.0, 46.0),  // overlaps the previous
+            Rect::new(0.0, 0.0, 64.0, 48.0),   // whole frame
+            Rect::new(-30.0, 10.0, 20.0, 10.0), // wholly off-frame → empty
+            Rect::new(10.0, 10.0, 1.0, 20.0),  // hairline
+            Rect::new(3.0, 5.0, 40.0, 30.0),   // back to the first
+            Rect::new(60.0, 44.0, 40.0, 40.0), // clipped by the frame edge
+        ];
+        let mut reused = ClipMask::new(w, h);
+        for r in rects {
+            let bounds = clip_bounds(r, w, h);
+            reused.set(bounds);
+            assert_eq!(
+                reused.mask().data(),
+                fresh(bounds).as_slice(),
+                "retargeting to {bounds:?} left residue from the previous clip"
+            );
+        }
     }
 
     /// PLAN-SCROLL: `PushClip`/`PopClip` actually clip — a rect and text

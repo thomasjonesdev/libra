@@ -56,7 +56,13 @@ pub enum Coverage {
 pub struct TestPlan {
     /// Positional substring filters on test names (vitest: `libra test Button`).
     pub filters: Vec<String>,
-    /// `-p/--package` scopes (repeatable); empty means the whole workspace.
+    /// Path scope (`libra test templates/app`). Distinct from a name
+    /// filter: a positional is a scope when it names an existing
+    /// `Cargo.toml` or a directory that contains one. None = the
+    /// workspace containing cwd (everything).
+    pub scope: Option<PathBuf>,
+    /// `-p/--package` scopes (repeatable); empty means the whole workspace
+    /// (or the crate implied by `scope`).
     pub packages: Vec<String>,
     pub kind: Option<Kind>,
     /// `--component <Name>` — folded into `filters` as a lowercased
@@ -76,6 +82,7 @@ impl Default for TestPlan {
     fn default() -> Self {
         TestPlan {
             filters: Vec::new(),
+            scope: None,
             packages: Vec::new(),
             kind: None,
             component: None,
@@ -101,7 +108,9 @@ impl TestPlan {
                     break;
                 }
                 "-p" | "--package" => {
-                    let v = it.next().ok_or_else(|| format!("{arg} needs a crate name"))?;
+                    let v = it
+                        .next()
+                        .ok_or_else(|| format!("{arg} needs a crate name"))?;
                     plan.packages.push(v.clone());
                 }
                 "--kind" => {
@@ -142,6 +151,14 @@ impl TestPlan {
                         plan.trace_matrix = Some(Some(PathBuf::from(rest)));
                     } else if other.starts_with('-') {
                         return Err(format!("unknown flag `{other}`"));
+                    } else if is_scope_path(other) {
+                        if plan.scope.is_some() {
+                            return Err(
+                                "libra test takes at most one path scope (further positionals are name filters)"
+                                    .into(),
+                            );
+                        }
+                        plan.scope = Some(PathBuf::from(other));
                     } else {
                         plan.filters.push(other.to_string());
                     }
@@ -162,6 +179,20 @@ impl TestPlan {
     pub fn name_filters(&self) -> &[String] {
         &self.filters
     }
+}
+
+/// A positional is a crate/workspace scope when it exists on disk and
+/// is a `Cargo.toml` or a directory that contains one. `Button` stays a
+/// name filter; `templates/app` / `examples/counter` / `.` become scope.
+pub fn is_scope_path(s: &str) -> bool {
+    let p = std::path::Path::new(s);
+    if !p.exists() {
+        return false;
+    }
+    if p.is_file() {
+        return p.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml");
+    }
+    p.is_dir() && p.join("Cargo.toml").is_file()
 }
 
 fn parse_coverage(s: &str) -> Result<Coverage, String> {
@@ -196,6 +227,16 @@ mod tests {
     fn positional_args_are_name_filters() {
         let p = parse(&["Button", "Badge"]);
         assert_eq!(p.filters, vec!["Button", "Badge"]);
+        assert_eq!(p.scope, None);
+    }
+
+    #[test]
+    fn existing_crate_path_is_scope_not_a_filter() {
+        let app = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../templates/app");
+        assert!(app.join("Cargo.toml").is_file(), "{}", app.display());
+        let p = parse(&[app.to_str().unwrap(), "increment"]);
+        assert_eq!(p.scope.as_deref(), Some(app.as_path()));
+        assert_eq!(p.filters, vec!["increment"]);
     }
 
     #[test]

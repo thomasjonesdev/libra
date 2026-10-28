@@ -93,10 +93,10 @@ now run on (completed rename/ergonomics plans live under
   Click dispatches the button's real action; HiDPI via DrawCmd
   scaling; §12.5's mounted `<Frames>` elements union with
   `App::subscriptions()` for frame ticks
-- `libra` — the facade crate: depend on this to get `#[libra::state]`/
-  `#[libra::actions]`/`libra::app!` at their documented import path
-  (still needs `libra-core`/`libra-platform`/`serde` as direct deps too
-  — see its doc comment)
+- `libra-ui` — the facade crate (crates.io name; Rust import `libra`):
+  depend on this + `serde` to get `#[libra::state]`/`#[libra::actions]`/
+  `libra::app!` (PLAN-SDK S2/S4; `templates/app` is the reference consume
+  list). `libra` / `libra-core` / `libra-cli` were already taken on crates.io.
 - `cli/libra` — `libra check`: parse+validate every .lx in microseconds;
   `libra dev`: run an app crate in debug with view hot reload (§18.2)
 - `editors/vscode` — TextMate grammar for `.lx` (§18.6 Day 1); run
@@ -130,10 +130,11 @@ now run on (completed rename/ergonomics plans live under
     cargo run -p notes                           # text entry: click the field and type
     cargo run -p gallery                         # component gallery; theme toggle
     cargo run -p gallery -- themes/solarized.toml   # custom TOML theme, hot-reloaded
-    cargo run -p libra-cli -- check .   # validate all markup
-    cargo install --path cli/libra --force   # install libra CLI (check, dev, build, package)
-    libra dev examples/counter          # debug + view hot reload
-    libra dev -p aws-login              # app with libra.toml icon in dev
+    cargo run -p libra-ui-cli -- check .   # validate all markup
+    cargo install --path cli/libra --force   # install the `libra` binary (package libra-ui-cli)
+    libra dev examples/counter          # debug + view hot reload (path, not -p)
+    libra dev applications/aws-login    # app with libra.toml icon in dev
+    libra dev templates/app             # out-of-tree starter (PLAN-SDK S1)
     libra build -p aws-login            # release binary (codegen + LTO)
     libra package -p aws-login          # macOS .app + DMG (needs cargo-packager)
     libra dev -- themes/solarized.toml  # from examples/gallery, forward args
@@ -160,6 +161,11 @@ Snapshot truths (committed):
 Every stack layer is pure Rust (taffy / tiny-skia / fontdue), so these
 hashes should reproduce on any machine and OS. Run the suite on your
 hardware and compare — that is the cross-machine determinism proof.
+
+**0.x:** those bytes are stable across machines, not across minor versions.
+A 0.x bump of `libra-ui` may change pixels when fonts, the palette, or the
+raster stack change. Re-record snapshots on purpose (`LIBRA_VALIDATE=1`);
+do not treat a PNG hash as a semver contract until 1.0.
 
 Status: **verified**. Snapshots recorded in a Linux container reproduced
 byte-exact on macOS (Darwin 25.1.0, Apple Silicon) on 2026-07-12.

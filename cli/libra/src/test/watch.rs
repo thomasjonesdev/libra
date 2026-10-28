@@ -13,13 +13,19 @@ const POLL: Duration = Duration::from_millis(400);
 /// changes. Blocks until interrupted (Ctrl-C).
 pub fn watch_loop(root: &Path, mut run: impl FnMut()) {
     let mut prev = snapshot(root);
-    eprintln!("libra test: watching {} source file(s) — Ctrl-C to stop", prev.len());
+    eprintln!(
+        "libra test: watching {} source file(s) — Ctrl-C to stop",
+        prev.len()
+    );
     run();
     loop {
         std::thread::sleep(POLL);
         let next = snapshot(root);
         if next != prev {
-            let changed = next.iter().filter(|(k, v)| prev.get(*k) != Some(*v)).count();
+            let changed = next
+                .iter()
+                .filter(|(k, v)| prev.get(*k) != Some(*v))
+                .count();
             eprintln!("\nlibra test: {changed} file(s) changed — re-running");
             prev = next;
             run();
@@ -32,7 +38,9 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, SystemTime> {
     let mut map = BTreeMap::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let p = entry.path();
             let name = entry.file_name();

@@ -7,9 +7,12 @@
 //! Architecture: ARCHITECTURE.md §15 (testing architecture).
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
-use libra_components::{caret_byte_at, Cursor, InputFocus, LaidTree, Role, ScrollState};
+use libra_components::{
+    caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, ScrollState, SourceDecl,
+};
 use libra_core::{
     App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult, ReflectAction, SeriesId,
+    StreamClose, StreamEvent,
 };
 use libra_data::SeriesStore;
 use libra_draw::Theme;
@@ -20,6 +23,17 @@ use libra_text::{EditOp, EditState};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+pub mod autopilot;
+pub mod respond;
+
+pub use autopilot::{Affordance, AffordanceKind, Autopilot, Budget, Run, Step};
+pub use libra_components::Role;
+pub use respond::Reply;
+
+/// Seed for the effect-drain shuffle and autopilot choices when a test does
+/// not pick one. Fixed, so an unseeded run is still reproducible.
+const DEFAULT_SEED: u64 = 0x_11B2A_0000_0001;
 
 pub struct Harness<A: App> {
     app: A,
@@ -54,6 +68,13 @@ pub struct Harness<A: App> {
     /// clicked item's center; (0,0) otherwise. Deterministic, so
     /// menu-open snapshots are byte-exact.
     menu_anchor: (f32, f32),
+    /// How `drain_effects` answers intercepted effects, if the test set one
+    /// (§15.4). `None` keeps the hand-fed behaviour every existing test uses.
+    responder: Option<respond::Responder<A::Msg>>,
+    /// Seeded PRNG behind effect-drain ordering and autopilot choices, so a
+    /// failing run replays exactly from its seed.
+    rng: respond::Rng,
+    seed: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +124,10 @@ pub mod fx {
         Process,
         /// Match when `CommandSpec.program` equals this string.
         ProcessProgram(Option<String>),
+        Spawn,
+        /// Match when `CommandSpec.program` equals this string.
+        SpawnProgram(Option<String>),
+        CloseStream,
     }
 
     pub fn any() -> Matcher {
@@ -150,6 +175,18 @@ pub mod fx {
     pub fn any_process() -> Matcher {
         Matcher::ProcessProgram(None)
     }
+    pub fn spawn() -> Matcher {
+        Matcher::Spawn
+    }
+    pub fn spawn_program(program: &str) -> Matcher {
+        Matcher::SpawnProgram(Some(program.to_string()))
+    }
+    pub fn any_spawn() -> Matcher {
+        Matcher::SpawnProgram(None)
+    }
+    pub fn close_stream() -> Matcher {
+        Matcher::CloseStream
+    }
 }
 
 fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
@@ -173,6 +210,11 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::ProcessProgram(want), Effect::Process { command, .. }) => {
             want.as_deref().map_or(true, |w| w == &command.program)
         }
+        (Matcher::Spawn, Effect::Spawn { .. }) => true,
+        (Matcher::SpawnProgram(want), Effect::Spawn { command, .. }) => {
+            want.as_deref().map_or(true, |w| w == &command.program)
+        }
+        (Matcher::CloseStream, Effect::CloseStream { .. }) => true,
         _ => false,
     }
 }
@@ -228,6 +270,9 @@ impl<A: App> Harness<A> {
             hover: None,
             scroll_state: ScrollState::new(),
             menu_anchor: (0.0, 0.0),
+            responder: None,
+            rng: respond::Rng::new(DEFAULT_SEED),
+            seed: DEFAULT_SEED,
         }
     }
 
@@ -499,6 +544,11 @@ impl<A: App> Harness<A> {
                     self.theme = t;
                 }
             }
+            // Samples are ring data, like the effects runtime. Paint
+            // reads the store, so a chart snapshot sees the point.
+            if let Effect::Sample { series, t_ms, value } = effect {
+                self.store.ring(*series).push(libra_data::Sample { t_ms: *t_ms, v: *value });
+            }
         }
         self.pending.extend(effects);
         self.laid = rebuild(
@@ -518,14 +568,24 @@ impl<A: App> Harness<A> {
     /// dispatch its handler through the app's real action resolution.
     /// Clicking a TextInput focuses it (§10.1) instead of dispatching.
     pub fn click(&mut self, sel: Selector) {
-        let item = self
-            .find(&sel)
+        let idx = self
+            .find_index(&sel)
             .unwrap_or_else(|| panic!("click: no item matches {sel:?}"));
-        let (cx, cy) = item.rect.center();
+        self.click_item(idx, &format!("{sel:?}"));
+    }
+
+    /// Click the item at this index in the current laid tree.
+    ///
+    /// `click` resolves a selector to the *first* match, which is the right
+    /// default for a hand-written test naming one thing. The autopilot has
+    /// already picked an exact item out of the tree and must drive that one —
+    /// list rows routinely share a role and sometimes a label.
+    pub(crate) fn click_item(&mut self, idx: usize, what: &str) {
+        let (cx, cy) = self.laid.items[idx].rect.center();
         let hit = self
             .laid
             .hit(cx, cy)
-            .unwrap_or_else(|| panic!("click: {sel:?} is not interactive at ({cx},{cy})"));
+            .unwrap_or_else(|| panic!("click: {what} is not interactive at ({cx},{cy})"));
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
             let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
@@ -538,16 +598,23 @@ impl<A: App> Harness<A> {
             let byte = caret_byte_at(hit, cx, cy, &self.renderer, &self.theme, focus.as_ref())
                 .unwrap_or(text.len());
             let already = self.focus.as_ref().is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
+            let switching = self.focus.as_ref().is_some_and(|(fid, _, _)| fid != &id);
+            if switching {
+                self.dispatch_focused_submit();
+            }
             if !already {
                 self.focus = Some((id, EditState::new(text), name));
             }
             self.edit(EditOp::SetCaret { byte, select: false });
             return;
         }
+        let on_press_arg = hit.on_press_arg.clone();
+        self.dispatch_focused_submit();
+        self.focus = None;
         // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch
         // the String-payload action with the resolved loop-binding value;
         // otherwise a plain unit action by name.
-        let msg = match hit.on_press_arg.clone() {
+        let msg = match on_press_arg {
             Some(arg) => A::Msg::action_with_str(&name, arg).unwrap_or_else(|| {
                 panic!("handler '{name}' resolved to no String-payload Action — reflection out of sync")
             }),
@@ -567,13 +634,34 @@ impl<A: App> Harness<A> {
     /// keystroke runs the editing core and dispatches the input's
     /// onChange msg through the real update, exactly like the shell.
     pub fn type_text(&mut self, sel: Selector, text: &str) {
-        let item = self.find(&sel).unwrap_or_else(|| panic!("type_text: no item matches {sel:?}"));
-        if item.semantics.role != Role::TextInput {
+        let idx = self
+            .find_index(&sel)
+            .unwrap_or_else(|| panic!("type_text: no item matches {sel:?}"));
+        if self.laid.items[idx].semantics.role != Role::TextInput {
             panic!("type_text: {sel:?} is not a text field");
         }
+        self.type_into_item(idx, text);
+    }
+
+    /// `type_text` against an exact index — see [`Harness::click_item`].
+    pub(crate) fn type_into_item(&mut self, idx: usize, text: &str) {
+        let item = &self.laid.items[idx];
         let id = item.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
         let name = item.on_press.clone().expect("text field has onChange");
         let current = item.semantics.text.clone();
+        // Moving focus off a field submits it, exactly as `click` does. There
+        // is no way to reach another field in a real window without a click or
+        // a Tab, and both commit the one being left; letting a test hop
+        // straight across would leave a draft the shell would have flushed.
+        if self.focus.as_ref().is_some_and(|(fid, _, _)| fid != &id) {
+            self.dispatch_focused_submit();
+        }
+        let item = &self.laid.items[idx];
+        let current = if item.semantics.test_id.as_deref() == Some(id.as_str()) {
+            item.semantics.text.clone()
+        } else {
+            current
+        };
         self.focus = Some((id, EditState::new(current), name));
         for ch in text.chars() {
             self.edit(EditOp::Insert(ch));
@@ -622,13 +710,45 @@ impl<A: App> Harness<A> {
         self.focus.as_ref().map(|(_, e, _)| e)
     }
 
+    /// `testId` of the focused text field, if one has focus. Focus is a
+    /// deterministic input the harness owns rather than app state, so an
+    /// assertion that depends on "is the user editing this?" has to read it
+    /// from here.
+    pub fn focused_test_id(&self) -> Option<&str> {
+        self.focus.as_ref().map(|(id, _, _)| id.as_str())
+    }
+
     pub fn blur(&mut self) {
+        self.dispatch_focused_submit();
         self.focus = None;
     }
 
-    /// Enter on the focused field (§7.1 Search): dispatches `onSubmit`
-    /// when the focus is a `<Search>` that declared one; inserts a
-    /// newline in a Textarea; no-ops on a plain Input (shell parity).
+    fn dispatch_focused_submit(&mut self) {
+        let Some((id, ..)) = &self.focus else {
+            return;
+        };
+        let item = self.laid.items.iter().find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()));
+        let Some(item) = item else {
+            return;
+        };
+        let name = match &item.kind {
+            libra_components::ItemKind::Search {
+                on_submit: Some(name),
+                ..
+            } => name.clone(),
+            libra_components::ItemKind::Input {
+                on_submit: Some(name),
+                ..
+            } => name.clone(),
+            _ => return,
+        };
+        let msg = A::Msg::action_by_name(&name)
+            .unwrap_or_else(|| panic!("'{name}' is not a unit Action variant"));
+        self.dispatch(msg);
+    }
+
+    /// Enter on the focused field (§7.1 Search/Input): dispatches `onSubmit`
+    /// when declared; inserts a newline in a Textarea.
     pub fn press_enter(&mut self) {
         let Some((id, _, _)) = &self.focus else {
             panic!("press_enter: no Input is focused — click or type_text first");
@@ -641,6 +761,10 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|| panic!("press_enter: focused '{id}' is gone from the tree"));
         match &item.kind {
             libra_components::ItemKind::Search {
+                on_submit: Some(name),
+                ..
+            }
+            | libra_components::ItemKind::Input {
                 on_submit: Some(name),
                 ..
             } => {
@@ -770,11 +894,195 @@ impl<A: App> Harness<A> {
         }
     }
 
+    /// Deliver one stream event to the mounted `<Stream id>` handler.
+    /// Panics when that id is not mounted — a test must not lose a line
+    /// the way a forgotten handler would.
+    pub fn emit_stream(&mut self, id: &str, event: StreamEvent) {
+        let handler = self.stream_handler(id).unwrap_or_else(|| {
+            panic!("emit_stream: no <Stream id={id}> is mounted")
+        });
+        let msg = A::Msg::action_with_stream_event(&handler, event).unwrap_or_else(|| {
+            panic!("emit_stream: '{handler}' is not a StreamEvent action")
+        });
+        self.dispatch(msg);
+    }
+
+    /// `emit_stream` of [`StreamEvent::Closed`].
+    pub fn close_stream(&mut self, id: &str, close: StreamClose) {
+        self.emit_stream(id, StreamEvent::Closed(close));
+    }
+
+    fn stream_handler(&self, id: &str) -> Option<String> {
+        self.laid.items.iter().find_map(|item| match &item.kind {
+            ItemKind::Source(SourceDecl::Stream { id: sid, on_event }) if sid == id => {
+                Some(on_event.clone())
+            }
+            _ => None,
+        })
+    }
+
     /// Feed a process fixture into an intercepted `Effect::Process`.
     pub fn resolve_process(&mut self, effect: Effect<A::Msg>, result: ProcessResult) {
         match effect {
             Effect::Process { on_done, .. } => self.dispatch(on_done(result)),
             other => panic!("resolve_process: not a Process effect: {other:?}"),
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Automatic effect resolution (§15.4 + §12.3)
+    // ------------------------------------------------------------------
+
+    /// Answer intercepted effects from a fixture function instead of one
+    /// `resolve_*` call per effect, so a run can take steps whose effects it
+    /// cannot enumerate in advance. Results are still fixtures — this executes
+    /// nothing (§12.6).
+    ///
+    /// ```ignore
+    /// let mut h = Harness::<Gloss>::render(gloss::VIEW).responder(|fx| match fx {
+    ///     Effect::Process { command, .. } if command.args.first() == Some(&"list".into()) => {
+    ///         Reply::Process(ok_stdout("Atlas.md\n"))
+    ///     }
+    ///     Effect::Process { .. } => Reply::Process(ok_stdout("# note\n")),
+    ///     Effect::KvGet { .. } => Reply::KvGet(None),
+    ///     _ => Reply::Drop,
+    /// });
+    /// ```
+    pub fn responder(
+        mut self,
+        f: impl FnMut(&Effect<A::Msg>) -> Reply + 'static,
+    ) -> Self {
+        self.responder = Some(Box::new(f));
+        self
+    }
+
+    /// Seed the effect-drain shuffle and every autopilot choice. Two runs with
+    /// the same seed are the same run — that is what makes a failure a bug
+    /// report rather than a flake.
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.seed = seed;
+        self.rng = respond::Rng::new(seed);
+        self
+    }
+
+    /// Drive the app for `steps` interactions, picking affordances out of the
+    /// real tree (§15.7). See [`autopilot`] for what a run does and asserts.
+    ///
+    /// ```ignore
+    /// h.autopilot(400)
+    ///     .avoid_handlers(["openVaultPicker"])
+    ///     .invariant("settles", |s| s.io == IoKind::Idle)
+    ///     .bounded("history", 500, |s| s.history_back.len())
+    ///     .budget(Budget::new().max_ms(40.0))
+    ///     .run();
+    /// ```
+    pub fn autopilot(&mut self, steps: usize) -> Autopilot<'_, A> {
+        Autopilot::new(self, steps)
+    }
+
+    pub(crate) fn seed_value(&self) -> u64 {
+        self.seed
+    }
+
+    /// Next autopilot choice below `n`.
+    pub(crate) fn pick(&mut self, n: usize) -> usize {
+        self.rng.below(n)
+    }
+
+    /// Resolve pending effects through the responder until the queue stops
+    /// making progress, and return how many were delivered.
+    ///
+    /// Each round shuffles the queue before answering it. §12.3 leaves
+    /// cross-effect ordering unguaranteed, so emission order is the one order
+    /// production will never promise; draining in it exclusively would test
+    /// the single arrangement that cannot be relied on.
+    ///
+    /// Panics if the queue never settles — an effect cycle is a real bug, and
+    /// a test that hangs on one reports nothing.
+    pub fn drain_effects(&mut self) -> usize {
+        let mut delivered = 0usize;
+        for _ in 0..respond::MAX_ROUNDS {
+            if self.pending.is_empty() {
+                return delivered;
+            }
+            let (n, progressed) = self.drain_one_round();
+            delivered += n;
+            // Everything left is deferred and nothing moved: as settled as
+            // this responder will get.
+            if !progressed {
+                return delivered;
+            }
+        }
+        panic!(
+            "drain_effects: still emitting after {} rounds — effect cycle?\n  queued: {}",
+            respond::MAX_ROUNDS,
+            self.pending
+                .iter()
+                .map(respond::label)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    /// Answer one round of pending effects and stop, leaving whatever those
+    /// answers emitted still in flight.
+    ///
+    /// This is how a test reaches states that only exist *between* a request
+    /// and its result. Draining to quiescence after every interaction models a
+    /// user who waits for each spinner; real users click again first, and an
+    /// app whose next action reads state the in-flight result was going to
+    /// overwrite only misbehaves for them.
+    pub fn drain_round(&mut self) -> usize {
+        self.drain_one_round().0
+    }
+
+    /// Returns how many were delivered, and whether anything moved at all.
+    fn drain_one_round(&mut self) -> (usize, bool) {
+        let mut delivered = 0usize;
+        let mut progressed = false;
+        let mut slots: Vec<Option<Effect<A::Msg>>> = self.pending.drain(..).map(Some).collect();
+        let mut order: Vec<usize> = (0..slots.len()).collect();
+        self.rng.shuffle(&mut order);
+        for i in order {
+            let Some(effect) = slots[i].take() else {
+                continue;
+            };
+            let reply = match &mut self.responder {
+                Some(f) => f(&effect),
+                None => Reply::Defer,
+            };
+            match reply {
+                Reply::Defer => self.pending.push_back(effect),
+                Reply::Drop => progressed = true,
+                reply => {
+                    self.deliver(effect, reply);
+                    delivered += 1;
+                    progressed = true;
+                }
+            }
+        }
+        (delivered, progressed)
+    }
+
+    fn deliver(&mut self, effect: Effect<A::Msg>, reply: Reply) {
+        match (&effect, reply) {
+            (Effect::Http { .. }, Reply::Http(r)) => self.resolve_http(effect, r),
+            (Effect::KvGet { .. }, Reply::KvGet(v)) => self.resolve_kv_get(effect, v),
+            (Effect::KvSet { .. }, Reply::KvSet(r)) => self.resolve_kv_set(effect, r),
+            (Effect::KvScan { .. }, Reply::KvScan(hits)) => self.resolve_kv_scan(effect, hits),
+            (Effect::Random { .. }, Reply::Random(b)) => self.resolve_random(effect, b),
+            (Effect::Process { .. }, Reply::Process(r)) => self.resolve_process(effect, r),
+            (Effect::ClipboardSet { .. }, Reply::Clipboard(r)) => {
+                self.resolve_clipboard(effect, r)
+            }
+            (Effect::PickFolder { .. }, Reply::FolderPick(p)) => {
+                self.resolve_folder_pick(effect, p)
+            }
+            (Effect::Timer { .. }, Reply::Timer) => self.fire_timer(effect),
+            (effect, reply) => panic!(
+                "responder answered {} with {reply:?} — wrong reply kind",
+                respond::label(effect)
+            ),
         }
     }
 
@@ -792,8 +1100,21 @@ impl<A: App> Harness<A> {
         }
     }
 
+    /// Laid-out box of the first match, `(x, y, width, height)` in logical px.
+    pub fn rect(&self, sel: Selector) -> (f32, f32, f32, f32) {
+        let item = self
+            .find(&sel)
+            .unwrap_or_else(|| panic!("rect: no item matches {sel:?}"));
+        let r = item.rect;
+        (r.x, r.y, r.w, r.h)
+    }
+
     fn find(&self, sel: &Selector) -> Option<&libra_components::Item> {
-        self.laid.items.iter().find(|i| match sel {
+        self.find_index(sel).map(|i| &self.laid.items[i])
+    }
+
+    fn find_index(&self, sel: &Selector) -> Option<usize> {
+        self.laid.items.iter().position(|i| match sel {
             Selector::TestId(id) => i.semantics.test_id.as_deref() == Some(id.as_str()),
             Selector::Text(t) => i.semantics.text == *t,
             Selector::Role(r) => i.semantics.role == *r,
@@ -955,6 +1276,8 @@ fn rebuild<A: App>(
     let has_frame_info_action =
         |m: &str| A::Msg::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let has_instant_action = |m: &str| A::Msg::action_with_instant(m, Instant::at(0.0)).is_some();
+    let has_stream_event_action =
+        |m: &str| A::Msg::action_with_stream_event(m, StreamEvent::Dropped(0)).is_some();
     let scope = Scope {
         field: &field,
         has_action: &has_action,
@@ -962,6 +1285,7 @@ fn rebuild<A: App>(
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        has_stream_event_action: &has_stream_event_action,
         binding_ctx: "State",
     };
     let view = libra_interp::resolve(ast, &scope, registry)

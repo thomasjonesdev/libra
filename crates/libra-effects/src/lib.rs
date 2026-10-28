@@ -1,7 +1,8 @@
 //! libra-effects — the effects runtime, the only I/O actor: a worker pool
 //! runs http/kv/random/process and dedicated threads run timers; results
 //! return as actions through the runtime's `Sink`. Cross-effect ordering is
-//! deliberately unguaranteed — state must tolerate reordering.
+//! deliberately unguaranteed — state must tolerate reordering. Events from
+//! one `Effect::Spawn` stay in source order (§12.3).
 //!
 //! Architecture: ARCHITECTURE.md §12.3 (execution model), §12.6 (process effect).
 
@@ -9,6 +10,8 @@ use libra_core::{
     CommandSpec, Effect, HttpRequest, HttpResult, KvResult, ProcessId, ProcessResult,
     ProcessStatus, TimerId,
 };
+
+mod stream;
 use libra_data::SeriesStore;
 use libra_kv::Kv;
 use std::collections::{HashMap, HashSet};
@@ -36,6 +39,7 @@ pub struct Effects<M> {
     cancelled_processes: Arc<Mutex<HashSet<ProcessId>>>,
     running_processes: Arc<Mutex<HashMap<ProcessId, Arc<AtomicBool>>>>,
     next_process_id: Arc<AtomicU64>,
+    streams: Arc<stream::Streams>,
 }
 
 const WORKERS: usize = 4;
@@ -77,7 +81,23 @@ impl<M: Send + 'static> Effects<M> {
             cancelled_processes: Arc::new(Mutex::new(HashSet::new())),
             running_processes: Arc::new(Mutex::new(HashMap::new())),
             next_process_id: Arc::new(AtomicU64::new(1)),
+            streams: Arc::new(stream::Streams::new()),
         }
+    }
+
+    /// Wake the shell when a mounted stream has lines waiting (§12.5).
+    pub fn set_stream_wake(&self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.streams.set_wake(wake);
+    }
+
+    /// Replay buffered events for `mounted` ids and drop the rest.
+    /// The shell maps each id to the mounted `onEvent` handler.
+    pub fn sync_streams(&self, mounted: &[String]) -> Vec<(String, libra_core::StreamEvent)> {
+        let drain = self.streams.sync(mounted);
+        // `more` schedules its own wake inside `sync`. The shell drains
+        // again on that event, so the flag does not need a second channel.
+        let _ = drain.more;
+        drain.events
     }
 
     /// Programs the worker pool may spawn (§12.6). Empty allowlist rejects all.
@@ -176,6 +196,9 @@ impl<M: Send + 'static> Effects<M> {
             }
             Effect::IngestOpen { source, series } => self.store.ingest_open(series, source),
             Effect::IngestClose { series } => self.store.ingest_close(series),
+            Effect::Sample { series, t_ms, value } => {
+                self.store.ring(series).push(libra_data::Sample { t_ms, v: value });
+            }
             // Shell-handled: the windowed shell intercepts SetTheme
             // before effects reach the pool; reaching here means
             // headless — nothing to restyle.
@@ -205,6 +228,18 @@ impl<M: Send + 'static> Effects<M> {
                     cancel.store(true, Ordering::Relaxed);
                 }
             }
+            Effect::Spawn { stream, command, capture } => {
+                self.streams.spawn_shared(
+                    stream,
+                    command,
+                    capture,
+                    &self.process_allowlist,
+                );
+            }
+            Effect::CloseStream { stream } => self.streams.close(&stream),
+            // `Effect` is `non_exhaustive` (PLAN-SDK S4). A future variant
+            // is a no-op here until this runtime learns it.
+            _ => {}
         }
     }
 
@@ -450,12 +485,38 @@ fn do_process(
     let cancel_flag = Arc::new(AtomicBool::new(false));
     running.lock().expect("running set").insert(process_id, Arc::clone(&cancel_flag));
 
+    // Drain both pipes from their own threads for as long as the child runs.
+    // A pipe holds ~64 KB; a child that writes more than that blocks in
+    // `write` until someone reads, so reading only *after* `try_wait` reports
+    // exit deadlocks the pair until the timeout fires — and then reports no
+    // output at all. Any command whose output can exceed a pipe buffer (a
+    // file `cat`, a directory listing) hits this.
+    let out_reader = child.stdout.take().map(|mut out| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = out.read_to_end(&mut buf);
+            buf
+        })
+    });
+    let err_reader = child.stderr.take().map(|mut err| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = err.read_to_end(&mut buf);
+            buf
+        })
+    });
+    let collect = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
+        h.map(|h| h.join().unwrap_or_default()).unwrap_or_default()
+    };
+
     let timeout = command.timeout_ms.map(Duration::from_millis);
     let start = std::time::Instant::now();
     loop {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = child.kill();
             let _ = child.wait();
+            drop(collect(out_reader));
+            drop(collect(err_reader));
             return ProcessResult {
                 status: ProcessStatus::Signalled(9),
                 stdout: vec![],
@@ -465,14 +526,6 @@ fn do_process(
         }
         match child.try_wait() {
             Ok(Some(status)) => {
-                let mut stdout = Vec::new();
-                let mut stderr = Vec::new();
-                if let Some(mut out) = child.stdout.take() {
-                    let _ = out.read_to_end(&mut stdout);
-                }
-                if let Some(mut err) = child.stderr.take() {
-                    let _ = err.read_to_end(&mut stderr);
-                }
                 #[cfg(unix)]
                 let proc_status = {
                     use std::os::unix::process::ExitStatusExt;
@@ -488,8 +541,8 @@ fn do_process(
                 let proc_status = ProcessStatus::Exited(status.code().unwrap_or(-1));
                 return ProcessResult {
                     status: proc_status,
-                    stdout,
-                    stderr,
+                    stdout: collect(out_reader),
+                    stderr: collect(err_reader),
                     finished_at_unix_ms: unix_ms_now(),
                 };
             }
@@ -498,19 +551,24 @@ fn do_process(
                     if start.elapsed() >= limit {
                         let _ = child.kill();
                         let _ = child.wait();
-                        let mut stderr = Vec::new();
-                        if let Some(mut err) = child.stderr.take() {
-                            let _ = err.read_to_end(&mut stderr);
-                        }
+                        drop(collect(out_reader));
                         return ProcessResult {
                             status: ProcessStatus::TimedOut,
                             stdout: vec![],
-                            stderr,
+                            stderr: collect(err_reader),
                             finished_at_unix_ms: unix_ms_now(),
                         };
                     }
                 }
-                std::thread::sleep(Duration::from_millis(50));
+                // Short commands (a note `cat`) finish in single-digit ms, so
+                // a flat 50 ms poll made every one of them feel slow; back off
+                // once it's clear this is a long-running child.
+                let poll = if start.elapsed() < Duration::from_millis(50) {
+                    Duration::from_millis(1)
+                } else {
+                    Duration::from_millis(25)
+                };
+                std::thread::sleep(poll);
             }
             Err(e) => {
                 return ProcessResult {

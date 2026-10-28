@@ -1,0 +1,29 @@
+# A sample custom theme table (§11) — pass to any example:
+#   cargo run -p gallery -- themes/solarized.toml
+# Unspecified tokens inherit from libra-dark. Colors are "#RRGGBB[AA]";
+# metrics (radius_*, type_*, space_1..8, control_h_*) are bare numbers.
+name = "solarized-dark"
+bg = "#002B36"
+surface = "#073642"
+surface_raised = "#0A4552"
+text = "#EEE8D5"
+text_muted = "#93A1A1"
+accent = "#268BD2"
+accent_text = "#FDF6E3"
+secondary = "#0A4552"
+selection = "#264663"
+hairline = "#0E3A45"
+border = "#0E4A58"
+
+# Semantic status pairs (Badge/Status/Toast) — PLAN-TOKENS T2.
+danger_bg  = "#3A1F1C"
+danger_fg  = "#DC322F"
+warning_bg = "#3A3016"
+warning_fg = "#B58900"
+success_bg = "#123021"
+success_fg = "#859900"
+info_bg    = "#0E2A3A"
+info_fg    = "#268BD2"
+
+# Spacing density (T4): compact | normal | comfortable.
+density = "normal"

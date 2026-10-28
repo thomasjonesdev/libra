@@ -29,6 +29,14 @@ impl TextSize {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputVariant {
+    #[default]
+    Field,
+    /// Borderless inline text — titles, inline rename, etc.
+    Plain,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
     Primary,
@@ -40,6 +48,7 @@ pub enum Variant {
 /// (§7.1, PLAN-CATALOG). Painted as polylines / full-radius RRects —
 /// no path/arc `DrawCmd`, no icon font, no files (Appendix A).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IconName {
     Plus,
     Minus,
@@ -133,6 +142,7 @@ impl IconName {
 /// Resolves to a `theme.<tone>_bg`/`_fg` token pair — never a hex literal
 /// (PLAN-TOKENS T2). Both engines map the markup `tone="…"` string to this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum Tone {
     #[default]
     Neutral,
@@ -190,6 +200,7 @@ pub struct BoxStyle {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ViewNode {
     Column { style: BoxStyle, children: Vec<ViewNode> },
     Row { style: BoxStyle, children: Vec<ViewNode> },
@@ -291,7 +302,16 @@ pub enum ViewNode {
     /// dispatches `on_change` with the control-provided new text.
     /// `test_id` is required — it is the focus identity until the
     /// reconciler brings structural IDs.
-    Input { value: String, placeholder: String, on_change: String, test_id: String },
+    Input {
+        value: String,
+        placeholder: String,
+        on_change: String,
+        on_submit: Option<String>,
+        variant: InputVariant,
+        size: TextSize,
+        bold: bool,
+        test_id: String,
+    },
     /// `<Search>` (§7.1, PLAN-CATALOG wave 3): Input chrome + submit.
     /// Same controlled `value`/`onChange`/`testId` contract as Input;
     /// optional `onSubmit` is a unit action fired on Enter. Live-filter
@@ -321,12 +341,23 @@ pub enum ViewNode {
         on_menu_arg: Option<String>,
         /// Leading indent in logical px (tree depth). Default 0.
         inset: f32,
+        /// Stretch to the row. Without it the width is the label's.
+        grow: bool,
         test_id: Option<String>,
     },
     /// `<Textarea>` (§10.1, PLAN-TEXTAREA stage 4 wrap): multi-line
     /// controlled text entry on the same pure editing core as Input.
     /// Soft-wraps to the laid-out width; Up/Down stay hard-line.
-    Textarea { value: String, placeholder: String, on_change: String, test_id: String },
+    Textarea {
+        value: String,
+        placeholder: String,
+        on_change: String,
+        test_id: String,
+        /// When true, inactive hard lines paint styled markdown preview.
+        markdown: bool,
+        /// String-payload action for `[[wikilink]]` presses in markdown mode.
+        on_wikilink: Option<String>,
+    },
     /// `<Markdown source={…} skipTitle?={…} onWikilink?={…} />` —
     /// display-only CommonMark (§24). Layout expands the source into
     /// Heading/Text/Separator children. `on_wikilink` is a String-payload
@@ -357,7 +388,13 @@ pub enum ViewNode {
     /// its String payload, and the app echoes it into the bound field
     /// (the controlled shape; pane layout *is* app state — replayable,
     /// snapshot-exact). Exactly two children.
-    Split { fraction: f32, on_resize: String, test_id: String, children: Vec<ViewNode> },
+    Split {
+        fraction: f32,
+        left_min: Option<f32>,
+        on_resize: String,
+        test_id: String,
+        children: Vec<ViewNode>,
+    },
     /// `<Alert tone="danger" title=…>body</Alert>` (§7.1, PLAN-CATALOG):
     /// an inline callout — status-token tinted panel, bold title line,
     /// muted body from the element's text content.
@@ -598,6 +635,9 @@ pub enum ItemKind {
     Box, // Column/Row/Spacer (no visual; containers are transparent)
     /// `<Separator>` — paints a `theme.hairline` rect over its rect.
     Separator,
+    /// Invisible press target for inline wikilink hits in markdown textareas.
+    /// Paints nothing; excluded from the a11y tree.
+    LinkTarget,
     Text { content: String, px: f32, style: FontStyle, color: Color, wrap: bool, strike: bool },
     Button { label: String, px: f32, variant: Variant, icon: Option<IconName> },
     /// `<Icon>` glyph — closed [`IconName`], token color.
@@ -636,14 +676,21 @@ pub enum ItemKind {
     /// descendants (which carry `Item::clip` / `Item::scroll`).
     Scroll,
     Chart { handle: SeriesHandle, panel: bool },
-    Input { value: String, placeholder: String, px: f32 },
+    Input {
+        value: String,
+        placeholder: String,
+        px: f32,
+        on_submit: Option<String>,
+        variant: InputVariant,
+        bold: bool,
+    },
     /// `<Search>` — Input chrome plus a leading glyph; `on_submit` is
     /// the optional Enter handler (unit action). Focus/edit reuse
     /// `Role::TextInput`.
     Search { value: String, placeholder: String, px: f32, on_submit: Option<String> },
     /// Multi-line sibling of Input (§10.1 stage 1) — same focus
     /// machinery, line-aware paint.
-    Textarea { value: String, placeholder: String, px: f32 },
+    Textarea { value: String, placeholder: String, px: f32, markdown: bool, on_wikilink: Option<String> },
     /// Pressable list row; `selected`/hover paint a `surface_raised`
     /// wash behind the text lines.
     ListItem {

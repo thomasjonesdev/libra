@@ -3,9 +3,12 @@ name = "libra-platform"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra windowed shell"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-markup.workspace = true
 libra-interp.workspace = true
 libra-components.workspace = true
@@ -19,6 +22,7 @@ winit.workspace = true
 softbuffer.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+libc.workspace = true
 directories.workspace = true
 arboard.workspace = true
 rfd.workspace = true

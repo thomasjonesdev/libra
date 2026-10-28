@@ -3,10 +3,13 @@ name = "libra-components"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra component catalog and layout"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
 libra-draw.workspace = true
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-data.workspace = true
 libra-markdown.workspace = true
 taffy.workspace = true

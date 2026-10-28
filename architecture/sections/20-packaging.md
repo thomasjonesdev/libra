@@ -19,10 +19,10 @@ Libra apps ship as native binaries wrapped by **`libra build`** (release artifac
 
 | Command | Purpose |
 |---|---|
-| `libra dev -p <crate>` | Debug run; hot-reloads `.lx`; uses `[package].icon` when present |
-| `libra build -p <crate>` | Release binary (view codegen + LTO) → `target/release/<crate>` |
+| `libra dev [path]` | Debug run; hot-reloads `.lx`; uses `[package].icon` when present. Path-based — `libra dev examples/counter`, not `-p` |
+| `libra build [path] [-p crate]` | Release binary (view codegen + LTO). Pins the workspace manifest. In-repo: `libra build -p aws-login`. Out-of-tree: `libra build` from the app dir (`templates/app`) |
 | `libra package -p <crate>` | Platform bundle from `libra.toml` → `<app>/dist/` |
-| `libra package … --target macos\|windows\|linux` | Host must match target (cross-compile deferred) |
+| `libra package … --target macos\|windows\|linux` | Host must match target (cross-compile deferred). `--target` selects a bundle format, not a rustc triple |
 | `libra package … --format <fmt>` | Override default format(s) for the target |
 
 Install the CLI once: `cargo install --path cli/libra --force`.
@@ -59,6 +59,7 @@ Full schema and stage plan: [[PLAN-PACKAGE]].
 - Signing/notarization: config-file driven via `[package.sign.*]`; CI recipes in the app README scaffold.
 - Binary size: single-digit MB (no browser, no JS runtime; bundled fonts dominate).
 - Auto-update: **out of scope v0** ([[24-non-goals|§24]]) — cargo-packager can emit update-feed metadata later.
+- Three-OS **content** is identical regardless of where you package ([[19.4-desktop-os-matrix|§19.4]]). Bundles are host-native; the framebuffer is not.
 
 ## Reference implementation
 

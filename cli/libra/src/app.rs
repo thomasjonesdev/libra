@@ -74,9 +74,11 @@ fn find_crate_manifest(crate_name: &str) -> Result<PathBuf, String> {
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("cargo metadata json: {e}"))?;
-    let packages = json["packages"].as_array().ok_or("cargo metadata: no packages")?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("cargo metadata json: {e}"))?;
+    let packages = json["packages"]
+        .as_array()
+        .ok_or("cargo metadata: no packages")?;
     for pkg in packages {
         if pkg["name"].as_str() == Some(crate_name) {
             let path = pkg["manifest_path"]
@@ -88,28 +90,77 @@ fn find_crate_manifest(crate_name: &str) -> Result<PathBuf, String> {
     Err(format!("no workspace package named '{crate_name}'"))
 }
 
-/// Walk upward from `start` to the workspace root (the `Cargo.toml` that
-/// declares `[workspace]`).
+/// Walk upward from `start` to the Cargo workspace root.
+///
+/// Prefers a `Cargo.toml` that declares `[workspace]` **and lists this
+/// package as a member**. A crate that merely lives on disk under a
+/// parent workspace (`templates/app` is not in root `members`) is its
+/// own implicit workspace — same as an app `libra new` writes with no
+/// dummy `[workspace]` table (PLAN-SDK S3). If no workspace exists
+/// above, fall back to the nearest `[package]` directory.
 pub fn find_workspace_root(start: &Path) -> Result<PathBuf, String> {
     let mut dir = start
         .canonicalize()
         .map_err(|e| format!("{}: {e}", start.display()))?;
+    let mut package_dir: Option<PathBuf> = None;
     loop {
         let manifest = dir.join("Cargo.toml");
         if manifest.is_file() {
             if let Ok(src) = std::fs::read_to_string(&manifest) {
                 if src.lines().any(|l| l.trim() == "[workspace]") {
+                    if let Some(ref pkg) = package_dir {
+                        if !is_workspace_member(&dir, pkg) {
+                            return Ok(pkg.clone());
+                        }
+                    }
                     return Ok(dir);
+                }
+                if package_dir.is_none() && src.lines().any(|l| l.trim() == "[package]") {
+                    package_dir = Some(dir.clone());
                 }
             }
         }
         if !dir.pop() {
-            return Err(format!(
-                "no Cargo workspace found at or above {}",
-                start.display()
-            ));
+            break;
         }
     }
+    package_dir.ok_or_else(|| format!("no Cargo package found at or above {}", start.display()))
+}
+
+/// Whether `package_dir` appears in `cargo metadata` for `workspace_root`.
+fn is_workspace_member(workspace_root: &Path, package_dir: &Path) -> bool {
+    let output = Command::new("cargo")
+        .args([
+            "metadata",
+            "--format-version=1",
+            "--no-deps",
+            "--manifest-path",
+        ])
+        .arg(workspace_root.join("Cargo.toml"))
+        .output();
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return false;
+    };
+    let Some(packages) = json["packages"].as_array() else {
+        return false;
+    };
+    let want = package_dir
+        .join("Cargo.toml")
+        .canonicalize()
+        .unwrap_or_else(|_| package_dir.join("Cargo.toml"));
+    packages.iter().any(|pkg| {
+        pkg["manifest_path"]
+            .as_str()
+            .map(PathBuf::from)
+            .map(|p| p.canonicalize().unwrap_or(p))
+            .is_some_and(|p| p == want)
+    })
 }
 
 /// Cargo's active `target_directory` for the workspace (respects `CARGO_TARGET_DIR`).
@@ -125,8 +176,8 @@ pub fn cargo_target_directory(workspace_root: &Path) -> Result<PathBuf, String> 
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("cargo metadata json: {e}"))?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|e| format!("cargo metadata json: {e}"))?;
     json["target_directory"]
         .as_str()
         .map(PathBuf::from)
@@ -154,5 +205,30 @@ mod tests {
             return;
         }
         assert_eq!(app.unwrap().crate_name, "aws-login");
+    }
+
+    #[test]
+    fn resolves_standalone_template() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let template = root.join("templates/app");
+        let app = resolve(template, None).expect("templates/app is a Libra app");
+        assert_eq!(app.crate_name, "starter");
+        assert_eq!(app.app_dir, app.workspace_root);
+        assert!(app.workspace_manifest.ends_with("templates/app/Cargo.toml"));
+    }
+
+    #[test]
+    fn package_dir_is_workspace_when_no_workspace_table() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"solo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let root = find_workspace_root(dir.path()).unwrap();
+        assert_eq!(root, dir.path().canonicalize().unwrap());
     }
 }

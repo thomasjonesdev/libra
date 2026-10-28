@@ -65,7 +65,7 @@ From the repo root (requires Rust + the Libra CLI):
 
 ```sh
 cargo install --path cli/libra --force   # one-time
-libra dev -p aws-login
+libra dev applications/aws-login
 ```
 
 When `libra.toml` is present, `libra dev` loads `[package].icon` for the window title-bar icon (same PNG used in packaged builds).

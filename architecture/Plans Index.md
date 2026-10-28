@@ -31,15 +31,17 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
 | [[PLAN-AWS-LOGIN]] | v1 shipped (P1, P2, A1–A7); A8–A10 planned | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]], [[PLAN-STREAM-DELIVERY]] |
-| [[PLAN-STREAM-DELIVERY]] | planned (D1–D6) | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
+| [[PLAN-STREAM-DELIVERY]] | D1–D4 shipped; D5–D6 not started | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
 | [[PLAN-NOTIFY]] | planned (NT1–NT4) | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
 | [[PLAN-RESIDENCY]] | planned (R1–R6) | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
-| [[PLAN-NATIVE-INTEGRATIONS]] | planned | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-NATIVE-INTEGRATIONS]] | planned (N7 started; N8 OS chrome parity) | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | **done** (P0–P6) | [[23-roadmap|§23]], [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] |
+| [[PLAN-SDK]] | shipped (S1–S4, crates.io 0.1.1) | [[18.1-cli\|§18.1]], [[20-packaging\|§20]], [[21-crate-layout\|§21]], [[05.8-app-assembly\|§5.8]], [[26-open-questions\|§26]], [[PLAN-PACKAGE]], [[PLAN-PHASE4-DX]] |
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |
 | [[PLAN-RECONCILER]] | planned | [[06.2-closed-grammar|§6.2]] |
 | [[PLAN-COMPOSE]] | done | [[07.2-composed-components|§7.2]], [[06.4-one-grammar-two-engines|§6.4]], [[06.5-compile-time-validation|§6.5]], [[26-open-questions|§26]] |
 | [[PLAN-TEST-CLI]] | in progress (v1) | [[18.1-cli|§18.1]], [[15-testing|§15]], [[15.8-ci-shape|§15.8]] |
+| [[PLAN-AUTOPILOT]] | shipped (A1–A4); A5 planned | [[15.7-fuzzing-property-tests\|§15.7]], [[22-performance-budgets\|§22]], [[12.3-execution-model\|§12.3]], [[15.3-component-tests\|§15.3]] |
 
 ← [[Architecture Home]] · [[Map of Content]]

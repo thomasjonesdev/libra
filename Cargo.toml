@@ -1,31 +1,40 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "examples/counter", "examples/fetcher", "examples/dashboard", "examples/notes", "examples/gallery", "examples/todos", "applications/aws-login", "applications/gloss", "applications/gloss/crates/gloss-core", "applications/gloss/crates/gloss-cli", "applications/gloss/crates/gloss-index", "cli/libra", "conformance"]
+# PLAN-SDK S3: the starter is a standalone crate. Exclude it so it needs
+# no dummy `[workspace]` table while living under this checkout.
+exclude = ["templates/app"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
+repository = "https://github.com/thomasjonesdev/libra"
+authors = ["Thomas Jones"]
 
+# crates.io names (PLAN-SDK S4, §26 #7): `libra`, `libra-core`, and
+# `libra-cli` are taken. Publish those three as `libra-ui`,
+# `libra-ui-core`, and `libra-ui-cli`. Rust names stay `libra` /
+# `libra_core` via `[lib] name`, and the CLI binary stays `libra`.
 [workspace.dependencies]
-libra = { path = "crates/libra" }
-libra-core = { path = "crates/libra-core" }
-libra-reflect = { path = "crates/libra-reflect" }
-libra-markup = { path = "crates/libra-markup" }
-libra-interp = { path = "crates/libra-interp" }
-libra-components = { path = "crates/libra-components" }
-libra-draw = { path = "crates/libra-draw" }
-libra-raster = { path = "crates/libra-raster" }
-libra-test = { path = "crates/libra-test" }
-libra-platform = { path = "crates/libra-platform" }
-libra-kv = { path = "crates/libra-kv" }
-libra-effects = { path = "crates/libra-effects" }
-libra-data = { path = "crates/libra-data" }
-libra-text = { path = "crates/libra-text" }
-libra-codegen = { path = "crates/libra-codegen" }
-libra-build = { path = "crates/libra-build" }
-libra-query = { path = "crates/libra-query" }
-libra-markdown = { path = "crates/libra-markdown" }
+libra-ui = { version = "0.1.1", path = "crates/libra", default-features = false }
+libra-ui-core = { version = "0.1.1", path = "crates/libra-core" }
+libra-reflect = { version = "0.1.1", path = "crates/libra-reflect" }
+libra-markup = { version = "0.1.1", path = "crates/libra-markup" }
+libra-interp = { version = "0.1.1", path = "crates/libra-interp" }
+libra-components = { version = "0.1.1", path = "crates/libra-components" }
+libra-draw = { version = "0.1.1", path = "crates/libra-draw" }
+libra-raster = { version = "0.1.1", path = "crates/libra-raster" }
+libra-test = { version = "0.1.1", path = "crates/libra-test" }
+libra-platform = { version = "0.1.1", path = "crates/libra-platform" }
+libra-kv = { version = "0.1.1", path = "crates/libra-kv" }
+libra-effects = { version = "0.1.1", path = "crates/libra-effects" }
+libra-data = { version = "0.1.1", path = "crates/libra-data" }
+libra-text = { version = "0.1.1", path = "crates/libra-text" }
+libra-codegen = { version = "0.1.1", path = "crates/libra-codegen" }
+libra-build = { version = "0.1.1", path = "crates/libra-build" }
+libra-query = { version = "0.1.1", path = "crates/libra-query" }
+libra-markdown = { version = "0.1.1", path = "crates/libra-markdown" }
 pulldown-cmark = { version = "0.13", default-features = false }
 # Determinism-critical rendering stack — pinned exactly (§ Phase 0
 # shortcuts): bumping any of these can change rendered bytes and requires
@@ -37,6 +46,7 @@ fontdue = "=0.8.0"
 # Third-party deps, versioned once here and referenced per crate with
 # `<dep>.workspace = true`. Keeps every crate on one version + one feature
 # policy (notably serde, previously declared in ~9 places).
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"

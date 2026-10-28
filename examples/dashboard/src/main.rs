@@ -62,6 +62,7 @@ fn bench() {
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        has_stream_event_action: &|_| false,
         binding_ctx: "State",
     };
 

@@ -1,13 +1,18 @@
 use gloss::{Gloss, STORE_KEY};
 use libra_core::{FolderPick, KvResult, ProcessResult, ProcessStatus};
 use libra_test::{by, fx, Harness};
+use std::path::PathBuf;
+
+pub fn view_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("views")
+}
 
 pub fn harness() -> Harness<Gloss> {
     harness_at(960, 640)
 }
 
 pub fn harness_at(w: u32, h: u32) -> Harness<Gloss> {
-    let mut h = Harness::<Gloss>::with_viewport(gloss::VIEW, w, h);
+    let mut h = Harness::<Gloss>::with_view_dir(gloss::VIEW, &view_dir(), w, h);
     let load = h.expect_effect(fx::kv_get(STORE_KEY));
     h.resolve_kv_get(load, None);
     h

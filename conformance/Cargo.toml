@@ -3,9 +3,13 @@ name = "conformance"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
-libra-core.workspace = true
+# Facade without the `app` feature — `#[derive(LibraReflect)]` expansions
+# name `::libra::` (PLAN-SDK S2). Workspace `libra` is default-features = false.
+libra-ui.workspace = true
+libra-ui-core.workspace = true
 libra-components.workspace = true
 
 [dev-dependencies]

@@ -1,0 +1,10 @@
+<props query: String, paletteQueryChanged: Action(String), dismiss: Action, children: slot />
+
+<Dialog title="Open note" onDismiss={dismiss} testId="palette-dialog">
+  <Search value={query} placeholder="note name…" onChange={paletteQueryChanged} testId="palette-search" />
+  <Scroll testId="palette-scroll" height={280}>
+    <Column gap={2}>
+      <slot/>
+    </Column>
+  </Scroll>
+</Dialog>

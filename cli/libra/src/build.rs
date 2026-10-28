@@ -1,5 +1,6 @@
-//! `libra build` (ARCHITECTURE.md §18.1, PLAN-PACKAGE P1) — release binary
-//! with view codegen + workspace LTO.
+//! `libra build` (ARCHITECTURE.md §18.1, PLAN-PACKAGE P1, PLAN-SDK S1) —
+//! release binary with view codegen + workspace LTO. Pins
+//! `--manifest-path` so out-of-tree apps do not depend on process cwd.
 
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
@@ -23,16 +24,15 @@ pub fn build(args: &[String]) -> ExitCode {
         "libra build: release build of {} (codegen views + LTO — §18.2)",
         app.crate_name
     );
-    eprintln!("  manifest: {}", app.cargo_manifest.display());
+    eprintln!("  manifest: {}", app.workspace_manifest.display());
 
+    // Pin the workspace the way `libra package` does. Without
+    // `--manifest-path`, `cargo -p` uses process cwd and fails for an
+    // out-of-tree app invoked as `libra build /path/to/app` (PLAN-SDK S1).
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("--release")
-        .arg("-p")
-        .arg(&app.crate_name)
-        .arg("--bin")
-        .arg(&app.crate_name)
+    cmd.args(release_build_args(&app))
         .args(&cargo_args)
+        .current_dir(&app.workspace_root)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -78,6 +78,20 @@ pub fn parse_build_args(args: &[String]) -> (PathBuf, Option<String>, Vec<String
     (root, package, cargo_args)
 }
 
+/// `cargo build --release --manifest-path <workspace> -p <crate> --bin <crate>`
+pub fn release_build_args(app: &crate::app::ResolvedApp) -> Vec<String> {
+    vec![
+        "build".into(),
+        "--release".into(),
+        "--manifest-path".into(),
+        app.workspace_manifest.display().to_string(),
+        "-p".into(),
+        app.crate_name.clone(),
+        "--bin".into(),
+        app.crate_name.clone(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +115,28 @@ mod tests {
         let (path, package, _) = parse_build_args(&["-p".into(), "notes".into()]);
         assert_eq!(path, PathBuf::from("."));
         assert_eq!(package.as_deref(), Some("notes"));
+    }
+
+    #[test]
+    fn release_build_pins_workspace_manifest() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let template = root.join("templates/app");
+        let app = crate::app::resolve(template, None).expect("templates/app");
+        let args = release_build_args(&app);
+        assert_eq!(args[0], "build");
+        assert_eq!(args[1], "--release");
+        assert_eq!(args[2], "--manifest-path");
+        assert!(
+            args[3].ends_with("templates/app/Cargo.toml"),
+            "expected template workspace manifest, got {}",
+            args[3]
+        );
+        assert_eq!(args[4], "-p");
+        assert_eq!(args[5], "starter");
+        assert_eq!(args[6], "--bin");
+        assert_eq!(args[7], "starter");
     }
 }

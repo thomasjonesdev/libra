@@ -7,6 +7,7 @@
 
 use libra_core::{
     Effect, FrameInfo, HttpRequest, HttpResult, Instant, IntoEffects, ReflectAction, ReflectState,
+    Rehydrate, StreamEvent,
 };
 use libra_reflect::{actions, state};
 
@@ -44,7 +45,10 @@ impl CounterState {
 
     // Fetches something; returns an effect.
     fn fetch(&mut self) -> Effect<Action> {
-        Effect::http(HttpRequest::get("https://api.example.com/session"), Action::Fetched)
+        Effect::http(
+            HttpRequest::get("https://api.example.com/session"),
+            Action::Fetched,
+        )
     }
 
     // Continuation: an effect-result payload (not String) — must not
@@ -67,11 +71,21 @@ impl CounterState {
     fn poll(&mut self, instant: Instant) {
         self.last_frame_ms = instant.t_ms;
     }
+
+    fn on_line(&mut self, event: StreamEvent) {
+        if let StreamEvent::Line { text, .. } = event {
+            self.quote = Some(text);
+        }
+    }
 }
 
 #[test]
 fn state_derives_are_bundled_and_reflect_state_works() {
-    let s = CounterState { count: 3, quote: None, last_frame_ms: 0.0 };
+    let s = CounterState {
+        count: 3,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
     // Debug + Clone + PartialEq + Serialize/Deserialize all present:
     let s2 = s.clone();
     assert_eq!(s, s2);
@@ -86,19 +100,102 @@ fn state_derives_are_bundled_and_reflect_state_works() {
     assert_eq!(CounterState::field_names(), &["count"]);
 }
 
+#[state]
+struct ShapeState {
+    count: i64,
+    label: String,
+    #[serde(skip, default)]
+    secret: String,
+    #[serde(rename = "n")]
+    renamed: i64,
+}
+
+#[test]
+fn rehydrate_defaults_unreadable_fields_and_names_them() {
+    let (state, report) = ShapeState::rehydrate(
+        r#"{"count":"nope","label":"kept","secret":"hidden","n":7,"gone":true}"#,
+    );
+    assert!(!report.invalid);
+    assert_eq!(state.count, 0);
+    assert_eq!(state.label, "kept");
+    assert_eq!(state.secret, "");
+    assert_eq!(state.renamed, 7);
+    assert_eq!(report.defaulted, vec!["count".to_string()]);
+    let mut removed = report.removed;
+    removed.sort();
+    assert_eq!(removed, vec!["gone".to_string(), "secret".to_string()]);
+}
+
+#[test]
+fn rehydrate_rejects_a_non_object() {
+    let (state, report) = ShapeState::rehydrate("[1, 2]");
+    assert!(report.invalid);
+    assert_eq!(state.count, 0);
+    assert_eq!(state.label, "");
+}
+
+#[test]
+fn rehydrate_round_trips_a_clean_snapshot() {
+    let original = ShapeState {
+        count: 4,
+        label: "hi".into(),
+        secret: "no".into(),
+        renamed: 1,
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let (state, report) = ShapeState::rehydrate(&json);
+    assert!(!report.invalid);
+    assert!(report.defaulted.is_empty());
+    assert!(report.removed.is_empty());
+    assert_eq!(state.count, 4);
+    assert_eq!(state.label, "hi");
+    assert_eq!(state.secret, "");
+    assert_eq!(state.renamed, 1);
+}
+
 #[test]
 fn single_instant_arg_methods_are_handlers_for_interval_source_elements() {
     let instant = Instant::at(2500.0);
-    assert_eq!(Action::action_with_instant("poll", instant), Some(Action::Poll(instant)));
+    assert_eq!(
+        Action::action_with_instant("poll", instant),
+        Some(Action::Poll(instant))
+    );
     // Not nameable via the other two paths:
     assert_eq!(Action::action_by_name("poll"), None);
     assert_eq!(Action::action_with_str("poll", String::new()), None);
     // Nor the FrameInfo path — distinct payload type, distinct handler:
-    assert_eq!(Action::action_with_frame_info("poll", FrameInfo::at(2500.0)), None);
+    assert_eq!(
+        Action::action_with_frame_info("poll", FrameInfo::at(2500.0)),
+        None
+    );
 
-    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    let mut s = CounterState {
+        count: 0,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
     reduce(&mut s, Action::Poll(instant));
     assert_eq!(s.last_frame_ms, 2500.0);
+}
+
+#[test]
+fn single_stream_event_arg_methods_are_handlers_for_stream_elements() {
+    let event = StreamEvent::Line {
+        text: "hello".into(),
+        stderr: false,
+    };
+    assert_eq!(
+        Action::action_with_stream_event("onLine", event.clone()),
+        Some(Action::OnLine(event.clone()))
+    );
+    assert_eq!(Action::action_by_name("onLine"), None);
+    let mut s = CounterState {
+        count: 0,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
+    reduce(&mut s, Action::OnLine(event));
+    assert_eq!(s.quote.as_deref(), Some("hello"));
 }
 
 #[state]
@@ -152,19 +249,16 @@ fn structured_vec_elements_expose_fields_via_collection_rows() {
     }
 
     let s = ListState {
-        rows: vec![Row { id: 7, label: "Alpha".into() }],
+        rows: vec![Row {
+            id: 7,
+            label: "Alpha".into(),
+        }],
     };
     let rows = s.collection_rows("rows").expect("rows is iterable");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].whole, "7");
-    assert_eq!(
-        rows[0].get("t.id", "t").as_deref(),
-        Some("7")
-    );
-    assert_eq!(
-        rows[0].get("t.label", "t").as_deref(),
-        Some("Alpha")
-    );
+    assert_eq!(rows[0].get("t.id", "t").as_deref(), Some("7"));
+    assert_eq!(rows[0].get("t.label", "t").as_deref(), Some("Alpha"));
     // Opaque SeriesHandle-style path still works via collection_row_opaque:
     let opaque = collection_row_opaque(&"plain".to_string());
     assert_eq!(opaque, CollectionRow::opaque("plain"));
@@ -176,7 +270,10 @@ fn zero_arg_methods_become_unit_variants_dispatchable_by_camelcase_name() {
     assert_eq!(Action::action_by_name("increment"), Some(Action::Increment));
     assert_eq!(Action::action_by_name("decrement"), Some(Action::Decrement));
     // snake_case method -> PascalCase variant -> camelCase public name:
-    assert_eq!(Action::action_by_name("resetCount"), Some(Action::ResetCount));
+    assert_eq!(
+        Action::action_by_name("resetCount"),
+        Some(Action::ResetCount)
+    );
     // The Rust identifier itself is not the public name:
     assert_eq!(Action::action_by_name("reset_count"), None);
     assert_eq!(Action::action_by_name("ResetCount"), None);
@@ -211,7 +308,11 @@ fn single_frame_info_arg_methods_are_handlers_for_source_elements() {
     assert_eq!(Action::action_by_name("frame"), None);
     assert_eq!(Action::action_with_str("frame", String::new()), None);
 
-    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    let mut s = CounterState {
+        count: 0,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
     reduce(&mut s, Action::Frame(info));
     assert_eq!(s.last_frame_ms, 1500.0);
 }
@@ -219,14 +320,25 @@ fn single_frame_info_arg_methods_are_handlers_for_source_elements() {
 #[test]
 fn action_names_lists_every_variant_including_continuations() {
     let names = Action::action_names();
-    for expect in ["increment", "decrement", "resetCount", "filterChanged", "fetch", "fetched"] {
+    for expect in [
+        "increment",
+        "decrement",
+        "resetCount",
+        "filterChanged",
+        "fetch",
+        "fetched",
+    ] {
         assert!(names.contains(&expect), "missing '{expect}' in {names:?}");
     }
 }
 
 #[test]
 fn reduce_dispatches_zero_arg_and_str_arg_actions_and_calls_the_real_method() {
-    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    let mut s = CounterState {
+        count: 0,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
     let fx = reduce(&mut s, Action::Increment);
     assert_eq!(s.count, 1);
     assert!(fx.is_empty());
@@ -244,15 +356,24 @@ fn reduce_dispatches_zero_arg_and_str_arg_actions_and_calls_the_real_method() {
 
 #[test]
 fn reduce_surfaces_effects_returned_by_an_action_and_dispatches_the_continuation() {
-    let mut s = CounterState { count: 0, quote: None, last_frame_ms: 0.0 };
+    let mut s = CounterState {
+        count: 0,
+        quote: None,
+        last_frame_ms: 0.0,
+    };
     let fx = reduce(&mut s, Action::Fetch);
     assert_eq!(fx.len(), 1);
-    let Effect::Http { req, on_done } = &fx[0] else { panic!("expected Http") };
+    let Effect::Http { req, on_done } = &fx[0] else {
+        panic!("expected Http")
+    };
     assert_eq!(req.url, "https://api.example.com/session");
 
     // The effect's own ctor constructs the continuation — exactly the
     // integration-test mechanism (§15.4) in miniature.
-    let continuation = on_done(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() });
+    let continuation = on_done(HttpResult::Response {
+        status: 200,
+        body: b"Mind the gap.".to_vec(),
+    });
     let more_fx = reduce(&mut s, continuation);
     assert!(more_fx.is_empty());
     assert_eq!(s.quote.as_deref(), Some("Mind the gap."));
@@ -319,7 +440,10 @@ mod projected {
 
     #[test]
     fn project_is_not_an_action() {
-        assert!(Action::action_by_name("project").is_none(), "#[project] must not enter the enum");
+        assert!(
+            Action::action_by_name("project").is_none(),
+            "#[project] must not enter the enum"
+        );
         assert!(!Action::action_names().contains(&"project"));
     }
 

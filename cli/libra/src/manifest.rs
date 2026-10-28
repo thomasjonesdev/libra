@@ -72,10 +72,14 @@ pub struct PackagerSpec {
 /// Load and validate `libra.toml` beside an app crate.
 pub fn load(app_dir: &Path) -> Result<LibraManifest, String> {
     let path = app_dir.join("libra.toml");
-    let source = std::fs::read_to_string(&path)
-        .map_err(|e| format!("{}: {e} (required for libra package — see PLAN-PACKAGE P2)", path.display()))?;
-    let manifest: LibraManifest = toml::from_str(&source)
-        .map_err(|e| format!("{}: parse error: {e}", path.display()))?;
+    let source = std::fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "{}: {e} (required for libra package — see PLAN-PACKAGE P2)",
+            path.display()
+        )
+    })?;
+    let manifest: LibraManifest =
+        toml::from_str(&source).map_err(|e| format!("{}: parse error: {e}", path.display()))?;
     validate(&manifest, app_dir)?;
     Ok(manifest)
 }
@@ -313,10 +317,7 @@ icon = "icon.png"
 "#,
         )
         .unwrap();
-        assert_eq!(
-            try_icon_path(dir.path()),
-            Some(dir.path().join("icon.png"))
-        );
+        assert_eq!(try_icon_path(dir.path()), Some(dir.path().join("icon.png")));
     }
 
     #[test]

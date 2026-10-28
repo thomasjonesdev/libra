@@ -1,0 +1,10 @@
+# libra.toml v1 — required for `libra package`; optional for `libra dev` (icon).
+# See architecture/sections/20-packaging.md.
+
+[app]
+name = "Starter"
+bundle_id = "dev.libra.starter"
+app_user_model_id = "Libra.Starter"
+
+[package]
+icon = "assets/icon.png"

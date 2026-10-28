@@ -3,6 +3,8 @@
 //! nextest / cargo-test / llvm-cov command shapes are unit-testable — the
 //! parts that can't be run in every CI environment.
 
+use std::path::Path;
+
 use super::args::{Kind, TestPlan};
 use super::tool::Runner;
 
@@ -30,7 +32,15 @@ fn cargo_kind_flags(kind: Kind) -> Vec<String> {
 ///
 /// `coverage_json` is `Some(path)` when the run should be wrapped in
 /// `cargo llvm-cov` and export its JSON to `path`.
-pub fn build(plan: &TestPlan, runner: Runner, coverage_json: Option<&str>) -> Vec<String> {
+///
+/// `manifest_path` pins the workspace the way `libra build` does, so
+/// `libra test templates/app` does not depend on process cwd.
+pub fn build(
+    plan: &TestPlan,
+    runner: Runner,
+    coverage_json: Option<&str>,
+    manifest_path: Option<&Path>,
+) -> Vec<String> {
     let mut args = Vec::new();
 
     // Coverage prefix: `cargo llvm-cov --json --output-path <p> …`.
@@ -39,12 +49,16 @@ pub fn build(plan: &TestPlan, runner: Runner, coverage_json: Option<&str>) -> Ve
         args.push("--json".into());
         args.push("--output-path".into());
         args.push(path.into());
+        push_manifest(&mut args, manifest_path);
     }
 
     match runner {
         Runner::Nextest => {
             args.push("nextest".into());
             args.push("run".into());
+            if coverage_json.is_none() {
+                push_manifest(&mut args, manifest_path);
+            }
             for p in &plan.packages {
                 args.push("-p".into());
                 args.push(p.clone());
@@ -59,6 +73,9 @@ pub fn build(plan: &TestPlan, runner: Runner, coverage_json: Option<&str>) -> Ve
         }
         Runner::CargoTest => {
             args.push("test".into());
+            if coverage_json.is_none() {
+                push_manifest(&mut args, manifest_path);
+            }
             if plan.packages.is_empty() {
                 args.push("--workspace".into());
             } else {
@@ -79,6 +96,13 @@ pub fn build(plan: &TestPlan, runner: Runner, coverage_json: Option<&str>) -> Ve
     args
 }
 
+fn push_manifest(args: &mut Vec<String>, manifest_path: Option<&Path>) {
+    if let Some(manifest) = manifest_path {
+        args.push("--manifest-path".into());
+        args.push(manifest.display().to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,21 +113,31 @@ mod tests {
 
     #[test]
     fn nextest_positional_filters_and_package() {
-        let a = build(&plan(&["Button", "-p", "gallery"]), Runner::Nextest, None);
+        let a = build(
+            &plan(&["Button", "-p", "gallery"]),
+            Runner::Nextest,
+            None,
+            None,
+        );
         assert_eq!(a, vec!["nextest", "run", "-p", "gallery", "Button"]);
     }
 
     #[test]
     fn nextest_kind_maps_to_filterset() {
-        let a = build(&plan(&["--kind", "component"]), Runner::Nextest, None);
+        let a = build(&plan(&["--kind", "component"]), Runner::Nextest, None, None);
         assert_eq!(a, vec!["nextest", "run", "-E", "binary(components)"]);
-        let a = build(&plan(&["--kind", "unit"]), Runner::Nextest, None);
+        let a = build(&plan(&["--kind", "unit"]), Runner::Nextest, None, None);
         assert_eq!(a, vec!["nextest", "run", "-E", "kind(lib)"]);
     }
 
     #[test]
     fn cargo_test_fallback_workspace_and_kind() {
-        let a = build(&plan(&["--kind", "integration", "Foo"]), Runner::CargoTest, None);
+        let a = build(
+            &plan(&["--kind", "integration", "Foo"]),
+            Runner::CargoTest,
+            None,
+            None,
+        );
         assert_eq!(
             a,
             vec!["test", "--workspace", "--test", "integration", "--", "Foo"]
@@ -112,24 +146,61 @@ mod tests {
 
     #[test]
     fn cargo_test_scoped_package() {
-        let a = build(&plan(&["-p", "notes"]), Runner::CargoTest, None);
+        let a = build(&plan(&["-p", "notes"]), Runner::CargoTest, None, None);
         assert_eq!(a, vec!["test", "-p", "notes", "--"]);
     }
 
     #[test]
     fn coverage_wraps_with_llvm_cov() {
-        let a = build(&plan(&["Button"]), Runner::Nextest, Some("/tmp/c.json"));
+        let a = build(
+            &plan(&["Button"]),
+            Runner::Nextest,
+            Some("/tmp/c.json"),
+            None,
+        );
         assert_eq!(
             a,
             vec![
-                "llvm-cov", "--json", "--output-path", "/tmp/c.json", "nextest", "run", "Button"
+                "llvm-cov",
+                "--json",
+                "--output-path",
+                "/tmp/c.json",
+                "nextest",
+                "run",
+                "Button"
             ]
         );
     }
 
     #[test]
     fn component_flag_becomes_lowercased_filter() {
-        let a = build(&plan(&["--component", "Slider"]), Runner::Nextest, None);
+        let a = build(
+            &plan(&["--component", "Slider"]),
+            Runner::Nextest,
+            None,
+            None,
+        );
         assert_eq!(a, vec!["nextest", "run", "slider"]);
+    }
+
+    #[test]
+    fn pins_manifest_path_ahead_of_the_subcommand() {
+        let a = build(
+            &plan(&["-p", "starter"]),
+            Runner::CargoTest,
+            None,
+            Some(Path::new("/tmp/app/Cargo.toml")),
+        );
+        assert_eq!(
+            a,
+            vec![
+                "test",
+                "--manifest-path",
+                "/tmp/app/Cargo.toml",
+                "-p",
+                "starter",
+                "--"
+            ]
+        );
     }
 }

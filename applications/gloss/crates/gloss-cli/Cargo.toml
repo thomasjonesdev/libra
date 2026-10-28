@@ -3,6 +3,7 @@ name = "gloss-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Dev harness for gloss-core apply/undo/list"
 
 [[bin]]

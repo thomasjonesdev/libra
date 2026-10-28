@@ -1,13 +1,29 @@
 [package]
-name = "libra"
+name = "libra-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Deterministic native UI framework"
+keywords = ["gui", "ui", "desktop"]
+categories = ["gui"]
+
+[lib]
+name = "libra"
+
+[features]
+default = ["app"]
+# Windowed shell (`app!` / `run` / `Options`). Off for crates that only
+# need `#[derive(LibraReflect)]` / `#[state]` / `#[actions]` — conformance
+# is the in-tree example (PLAN-SDK S2).
+app = ["dep:libra-platform"]
 
 [dependencies]
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-reflect.workspace = true
-libra-platform.workspace = true
+libra-platform = { workspace = true, optional = true }
+libra-components.workspace = true
 
 [dev-dependencies]
 libra-test.workspace = true

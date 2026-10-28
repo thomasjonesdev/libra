@@ -3,6 +3,9 @@ name = "libra-reflect"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra derive macros for state, actions, and app assembly"
+repository.workspace = true
+authors.workspace = true
 
 [lib]
 proc-macro = true
@@ -14,7 +17,12 @@ proc-macro2.workspace = true
 
 # Dev-only cycle (permitted by cargo): the integration tests exercise the
 # derive against the real traits.
+# Path-only on purpose (PLAN-SDK S4). A versioned dev-dep would have to
+# exist on crates.io before this crate can publish, and `libra-ui`
+# depends on this crate — a cycle. Cargo omits version-less path
+# dev-deps from the published manifest. Tests in this checkout still run.
 [dev-dependencies]
-libra-core.workspace = true
+libra-ui-core = { path = "../libra-core" }
+libra-ui = { path = "../libra" }
 serde.workspace = true
 serde_json.workspace = true

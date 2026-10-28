@@ -23,6 +23,7 @@ pub enum IoKind {
     Undo,
     Backlinks,
     Rules,
+    Rename,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ pub enum Pending {
     Undo,
     Backlinks,
     Rules,
+    Rename(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, LibraReflect)]

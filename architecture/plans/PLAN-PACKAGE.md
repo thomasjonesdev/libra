@@ -237,7 +237,9 @@ at runtime once the platform switch lands.
 
 ## Out of scope
 
-- **`libra new` / `libra eject`** — §18.1 vision; apps scaffold by hand today
+- **`libra new` / `libra eject`** — §18.1 vision. `libra new` shipped
+  in [[PLAN-SDK]] S3; `libra eject` still waits (the CLI is still a
+  cargo wrapper).
 - **`libra check` + `libra.toml` + a11y audit** — fuller §18.1; parse-only
   validation for `libra package` is in scope (P2)
 - **Auto-update** — [[24-non-goals|§24]] v0 non-goal; cargo-packager update-feed

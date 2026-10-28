@@ -1,0 +1,16 @@
+<props vault_name: String, vault_path: String, has_rules: Bool, rules_excerpt: String, closeSettings: Action />
+
+<Drawer side="right" onDismiss={closeSettings} testId="settings-drawer">
+  <Text bold>Vault</Text>
+  <Text testId="settings-vault-name">{vault_name}</Text>
+  <Text muted wrap testId="settings-vault-path">{vault_path}</Text>
+  <Separator />
+  <Text bold>Rules</Text>
+  <Text muted size="sm">`.gloss/rules.md`</Text>
+  <if test={has_rules}>
+    <Text wrap testId="settings-rules">{rules_excerpt}</Text>
+    <else>
+      <Text muted testId="settings-rules-empty">No rules file yet</Text>
+    </else>
+  </if>
+</Drawer>

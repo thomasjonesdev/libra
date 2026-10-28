@@ -1,0 +1,12 @@
+<props has_saved_vaults: Bool, closeVaultPicker: Action, browseVault: Action, children: slot />
+
+<Dialog title="Vaults" onDismiss={closeVaultPicker} testId="vault-dialog">
+  <if test={has_saved_vaults}>
+    <Scroll testId="vault-scroll" height={240}>
+      <Column gap={2}>
+        <slot/>
+      </Column>
+    </Scroll>
+  </if>
+  <Button variant="secondary" onPress={browseVault} testId="browse-vault">Browse</Button>
+</Dialog>

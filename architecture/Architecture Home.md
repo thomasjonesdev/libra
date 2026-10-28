@@ -126,6 +126,7 @@ This Obsidian vault is the **source of truth** for Libra's architecture. Every n
   - [[19.1-touch|19.1 Touch (first-class, not an afterthought)]]
   - [[19.2-keyboard-shortcuts-declarations-not-handlers|19.2 Keyboard shortcuts: declarations, not handlers]]
   - [[19.3-native-menus|19.3 Native menus: declarations, not markup]]
+  - [[19.4-desktop-os-matrix|19.4 Desktop OS matrix: identical content, explicit chrome]]
 - [[20-packaging|20. Packaging & Distribution]]
 - [[21-crate-layout|21. Workspace & Crate Layout]]
 - [[22-performance-budgets|22. Performance Budgets]]

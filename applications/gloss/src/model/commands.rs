@@ -71,6 +71,24 @@ pub fn apply_create_cmd(root: &str, path: &str, content: &str) -> Result<Command
     Ok(apply_cmd(root, &json))
 }
 
+pub fn apply_rename_cmd(root: &str, from: &str, to: &str) -> Result<CommandSpec, String> {
+    let from_rel = RelPath::parse(from).map_err(|e| e.to_string())?;
+    let to_rel = RelPath::parse(to).map_err(|e| e.to_string())?;
+    let patch = Patch {
+        id: PatchId("rename".into()),
+        run: RunId("rename".into()),
+        ops: vec![Op::RenameNote {
+            note: NoteId::new(RootId(1), from_rel),
+            to: to_rel,
+            rewrite_backlinks: false,
+        }],
+        rationale: "rename note".into(),
+        provenance: None,
+    };
+    let json = serde_json::to_string(&patch).map_err(|e| e.to_string())?;
+    Ok(apply_cmd(root, &json))
+}
+
 pub fn undo_cmd(root: &str) -> CommandSpec {
     CommandSpec::new(GLOSS_BIN)
         .args(["undo", "--root", root, "--journal", &journal_path(root)])

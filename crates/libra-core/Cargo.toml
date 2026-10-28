@@ -1,9 +1,16 @@
 [package]
-name = "libra-core"
+name = "libra-ui-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Libra app contract: state, actions, and effects"
+
+[lib]
+name = "libra_core"
 
 [dependencies]
 libra-reflect.workspace = true
 serde.workspace = true
+serde_json.workspace = true

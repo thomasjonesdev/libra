@@ -19,21 +19,35 @@ pub fn caret_byte_at(
     focus: Option<&InputFocus>,
 ) -> Option<usize> {
     match &item.kind {
-        ItemKind::Input { value, px, .. } => Some(input::caret_byte(
-            value, item.rect, *px, 0.0, x, measurer, theme, focus,
+        ItemKind::Input { value, px, variant, bold, .. } => Some(input::caret_byte(
+            value,
+            item.rect,
+            *px,
+            *bold,
+            *variant,
+            0.0,
+            x,
+            measurer,
+            theme,
+            focus,
         )),
         ItemKind::Search { value, px, .. } => Some(input::caret_byte(
             value,
             item.rect,
             *px,
+            false,
+            InputVariant::Field,
             search::leading(theme),
             x,
             measurer,
             theme,
             focus,
         )),
-        ItemKind::Textarea { value, px, .. } => {
-            Some(textarea::caret_byte(value, item.rect, *px, x, y, measurer, theme))
+        ItemKind::Textarea { value, px, markdown, .. } => {
+            let focus_tuple = focus.map(|f| (f.caret, f.selection.start, f.selection.end));
+            Some(textarea::caret_byte(
+                value, item.rect, *px, x, y, measurer, theme, *markdown, focus_tuple,
+            ))
         }
         _ => None,
     }
@@ -81,6 +95,8 @@ mod tests {
                 value: "hello\nworld".into(),
                 placeholder: String::new(),
                 px: 14.0,
+                markdown: false,
+                on_wikilink: None,
             },
             Rect::new(0.0, 0.0, 200.0, 80.0),
         );
@@ -97,6 +113,8 @@ mod tests {
                 value: "hello\nworld".into(),
                 placeholder: String::new(),
                 px: 14.0,
+                markdown: false,
+                on_wikilink: None,
             },
             Rect::new(0.0, 0.0, 200.0, 80.0),
         );
@@ -115,6 +133,9 @@ mod tests {
                 value: "abcd".into(),
                 placeholder: String::new(),
                 px: 14.0,
+                on_submit: None,
+                variant: InputVariant::Field,
+                bold: false,
             },
             Rect::new(0.0, 0.0, 200.0, 32.0),
         );

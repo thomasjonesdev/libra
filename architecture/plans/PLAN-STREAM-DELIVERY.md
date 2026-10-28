@@ -12,7 +12,7 @@ type: plan
 
 # Streaming effect results: `Effect::Spawn` + `<Stream>` delivery
 
-**Status: planned.** Finishes the half of [[PLAN-SOURCES]] that was deferred:
+**Status: D1–D4 shipped.** D5 (`Sub::Stream`) and D6 (aws-login device code) are not started. Finishes the half of [[PLAN-SOURCES]] that was deferred:
 `<Stream id={…} onEvent={…}/>` parses, lays out, mounts and answers
 `by::source("stream")` today, but **nothing is ever delivered to it.** This plan
 gives streams a producer (`Effect::Spawn`) and a delivery path, and makes
@@ -167,11 +167,10 @@ explicit form of the same thing.
 
 ## In code
 
-- *(planned)* `crates/libra-core/src/lib.rs` — D1
-- *(planned)* `crates/libra-effects/src/lib.rs` — D2
-- *(planned)* `crates/libra-platform/src/lib.rs` — D3 (`markup_streams` is the
-  existing hook)
-- *(planned)* `crates/libra-test/src/lib.rs` — D4
+- `crates/libra-core/src/lib.rs` — D1
+- `crates/libra-effects/src/lib.rs` — D2 (`stream.rs`)
+- `crates/libra-platform/src/lib.rs` — D3 (`markup_streams` drains the ring)
+- `crates/libra-test/src/lib.rs` — D4
 - `crates/libra-components/src/catalog/source.rs` — `<Stream>` mount node, shipped
 
 ---

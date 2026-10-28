@@ -5,7 +5,7 @@
 
 fn main() {
     let opts = notes::options().app_id("libra-notes");
-    if let Err(e) = libra_platform::run_with::<notes::Notes>(notes::view_driver(), opts) {
+    if let Err(e) = libra_platform::run_rehydrating::<notes::Notes>(notes::view_driver(), opts) {
         eprintln!("error: {e}");
         std::process::exit(1);
     }

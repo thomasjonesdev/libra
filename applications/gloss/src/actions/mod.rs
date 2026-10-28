@@ -8,8 +8,8 @@ mod internal;
 use libra_core::{Effect, FolderPick, ProcessResult};
 
 use crate::model::{
-    apply_replace_cmd, daily_note_content, default_daily_note_path, insert_wikilink_mention,
-    is_folder_id, parse_workspace_bytes, resolve_daily_note, resolve_wikilink, split_note,
+    apply_replace_cmd, daily_note_content, default_daily_note_path, file_stem, insert_wikilink_mention,
+    is_folder_id, parse_workspace_bytes, renamed_note_path, resolve_daily_note, resolve_wikilink,
     today_local_iso, unique_folder_note, unique_inbox_path, upsert_vault, SidebarView, IoKind,
     Pending, VaultRecord,
 };
@@ -167,7 +167,7 @@ impl Gloss {
 
     pub fn list_split_changed(&mut self, value: String) {
         if let Ok(v) = value.parse::<f32>() {
-            let v = v.clamp(0.18, 0.55);
+            let v = v.clamp(0.22, 0.55);
             self.split_list = v;
             if self.sidebar_open {
                 self.split_list_saved = v;
@@ -191,10 +191,9 @@ impl Gloss {
         if self.sidebar_open {
             self.split_list_saved = self.split_list;
             self.sidebar_open = false;
-            self.split_list = 0.18;
         } else {
             self.sidebar_open = true;
-            self.split_list = self.split_list_saved.clamp(0.18, 0.55);
+            self.split_list = self.split_list_saved.clamp(0.22, 0.55);
         }
     }
 
@@ -215,9 +214,19 @@ impl Gloss {
         if id == self.selected_path && self.io != IoKind::Cat {
             return None;
         }
+        if !id.is_empty() && id != self.selected_path {
+            if crate::model::title_needs_rename(&self.selected_path, &self.title_draft) {
+                self.post_select = Some(id.clone());
+                if let Some(fx) = self.title_submitted() {
+                    return Some(fx);
+                }
+                self.post_select = None;
+            }
+        }
         if self.dirty && !self.selected_path.is_empty() && id != self.selected_path {
-            self.pending = Pending::Cat(id);
-            return self.flush_save();
+            if let Some(fx) = self.save_then(Pending::Cat(id.clone())) {
+                return Some(fx);
+            }
         }
         self.begin_cat(id)
     }
@@ -250,6 +259,40 @@ impl Gloss {
         self.has_frontmatter = !self.frontmatter_yaml.trim().is_empty();
         self.mark_edited();
         self.schedule_save()
+    }
+
+    pub fn title_changed(&mut self, text: String) {
+        self.title_draft = text;
+    }
+
+    pub fn title_submitted(&mut self) -> Option<Effect<Action>> {
+        if self.selected_path.is_empty() {
+            return None;
+        }
+        let stem = file_stem(&self.selected_path);
+        if self.title_draft.trim() == stem {
+            return None;
+        }
+        let to = match renamed_note_path(&self.selected_path, &self.title_draft) {
+            Ok(p) => p,
+            Err(e) => {
+                self.status = e;
+                self.title_draft = stem;
+                return None;
+            }
+        };
+        if self.note_paths.iter().any(|p| p == &to) {
+            self.status = "A note with that name already exists".into();
+            self.title_draft = stem;
+            return None;
+        }
+        if self.dirty {
+            self.save_pending = true;
+            if let Some(fx) = self.save_then(Pending::Rename(to.clone())) {
+                return Some(fx);
+            }
+        }
+        self.begin_rename(to)
     }
 
     pub fn flush_save(&mut self) -> Option<Effect<Action>> {
@@ -313,11 +356,9 @@ impl Gloss {
             self.reader_mode = false;
             return;
         }
-        let (yaml, body, has) = split_note(&self.editor_body);
-        self.frontmatter_yaml = yaml;
-        self.has_frontmatter = has;
-        self.editor_body = body;
+        let full = self.editor_body.clone();
         self.reader_mode = true;
+        self.set_note_text(&full);
     }
 
     pub fn undo(&mut self) -> Option<Effect<Action>> {

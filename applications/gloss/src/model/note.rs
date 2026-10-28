@@ -80,9 +80,58 @@ pub fn frontmatter_scan_rows(yaml: &str) -> Vec<super::types::FrontmatterField> 
         .collect()
 }
 
-pub fn full_note_text(reader_mode: bool, has_frontmatter: bool, yaml: &str, editor: &str) -> String {
+/// Reader body without a leading `# title` that duplicates the chrome H1.
+pub fn strip_leading_title_heading(body: &str, title: &str) -> String {
+    if title.is_empty() {
+        return body.to_string();
+    }
+    let wanted = format!("# {title}");
+    let mut lines = body.lines();
+    let Some(first) = lines.next() else {
+        return body.to_string();
+    };
+    if first.trim() != wanted {
+        return body.to_string();
+    }
+    lines.collect::<Vec<_>>().join("\n").trim_start_matches('\n').to_string()
+}
+
+/// Re-insert a title heading on save when reader mode stripped it from the body.
+pub fn prepend_title_heading(body: &str, title: &str, loaded_body: &str) -> String {
+    let body = body.trim_start_matches('\n');
+    if body.starts_with("# ") {
+        return body.to_string();
+    }
+    if title.is_empty() {
+        return body.to_string();
+    }
+    let file_had_title = loaded_body
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .is_some_and(|l| l.trim() == format!("# {title}"));
+    if !file_had_title {
+        return body.to_string();
+    }
+    if body.is_empty() {
+        format!("# {title}\n")
+    } else {
+        format!("# {title}\n\n{body}")
+    }
+}
+
+pub fn full_note_text(
+    reader_mode: bool,
+    has_frontmatter: bool,
+    yaml: &str,
+    editor: &str,
+    path: &str,
+    loaded_body: &str,
+) -> String {
     if reader_mode && has_frontmatter {
         assemble_note(yaml, editor)
+    } else if reader_mode {
+        let title = file_stem(path);
+        prepend_title_heading(editor, &title, loaded_body)
     } else {
         editor.to_string()
     }

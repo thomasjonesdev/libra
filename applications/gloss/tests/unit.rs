@@ -20,7 +20,7 @@ fn fresh_state_asks_for_a_vault() {
     assert_eq!(s.empty_message, "Browse a vault folder to begin");
     assert_eq!(s.vault_name, "No vault");
     assert!(!s.has_selected);
-    assert!(s.note_rows.is_empty());
+    assert!(s.file_rows.is_empty());
 }
 
 #[test]
@@ -59,9 +59,10 @@ fn journal_lives_under_gloss_dir() {
 fn query_filters_rows() {
     let mut s = boot();
     s.note_paths = vec!["Atlas.md".into(), "10-Inbox/Welcome.md".into()];
+    reduce(&mut s, Action::ShowSearchView);
     reduce(&mut s, Action::QueryChanged("inbox".into()));
-    assert_eq!(s.note_rows.len(), 1);
-    assert_eq!(s.note_rows[0].id, "10-Inbox/Welcome.md");
+    assert_eq!(s.file_rows.len(), 1);
+    assert_eq!(s.file_rows[0].id, "10-Inbox/Welcome.md");
 }
 
 fn ok_proc(stdout: &str) -> ProcessResult {
@@ -349,6 +350,24 @@ fn close_inactive_tab_keeps_the_current_note() {
 }
 
 #[test]
+fn toggling_the_sidebar_keeps_the_saved_split() {
+    let mut s = editing("Atlas.md", "hello");
+    s.sidebar_open = true;
+    s.split_list = 0.4;
+    s.split_list_saved = 0.32;
+    s.rebuild_rows();
+    assert_eq!(s.chrome_background, "surface_raised");
+    reduce(&mut s, Action::ToggleSidebar);
+    assert!(!s.sidebar_open);
+    assert_eq!(s.split_list_saved, 0.4);
+    assert_eq!(s.chrome_background, "surface");
+    reduce(&mut s, Action::ToggleSidebar);
+    assert!(s.sidebar_open);
+    assert!((s.split_list - 0.4).abs() < f32::EPSILON);
+    assert_eq!(s.chrome_background, "surface_raised");
+}
+
+#[test]
 fn folder_click_toggles_expand_without_io() {
     let mut s = boot();
     s.note_paths = vec!["10-Inbox/Welcome.md".into()];
@@ -359,6 +378,55 @@ fn folder_click_toggles_expand_without_io() {
     assert_eq!(s.io, IoKind::Idle);
     reduce(&mut s, Action::SelectFile("10-Inbox".into()));
     assert!(!s.expanded.contains("10-Inbox"));
+}
+
+#[test]
+fn renamed_note_path_keeps_parent_folder() {
+    use gloss::renamed_note_path;
+    assert_eq!(
+        renamed_note_path("10-Inbox/Welcome.md", "Hello").unwrap(),
+        "10-Inbox/Hello.md"
+    );
+    assert_eq!(renamed_note_path("Atlas.md", "Maps").unwrap(), "Maps.md");
+}
+
+#[test]
+fn title_submitted_renames_the_open_note() {
+    let mut s = editing("Atlas.md", "# Atlas\n\nbody");
+    s.note_paths = vec!["Atlas.md".into()];
+    s.title_draft = "Maps".into();
+    reduce(&mut s, Action::TitleSubmitted);
+    assert_eq!(s.io, IoKind::Rename);
+    assert_eq!(s.selected_path, "Atlas.md");
+    reduce(&mut s, Action::IoDone(ok_proc("")));
+    assert_eq!(s.selected_path, "Maps.md");
+    assert_eq!(s.title_draft, "Maps");
+    assert!(s.note_paths.iter().any(|p| p == "Maps.md"));
+}
+
+#[test]
+fn strip_leading_title_heading_removes_duplicate_h1() {
+    use gloss::{prepend_title_heading, strip_leading_title_heading};
+    let body = "# Atlas\n\nThe atlas.\n";
+    assert_eq!(
+        strip_leading_title_heading(body, "Atlas"),
+        "The atlas."
+    );
+    assert_eq!(
+        prepend_title_heading("The atlas.", "Atlas", body),
+        "# Atlas\n\nThe atlas."
+    );
+    assert_eq!(
+        prepend_title_heading("index more", "Atlas", "# Atlas\n\nindex"),
+        "# Atlas\n\nindex more"
+    );
+}
+
+#[test]
+fn strip_leading_title_heading_leaves_unrelated_first_line() {
+    use gloss::strip_leading_title_heading;
+    let body = "Intro line\n\nbody";
+    assert_eq!(strip_leading_title_heading(body, "Atlas"), body);
 }
 
 #[test]
@@ -500,4 +568,25 @@ fn workspace_bytes_read_json_list() {
 fn menu_decl_validates() {
     let s = Gloss::default();
     assert!(libra_core::validate_menu::<gloss::Action>(&s.menu()).is_ok());
+}
+
+#[test]
+fn reader_save_roundtrip_marks_clean() {
+    let mut s = editing("Atlas.md", "# Atlas\n\nindex");
+    s.editor_body = gloss::strip_leading_title_heading(&s.editor_body, "Atlas");
+    assert_eq!(s.editor_body, "index");
+    s.loaded_body = "# Atlas\n\nindex".into();
+    s.editor_body = "index more".into();
+    s.dirty = true;
+    s.in_flight_body = s.full_note_text();
+    assert_eq!(s.in_flight_body, "# Atlas\n\nindex more");
+    s.io = IoKind::Apply;
+    reduce(&mut s, Action::IoDone(ProcessResult {
+        status: ProcessStatus::Exited(0),
+        stdout: vec![],
+        stderr: vec![],
+        finished_at_unix_ms: 1,
+    }));
+    assert!(!s.dirty, "dirty after save: loaded={:?} full={:?}", s.loaded_body, s.full_note_text());
+    assert_eq!(s.status, "Saved");
 }

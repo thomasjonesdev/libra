@@ -18,6 +18,7 @@ type: architecture
 - [[19.1-touch]]
 - [[19.2-keyboard-shortcuts-declarations-not-handlers]]
 - [[19.3-native-menus]]
+- [[19.4-desktop-os-matrix]]
 
 ## In code
 
@@ -37,7 +38,7 @@ type: architecture
 | App directories | `directories` |
 | Global hotkeys | `global-hotkey` |
 
-Policy: window *chrome*, menus, and dialogs are native (they must feel like the OS); window *content* is Libra-rendered (it must be deterministic). DPI: layout in logical pixels; physical rounding once at paint ([[08-layout|§8]]); per-monitor scale changes are just damage. IME caveats per platform tracked in [[25-risks|§25]].
+Policy: window *chrome*, menus, and dialogs are native (they must feel like the OS); window *content* is Libra-rendered (it must be deterministic). **The desktop target is macOS + Windows + Linux.** Content is bit-identical across those three; chrome is implemented with each OS's native API, or it fails honestly — silent no-ops are a bug. Matrix, gaps, and packaging constraint: [[19.4-desktop-os-matrix|§19.4]]. DPI: layout in logical pixels; physical rounding once at paint ([[08-layout|§8]]); per-monitor scale changes are just damage. IME caveats per platform tracked in [[25-risks|§25]].
 
 ## Pointer affordances (the `cursor:` analog)
 

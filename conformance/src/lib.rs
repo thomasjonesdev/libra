@@ -104,7 +104,9 @@ pub enum TestAction {
     Frame(FrameInfo),
     /// §12.5's `<Interval onTick={poll}>` — Instant-payload tick.
     Poll(Instant),
-    /// §12.5's `<Stream onEvent={packet}>` — String body for v1.
+    /// §12.5's `<Stream onEvent={onPacket}>`.
+    OnPacket(libra_core::StreamEvent),
+    /// String payload used by the menu fixture (`onMenu={packet(t.id)}`).
     Packet(String),
 }
 

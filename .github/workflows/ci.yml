@@ -1,0 +1,16 @@
+name: ci
+
+# PLAN-SDK S4: the workspace suite is the publish gate. Headless — no
+# display server. Snapshot PNGs must match the committed bytes.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo test --workspace
+        run: cargo test --workspace

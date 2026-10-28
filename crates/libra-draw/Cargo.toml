@@ -3,3 +3,6 @@ name = "libra-draw"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra display list and theme tokens"
+repository.workspace = true
+authors.workspace = true

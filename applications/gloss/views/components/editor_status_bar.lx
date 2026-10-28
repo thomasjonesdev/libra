@@ -1,0 +1,16 @@
+<props vault_name: String, status: String, word_count: String, char_count: String, save_busy: Bool, save_ok: Bool />
+
+<StatusBar testId="status-bar">
+  <Text size="sm" muted testId="vault-name">{vault_name}</Text>
+  <Text size="sm" muted grow wrap testId="status">{status}</Text>
+  <Text size="sm" muted testId="word-count">{word_count}</Text>
+  <Text size="sm" muted testId="char-count">{char_count}</Text>
+  <if test={save_busy}>
+    <Icon name="loader" muted testId="save-icon" />
+    <else>
+      <if test={save_ok}>
+        <Icon name="check" muted testId="save-icon" />
+      </if>
+    </else>
+  </if>
+</StatusBar>

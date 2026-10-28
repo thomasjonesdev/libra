@@ -3,9 +3,12 @@ name = "libra-test"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra in-process test harness"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-markup.workspace = true
 libra-interp.workspace = true
 libra-components.workspace = true

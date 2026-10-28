@@ -3,8 +3,8 @@
 use libra_core::{Effect, ProcessResult, ProcessStatus};
 
 use crate::model::{
-    apply_create_cmd, backlinks_cmd, cat_cmd, file_stem, parse_list, rules_cmd, upsert_vault,
-    IoKind, NoteRow, Pending, VaultRecord, TOAST_MS,
+    apply_create_cmd, apply_rename_cmd, backlinks_cmd, cat_cmd, file_stem, parse_list, rules_cmd,
+    upsert_vault, IoKind, NoteRow, Pending, VaultRecord, TOAST_MS,
 };
 use crate::state::Gloss;
 
@@ -80,6 +80,7 @@ impl Gloss {
         self.selected_path.clear();
         self.editor_body.clear();
         self.loaded_body.clear();
+        self.title_draft.clear();
         self.frontmatter_yaml.clear();
         self.frontmatter_fields.clear();
         self.frontmatter_title.clear();
@@ -110,9 +111,32 @@ impl Gloss {
         self.push_history(&id);
         self.place_in_tab(&id);
         self.selected_path = id.clone();
+        // The title field is a draft *of the selected note*, so it has to move
+        // with the selection rather than waiting for the cat to land. Left
+        // stale, the next selection sees draft != stem and files a rename —
+        // rapid clicking renames each note to the previous one's title.
+        self.title_draft = file_stem(&id);
         self.expand_ancestors(&id);
         self.status = "Opening…".into();
         self.spawn(cat_cmd(self.vault_path.trim(), &id), IoKind::Cat)
+    }
+
+    /// Save first, then do `next` — falling through when there is nothing to
+    /// save after all.
+    ///
+    /// `flush_save` declines on any of three conditions (no save scheduled,
+    /// not dirty, no selection), and `after_io` is the only thing that ever
+    /// drains `pending`. So a follow-up queued behind a save that did not run
+    /// is a follow-up that never runs: the click is silently dropped and the
+    /// app sits there looking wedged. Returns the save effect when one was
+    /// actually started; on `None` the caller should just do `next` itself.
+    pub(super) fn save_then(&mut self, next: Pending) -> Option<Effect<Action>> {
+        self.pending = next;
+        let fx = self.flush_save();
+        if fx.is_none() {
+            self.pending = Pending::None;
+        }
+        fx
     }
 
     pub(super) fn after_io(&mut self) -> Option<Effect<Action>> {
@@ -127,16 +151,41 @@ impl Gloss {
             Pending::List => self.open_list(),
             Pending::Cat(path) => {
                 if self.save_pending && self.dirty {
-                    self.pending = Pending::Cat(path);
-                    self.flush_save()
-                } else {
-                    self.begin_cat(path)
+                    if let Some(fx) = self.save_then(Pending::Cat(path.clone())) {
+                        return Some(fx);
+                    }
                 }
+                self.begin_cat(path)
             }
             Pending::Undo => self.undo(),
             Pending::Backlinks => self.scan_backlinks(),
             Pending::Rules => self.begin_load_rules(),
+            Pending::Rename(to) => self.begin_rename(to),
         }
+    }
+
+    pub(super) fn begin_rename(&mut self, to: String) -> Option<Effect<Action>> {
+        if !self.require_vault("Open a vault first") {
+            return None;
+        }
+        if self.selected_path.is_empty() || self.selected_path == to {
+            return None;
+        }
+        if self.is_busy() {
+            self.pending = Pending::Rename(to);
+            return None;
+        }
+        let cmd = match apply_rename_cmd(self.vault_path.trim(), &self.selected_path, &to) {
+            Ok(c) => c,
+            Err(e) => {
+                self.status = e;
+                self.title_draft = file_stem(&self.selected_path);
+                return None;
+            }
+        };
+        self.rename_to = Some(to);
+        self.status = "Renaming…".into();
+        self.spawn(cmd, IoKind::Rename)
     }
 
     pub(super) fn handle_io_done(&mut self, result: ProcessResult) -> Option<Effect<Action>> {
@@ -166,6 +215,10 @@ impl Gloss {
                 self.rules_body = String::from_utf8_lossy(&result.stdout).into_owned();
                 None
             }
+            IoKind::Rename => {
+                toast_fx = self.finish_rename();
+                None
+            }
             IoKind::Idle => None,
         };
         follow.or_else(|| self.after_io()).or(toast_fx)
@@ -187,6 +240,11 @@ impl Gloss {
             }
             IoKind::Backlinks => self.graph_loading = false,
             IoKind::Rules => self.rules_loaded = true,
+            IoKind::Rename => {
+                self.rename_to = None;
+                self.title_draft = file_stem(&self.selected_path);
+                self.post_select = None;
+            }
             _ => {}
         }
         self.flash_toast(false, "Failed")
@@ -254,6 +312,67 @@ impl Gloss {
             self.note_paths.sort();
         }
         None
+    }
+
+    fn finish_rename(&mut self) -> Option<Effect<Action>> {
+        let Some(to) = self.rename_to.take() else {
+            return None;
+        };
+        let from = self.selected_path.clone();
+        if from.is_empty() || from == to {
+            return None;
+        }
+        self.replace_note_path(&from, &to);
+        self.title_draft = file_stem(&to);
+        self.can_undo = true;
+        self.status = "Renamed".into();
+        self.snapshot_open_vault();
+        self.rebuild_rows();
+        if let Some(path) = self.post_select.take() {
+            return self.begin_cat(path);
+        }
+        None
+    }
+
+    fn replace_note_path(&mut self, from: &str, to: &str) {
+        self.selected_path = to.to_string();
+        for p in &mut self.note_paths {
+            if p == from {
+                *p = to.to_string();
+            }
+        }
+        self.note_paths.sort();
+        for p in &mut self.open_tabs {
+            if p == from {
+                *p = to.to_string();
+            }
+        }
+        for p in &mut self.bookmarks {
+            if p == from {
+                *p = to.to_string();
+            }
+        }
+        for p in &mut self.history_back {
+            if p == from {
+                *p = to.to_string();
+            }
+        }
+        for p in &mut self.history_forward {
+            if p == from {
+                *p = to.to_string();
+            }
+        }
+        if self.restore_note == from {
+            self.restore_note = to.to_string();
+        }
+        if self.context_path == from {
+            self.context_path = to.to_string();
+        }
+        for v in &mut self.workspace.vaults {
+            if v.last_note == from {
+                v.last_note = to.to_string();
+            }
+        }
     }
 
     fn finish_undo(&mut self) -> Option<Effect<Action>> {

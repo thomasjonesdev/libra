@@ -1,0 +1,10 @@
+<props query: String, mentionQueryChanged: Action(String), dismiss: Action, children: slot />
+
+<Dialog title="Link note" onDismiss={dismiss} testId="mention-dialog">
+  <Search value={query} placeholder="note name…" onChange={mentionQueryChanged} testId="mention-search" />
+  <Scroll testId="mention-scroll" height={240}>
+    <Column gap={2}>
+      <slot/>
+    </Column>
+  </Scroll>
+</Dialog>

@@ -3,13 +3,14 @@ name = "gloss"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Gloss — Libra app for Markdown vaults"
 
 [dependencies]
 gloss-core.workspace = true
 gloss-cli.workspace = true
-libra.workspace = true
-libra-core.workspace = true
+libra-ui = { workspace = true, features = ["app"] }
+libra-ui-core.workspace = true
 libra-platform.workspace = true
 libra-components.workspace = true
 libra-markdown.workspace = true
@@ -19,6 +20,13 @@ serde_json.workspace = true
 [dev-dependencies]
 libra-test.workspace = true
 libra-components.workspace = true
+libra-effects.workspace = true
+libra-kv.workspace = true
+libra-raster.workspace = true
+libra-interp.workspace = true
+libra-markup.workspace = true
+libra-draw.workspace = true
+tempfile.workspace = true
 
 [build-dependencies]
 libra-build.workspace = true

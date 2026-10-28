@@ -14,6 +14,8 @@ pub(crate) fn build(
     placeholder: &str,
     on_change: &str,
     test_id: &str,
+    markdown: bool,
+    on_wikilink: &Option<String>,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
     let px = theme.type_md;
@@ -34,7 +36,13 @@ pub(crate) fn build(
     })?;
     cx.meta.push((
         id,
-        ItemKind::Textarea { value: value.to_string(), placeholder: placeholder.to_string(), px },
+        ItemKind::Textarea {
+            value: value.to_string(),
+            placeholder: placeholder.to_string(),
+            px,
+            markdown,
+            on_wikilink: on_wikilink.clone(),
+        },
         Semantics {
             role: Role::TextInput,
             text: value.to_string(),
@@ -51,7 +59,12 @@ pub(crate) fn wrapped_height(
     px: f32,
     m: &dyn TextMeasurer,
     theme: &Theme,
+    markdown: bool,
+    focus: Option<(usize, usize, usize)>,
 ) -> f32 {
+    if markdown {
+        return super::markdown_textarea::wrapped_height(value, max_w, px, m, theme, focus);
+    }
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);
     let line_h = th + TEXTAREA_LEADING;
     let min_h = 3.0 * line_h + 2.0 * theme.btn_pad_y;
@@ -85,7 +98,7 @@ pub(crate) fn wrap_visual_lines(
     out
 }
 
-fn wrap_hard_line(
+pub(crate) fn wrap_hard_line(
     text: &str,
     start: usize,
     end: usize,
@@ -109,7 +122,7 @@ fn wrap_hard_line(
     }
 }
 
-fn fit_prefix(
+pub(crate) fn fit_prefix(
     text: &str,
     vis: usize,
     end: usize,
@@ -149,14 +162,22 @@ pub(crate) fn caret_byte(
     y: f32,
     m: &dyn TextMeasurer,
     theme: &Theme,
+    markdown: bool,
+    focus: Option<(usize, usize, usize)>,
 ) -> usize {
+    let max_w = (rect.w - 2.0 * theme.btn_pad_x).max(0.0);
+    let tx = rect.x + theme.btn_pad_x;
+    let ty = rect.y + theme.btn_pad_y;
+    if markdown {
+        return super::markdown_textarea::caret_byte(
+            value, tx, ty, px, max_w, x, y, m, theme, focus,
+        );
+    }
     if value.is_empty() {
         return 0;
     }
-    let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
     let (_, th) = m.measure("Ag", px, FontStyle::Regular);
     let line_h = th + TEXTAREA_LEADING;
-    let max_w = (rect.w - 2.0 * theme.btn_pad_x).max(0.0);
     let lines = wrap_visual_lines(value, max_w, px, m);
     if y < ty {
         return lines[0].0;
@@ -186,11 +207,28 @@ pub(crate) fn caret_byte(
     le
 }
 
-pub(crate) fn paint(cx: &mut PaintCx, item: &Item, value: &str, placeholder: &str, px: f32) {
+pub(crate) fn paint(
+    cx: &mut PaintCx,
+    item: &Item,
+    value: &str,
+    placeholder: &str,
+    px: f32,
+    markdown: bool,
+) {
     let focused = cx
         .focus
         .filter(|f| item.semantics.test_id.as_deref() == Some(f.test_id.as_str()));
-    paint_textarea(cx.cmds, item.rect, value, placeholder, px, focused, cx.measurer, cx.theme);
+    paint_textarea(
+        cx.cmds,
+        item.rect,
+        value,
+        placeholder,
+        px,
+        focused,
+        cx.measurer,
+        cx.theme,
+        markdown,
+    );
 }
 
 /// Textarea painting (§10.1 / PLAN-TEXTAREA stage 4): **no field
@@ -210,25 +248,43 @@ fn paint_textarea(
     focus: Option<&InputFocus>,
     m: &dyn TextMeasurer,
     theme: &Theme,
+    markdown: bool,
 ) {
     cmds.push(DrawCmd::PushClip { rect });
     let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
-    let (_, th) = m.measure("Ag", px, FontStyle::Regular);
-    let line_h = th + TEXTAREA_LEADING;
     let max_w = (rect.w - 2.0 * theme.btn_pad_x).max(0.0);
 
-    if value.is_empty() {
-        if !placeholder.is_empty() {
-            cmds.push(DrawCmd::Text {
-                x: tx,
-                y: ty,
-                content: placeholder.to_string(),
-                px,
-                style: FontStyle::Regular,
-                color: theme.text_muted,
-            });
-        }
+    if value.is_empty() && !placeholder.is_empty() {
+        cmds.push(DrawCmd::Text {
+            x: tx,
+            y: ty,
+            content: placeholder.to_string(),
+            px,
+            style: FontStyle::Regular,
+            color: theme.text_muted,
+        });
+    } else if markdown {
+        let focus_tuple = focus.map(|f| (f.caret, f.selection.start, f.selection.end));
+        super::markdown_textarea::paint_rows(cmds, tx, ty, max_w, value, px, m, theme, focus_tuple);
+    } else {
+        paint_plain_textarea(cmds, tx, ty, max_w, value, px, focus, m, theme);
     }
+    cmds.push(DrawCmd::PopClip);
+}
+
+fn paint_plain_textarea(
+    cmds: &mut Vec<DrawCmd>,
+    tx: f32,
+    ty: f32,
+    max_w: f32,
+    value: &str,
+    px: f32,
+    focus: Option<&InputFocus>,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+) {
+    let (_, th) = m.measure("Ag", px, FontStyle::Regular);
+    let line_h = th + TEXTAREA_LEADING;
 
     for (row, (ls, le)) in wrap_visual_lines(value, max_w, px, m).into_iter().enumerate() {
         let line = &value[ls..le];
@@ -265,7 +321,6 @@ fn paint_textarea(
             }
         }
     }
-    cmds.push(DrawCmd::PopClip);
 }
 
 #[cfg(test)]

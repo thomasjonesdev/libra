@@ -1,4 +1,5 @@
 <Column gap={8} padding={12}>
   <ListItem title="literal inset" inset={16} onPress={increment} testId="literal-inset" />
   <ListItem title="bound inset" inset={inset} onPress={increment} testId="bound-inset" />
+  <ListItem title="wide row" grow onPress={increment} testId="wide-row" />
 </Column>

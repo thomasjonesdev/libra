@@ -3,6 +3,9 @@ name = "libra-raster"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra deterministic rasterizer"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
 libra-draw.workspace = true

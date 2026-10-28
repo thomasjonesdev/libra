@@ -75,14 +75,20 @@ mod tests {
 
     #[test]
     fn runner_prefers_nextest() {
-        let d = Detected { nextest: true, llvm_cov: true };
+        let d = Detected {
+            nextest: true,
+            llvm_cov: true,
+        };
         assert_eq!(d.runner(), Runner::Nextest);
         assert_eq!(d.install_hint(), None);
     }
 
     #[test]
     fn falls_back_when_nextest_absent() {
-        let d = Detected { nextest: false, llvm_cov: false };
+        let d = Detected {
+            nextest: false,
+            llvm_cov: false,
+        };
         assert_eq!(d.runner(), Runner::CargoTest);
         let hint = d.install_hint().unwrap();
         assert!(hint.contains("cargo-nextest"));
@@ -91,7 +97,13 @@ mod tests {
 
     #[test]
     fn hint_names_only_the_missing_tool() {
-        let d = Detected { nextest: true, llvm_cov: false };
-        assert_eq!(d.install_hint().as_deref(), Some("cargo install cargo-llvm-cov"));
+        let d = Detected {
+            nextest: true,
+            llvm_cov: false,
+        };
+        assert_eq!(
+            d.install_hint().as_deref(),
+            Some("cargo install cargo-llvm-cov")
+        );
     }
 }

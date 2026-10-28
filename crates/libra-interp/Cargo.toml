@@ -3,8 +3,11 @@ name = "libra-interp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra view interpreter (development engine)"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
 libra-markup.workspace = true
-libra-core.workspace = true
+libra-ui-core.workspace = true
 libra-components.workspace = true

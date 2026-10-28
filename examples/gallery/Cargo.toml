@@ -3,10 +3,11 @@ name = "gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
-libra.workspace = true
-libra-core.workspace = true
+libra-ui = { workspace = true, features = ["app"] }
+libra-ui-core.workspace = true
 libra-platform.workspace = true
 libra-components.workspace = true
 serde.workspace = true

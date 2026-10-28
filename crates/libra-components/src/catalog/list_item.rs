@@ -22,6 +22,7 @@ pub(crate) fn build(
     on_menu: &Option<String>,
     on_menu_arg: &Option<String>,
     inset: f32,
+    grow: bool,
     test_id: &Option<String>,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
@@ -36,7 +37,10 @@ pub(crate) fn build(
     let inset = inset.max(0.0);
     let preferred_w = tw + 2.0 * theme.btn_pad_x + inset;
     let id = cx.tree.new_leaf(Style {
-        size: Size { width: length(preferred_w), height: length(h) },
+        size: Size {
+            width: if grow { auto() } else { length(preferred_w) },
+            height: length(h),
+        },
         flex_shrink: 1.0,
         min_size: Size { width: length(0.0), height: length(h) },
         ..Default::default()

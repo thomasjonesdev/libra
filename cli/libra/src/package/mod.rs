@@ -8,7 +8,9 @@ use std::process::{Command, ExitCode, Stdio};
 
 use crate::app::{cargo_target_directory, resolve};
 use crate::build::parse_build_args;
-use crate::manifest::{load, packager_toml, version_from_cargo_manifest, LibraManifest, PackagerSpec};
+use crate::manifest::{
+    load, packager_toml, version_from_cargo_manifest, LibraManifest, PackagerSpec,
+};
 
 pub use target::parse_package_flags;
 
@@ -78,7 +80,11 @@ pub fn package(args: &[String]) -> ExitCode {
         app.crate_name, app.crate_name
     );
 
-    let macos_sign = manifest.package.sign.as_ref().and_then(|s| s.macos.as_ref());
+    let macos_sign = manifest
+        .package
+        .sign
+        .as_ref()
+        .and_then(|s| s.macos.as_ref());
     let windows_sign = manifest
         .package
         .sign
@@ -165,7 +171,9 @@ fn finish_unsigned_macos_bundle(app_dir: &Path, spec: &PackagerSpec) -> Option<E
     if spec.macos_signing_identity.is_some() {
         return None;
     }
-    let app_path = app_dir.join("dist").join(format!("{}.app", spec.product_name));
+    let app_path = app_dir
+        .join("dist")
+        .join(format!("{}.app", spec.product_name));
     if !app_path.is_dir() {
         return None;
     }
@@ -232,8 +240,8 @@ fn adhoc_sign_macos_app(app_path: &Path, bundle_id: &str) -> Result<(), String> 
 
 #[cfg(target_os = "macos")]
 fn rebuild_macos_dmgs(app_path: &Path, dist_dir: &Path, volume_name: &str) -> Result<(), String> {
-    let entries = std::fs::read_dir(dist_dir)
-        .map_err(|e| format!("read {}: {e}", dist_dir.display()))?;
+    let entries =
+        std::fs::read_dir(dist_dir).map_err(|e| format!("read {}: {e}", dist_dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("read dist entry: {e}"))?;
         let dmg_path = entry.path();

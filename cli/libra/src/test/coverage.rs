@@ -61,8 +61,14 @@ pub fn parse(json: &Value, is_actions_file: impl Fn(&str) -> bool) -> Report {
             continue;
         };
         let lines = file.get("summary").and_then(|s| s.get("lines"));
-        let covered = lines.and_then(|l| l.get("covered")).and_then(Value::as_u64).unwrap_or(0);
-        let total = lines.and_then(|l| l.get("count")).and_then(Value::as_u64).unwrap_or(0);
+        let covered = lines
+            .and_then(|l| l.get("covered"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let total = lines
+            .and_then(|l| l.get("count"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
 
         report.overall.add(covered, total);
         if is_actions_file(name) {
@@ -78,18 +84,21 @@ pub fn parse(json: &Value, is_actions_file: impl Fn(&str) -> bool) -> Report {
 
 /// Locate the app "actions layer" files under `repo_root`: any file named
 /// `actions.rs`, plus single-file apps whose `src/*.rs` carries
-/// `#[libra::actions]`. Returned as path suffixes (relative to the repo)
-/// so they match the absolute paths llvm-cov emits via `ends_with`.
+/// `#[libra::actions]`. Walks the workspace (PLAN-SDK S3) instead of
+/// hardcoding `crates/` + `examples/`. Returned as path suffixes so they
+/// match the absolute paths llvm-cov emits via `ends_with`.
 pub fn actions_file_suffixes(repo_root: &Path) -> Vec<String> {
     let mut out = BTreeSet::new();
-    let mut stack = vec![repo_root.join("examples"), repo_root.join("crates")];
+    let mut stack = vec![repo_root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let p = entry.path();
             let name = entry.file_name();
             if p.is_dir() {
-                if name == "target" || name == "tests" {
+                if name == "target" || name == "tests" || name == ".git" {
                     continue;
                 }
                 stack.push(p);
@@ -122,13 +131,21 @@ fn rel_suffix(root: &Path, path: &Path) -> Option<String> {
 /// A short, readable label for a coverage file path (`examples/notes/src/actions.rs`).
 fn short_name(name: &str) -> String {
     let p = PathBuf::from(name);
-    for anchor in ["examples", "crates"] {
-        if let Some(idx) = p.components().position(|c| c.as_os_str() == anchor) {
-            let tail: PathBuf = p.components().skip(idx).map(|c| c.as_os_str()).collect();
-            return tail.to_string_lossy().into_owned();
-        }
+    let comps: Vec<_> = p.components().collect();
+    if comps.len() <= 4 {
+        return p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| name.to_string());
     }
-    name.to_string()
+    let tail: PathBuf = comps
+        .iter()
+        .rev()
+        .take(4)
+        .rev()
+        .map(|c| c.as_os_str())
+        .collect();
+    tail.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -155,8 +172,20 @@ mod tests {
     #[test]
     fn overall_and_actions_split() {
         let r = parse(&export(), |f| f.ends_with("actions.rs"));
-        assert_eq!(r.overall, Lines { covered: 200, total: 350 });
-        assert_eq!(r.actions, Lines { covered: 90, total: 100 });
+        assert_eq!(
+            r.overall,
+            Lines {
+                covered: 200,
+                total: 350
+            }
+        );
+        assert_eq!(
+            r.actions,
+            Lines {
+                covered: 90,
+                total: 100
+            }
+        );
         assert_eq!(r.actions.percent(), 90.0);
         assert_eq!(r.per_actions_file.len(), 1);
         assert_eq!(r.per_actions_file[0].0, "examples/notes/src/actions.rs");

@@ -3,5 +3,8 @@ name = "libra-text"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Libra text editing core"
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]

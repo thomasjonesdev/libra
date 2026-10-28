@@ -38,6 +38,9 @@ fn interp_tree_src(src: &str, state: &TestState, registry: &libra_markup::Compon
         |m: &str| TestAction::action_with_frame_info(m, FrameInfo::at(0.0)).is_some();
     let has_instant_action =
         |m: &str| TestAction::action_with_instant(m, libra_core::Instant::at(0.0)).is_some();
+    let has_stream_event_action = |m: &str| {
+        TestAction::action_with_stream_event(m, libra_core::StreamEvent::Dropped(0)).is_some()
+    };
     let scope = libra_interp::Scope {
         field: &field,
         has_action: &has_action,
@@ -45,6 +48,7 @@ fn interp_tree_src(src: &str, state: &TestState, registry: &libra_markup::Compon
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        has_stream_event_action: &has_stream_event_action,
         binding_ctx: "State",
     };
     libra_interp::resolve(&ast, &scope, registry).expect("fixture resolves")
@@ -117,6 +121,7 @@ fn pascalcase_handler_name_is_rejected_identically_by_both_engines() {
         collection_rows: &collection_rows,
         has_frame_info_action: &has_frame_info_action,
         has_instant_action: &has_instant_action,
+        has_stream_event_action: &|_| false,
         binding_ctx: "State",
     };
     let interp_err = libra_interp::resolve(&ast, &scope, &libra_markup::ComponentRegistry::new()).unwrap_err();
@@ -273,8 +278,8 @@ fn frames_source_element_produces_identical_trees() {
     );
 }
 
-/// §12.5 Interval + Stream — Instant-payload ticks and String-payload
-/// stream events; both engines must agree on the Source* nodes.
+/// §12.5 Interval + Stream — Instant ticks and StreamEvent delivery;
+/// both engines must agree on the Source* nodes.
 #[test]
 fn interval_and_stream_produce_identical_trees() {
     use libra_components::ViewNode;
@@ -293,7 +298,7 @@ fn interval_and_stream_produce_identical_trees() {
     assert!(
         children.contains(&ViewNode::SourceStream {
             id: "telemetry".into(),
-            on_event: "packet".into()
+            on_event: "onPacket".into()
         }),
         "{interp:?}"
     );
@@ -585,6 +590,10 @@ fn list_item_inset_produces_identical_trees() {
         panic!("{:?}", children[1])
     };
     assert_eq!((*inset, test_id.as_deref()), (16.0, Some("bound-inset")));
+    let ViewNode::ListItem { grow, test_id, .. } = &children[2] else {
+        panic!("{:?}", children[2])
+    };
+    assert_eq!((*grow, test_id.as_deref()), (true, Some("wide-row")));
 }
 
 /// PLAN-CATALOG `<Dialog>` (M6) — the in-tree modal: title as literal

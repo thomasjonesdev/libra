@@ -28,7 +28,12 @@ enum Action {
 
 #[test]
 fn display_fields_bind_and_skipped_fields_do_not() {
-    let s = State { count: 3, label: "hi".into(), ratio: 0.5, internal: vec![1] };
+    let s = State {
+        count: 3,
+        label: "hi".into(),
+        ratio: 0.5,
+        internal: vec![1],
+    };
     assert_eq!(s.field("count").as_deref(), Some("3"));
     assert_eq!(s.field("label").as_deref(), Some("hi"));
     assert_eq!(s.field("ratio").as_deref(), Some("0.5"));
@@ -59,7 +64,10 @@ struct NestedState {
 #[test]
 fn nested_paths_and_accessors_resolve() {
     let s = NestedState {
-        user: User { name: "Ada".into(), active: true },
+        user: User {
+            name: "Ada".into(),
+            active: true,
+        },
         items: vec!["a".into(), "b".into()],
         title: String::new(),
     };
@@ -87,7 +95,15 @@ fn unit_variants_construct_and_payload_variants_do_not() {
     // …but every variant is visible to diagnostics, by its public name:
     assert_eq!(
         Action::action_names(),
-        &["increment", "reset", "loaded", "moved", "titleChanged", "ticked", "polled"]
+        &[
+            "increment",
+            "reset",
+            "loaded",
+            "moved",
+            "titleChanged",
+            "ticked",
+            "polled"
+        ]
     );
 }
 
@@ -107,7 +123,10 @@ fn string_payload_variants_construct_with_a_control_value() {
 #[test]
 fn frame_info_payload_variants_construct_for_source_element_ticks() {
     let info = FrameInfo::at(2500.0);
-    assert_eq!(Action::action_with_frame_info("ticked", info), Some(Action::Ticked(info)));
+    assert_eq!(
+        Action::action_with_frame_info("ticked", info),
+        Some(Action::Ticked(info))
+    );
     // Unit and non-FrameInfo-payload variants do not:
     assert_eq!(Action::action_with_frame_info("increment", info), None);
     assert_eq!(Action::action_with_frame_info("titleChanged", info), None);
@@ -116,7 +135,10 @@ fn frame_info_payload_variants_construct_for_source_element_ticks() {
 #[test]
 fn instant_payload_variants_construct_for_interval_source_element_ticks() {
     let instant = Instant::at(4200.0);
-    assert_eq!(Action::action_with_instant("polled", instant), Some(Action::Polled(instant)));
+    assert_eq!(
+        Action::action_with_instant("polled", instant),
+        Some(Action::Polled(instant))
+    );
     // Unit and non-Instant-payload variants do not:
     assert_eq!(Action::action_with_instant("increment", instant), None);
     assert_eq!(Action::action_with_instant("titleChanged", instant), None);

@@ -3,6 +3,7 @@ name = "gloss-index"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 description = "Derived vault index for Gloss: notes, links, incremental hash refresh"
 
 [dependencies]

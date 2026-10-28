@@ -29,12 +29,12 @@ fn browse_picks_a_folder_and_lists() {
     resolve_rules(&mut h, "");
     assert_eq!(h.state().vault_path, "/tmp/gloss-fixture");
     assert_eq!(h.state().opened_root, "/tmp/gloss-fixture");
-    assert_eq!(h.state().note_rows.len(), 1);
+    assert_eq!(h.state().file_rows.len(), 1);
 }
 
 #[test]
 fn legacy_workspace_path_reopens_the_vault() {
-    let mut h = Harness::<gloss::Gloss>::with_viewport(gloss::VIEW, 960, 640);
+    let mut h = Harness::<gloss::Gloss>::with_view_dir(gloss::VIEW, &common::view_dir(), 960, 640);
     let load = h.expect_effect(fx::kv_get(gloss::STORE_KEY));
     h.resolve_kv_get(load, Some(b"/tmp/legacy-vault".to_vec()));
     let list = h.expect_effect(fx::process_program("gloss"));
@@ -145,6 +145,48 @@ fn select_during_save_does_not_treat_apply_as_cat() {
 }
 
 #[test]
+fn rapid_note_switching_never_renames_a_note() {
+    // `title_draft` is a draft of the *selected* note. If it lagged behind the
+    // selection while a cat was in flight, the next click saw draft != stem and
+    // filed a rename — clicking quickly renamed notes to each other's titles.
+    let mut h = harness();
+    open_first_note(
+        &mut h,
+        "Atlas.md\n10-Inbox/Welcome.md\n20-Work/Report.md\n",
+        "# Atlas\n",
+    );
+    h.click(by::text("+ 10-Inbox"));
+    h.click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+    assert_eq!(h.state().title_draft, "Welcome");
+
+    // Second click lands before the first cat resolves.
+    h.click(by::text("+ 20-Work"));
+    h.click(by::text("Report"));
+    for effect in h.pending_effects() {
+        if let libra_core::Effect::Process { command, .. } = effect {
+            assert!(
+                !command.args.iter().any(|a| a == "rename"),
+                "rapid switching spawned a rename: {:?}",
+                command.args
+            );
+        }
+    }
+    assert_eq!(h.state().pending, gloss::Pending::Cat("20-Work/Report.md".into()));
+
+    h.resolve_process(cat, ok_stdout("# Welcome\n"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Report\n"));
+    assert_eq!(h.state().selected_path, "20-Work/Report.md");
+    assert_eq!(h.state().title_draft, "Report");
+    assert_eq!(
+        h.state().note_paths,
+        vec!["Atlas.md", "10-Inbox/Welcome.md", "20-Work/Report.md"]
+    );
+}
+
+#[test]
 fn new_note_emits_create_apply() {
     let mut h = harness();
     crate::common::open_vault_dialog(&mut h);
@@ -208,6 +250,28 @@ fn tree_click_reuses_the_current_tab() {
 }
 
 #[test]
+fn switching_heavy_markdown_notes_completes() {
+    let mut h = harness();
+    open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
+    let heavy: String = (0..800)
+        .map(|i| format!("line {i} with [[Note{i}|link {i}]]\n"))
+        .collect();
+    h.click(by::text("+ 10-Inbox"));
+    h.click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout(&heavy));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+    h.click(by::text("Atlas"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout("# Atlas\n\nshort"));
+    assert_eq!(h.state().selected_path, "Atlas.md");
+    h.click(by::text("Welcome"));
+    let cat = h.expect_effect(fx::process_program("gloss"));
+    h.resolve_process(cat, ok_stdout(&heavy));
+    assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
+}
+
+#[test]
 fn close_tab_leaves_the_other_note() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n10-Inbox/Welcome.md\n", "# Atlas\n");
@@ -234,8 +298,7 @@ fn reader_mode_shows_body_without_frontmatter_fences() {
     );
     assert!(h.state().has_frontmatter);
     assert_eq!(h.state().frontmatter_title, "Atlas");
-    h.query(by::test_id("frontmatter-title"))
-        .assert_text("Atlas");
+    h.query(by::test_id("note-title")).assert_text("Atlas");
     h.query(by::test_id("reader-body"))
         .assert_text("The atlas.\n\n## More\n\nbody");
 }
@@ -250,7 +313,7 @@ fn raw_mode_shows_the_full_file_bytes() {
     );
     h.click(by::test_id("toggle-mode"));
     h.query(by::test_id("editor-body"))
-        .assert_text("# Atlas\n\nsee **bold** and [[Atlas|the atlas]]\n");
+        .assert_text("# Atlas\n\nsee **bold** and [[Atlas|the atlas]]");
 }
 
 #[test]
@@ -261,7 +324,7 @@ fn follow_wikilink_opens_the_target_note() {
         "Atlas.md\n10-Inbox/Welcome.md\n",
         "# Atlas\n\nsee [[Welcome|the welcome note]]\n",
     );
-    h.dispatch(gloss::Action::FollowWikilink("Welcome".into()));
+    h.click(by::text("the welcome note"));
     let cat = h.expect_effect(fx::process_program("gloss"));
     h.resolve_process(cat, ok_stdout("# Welcome\n"));
     assert_eq!(h.state().selected_path, "10-Inbox/Welcome.md");
@@ -271,13 +334,12 @@ fn follow_wikilink_opens_the_target_note() {
 fn mode_toggle_swaps_reader_and_raw_editors() {
     let mut h = harness();
     open_first_note(&mut h, "Atlas.md\n", "# Atlas\n\nbody");
-    h.query(by::test_id("reader-body"))
+    h.query(by::test_id("reader-body")).assert_text("body");
+    h.click(by::test_id("toggle-mode"));
+    h.query(by::test_id("editor-body"))
         .assert_text("# Atlas\n\nbody");
     h.click(by::test_id("toggle-mode"));
-    h.query(by::test_id("editor-body"));
-    h.click(by::test_id("toggle-mode"));
-    h.query(by::test_id("reader-body"))
-        .assert_text("# Atlas\n\nbody");
+    h.query(by::test_id("reader-body")).assert_text("body");
 }
 
 #[test]
@@ -331,7 +393,7 @@ fn mention_dialog_opens_while_typing() {
     h.type_text(by::test_id("reader-body"), "@Wel");
     h.query(by::test_id("mention-dialog"));
     h.dispatch(gloss::Action::MentionPick("10-Inbox/Welcome.md".into()));
-    assert_eq!(h.state().editor_body, "# Atlas\n\n[[Welcome]]");
+    assert_eq!(h.state().editor_body, "[[Welcome]]");
 }
 
 #[test]

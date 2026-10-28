@@ -20,6 +20,7 @@ pub struct Gloss {
     pub query: String,
     pub selected_path: String,
     pub selected_title: String,
+    pub title_draft: String,
     pub editor_body: String,
     pub status: String,
     pub empty_message: String,
@@ -59,10 +60,10 @@ pub struct Gloss {
     pub backlink_rows: Vec<crate::model::NoteRow>,
     pub split_list: f32,
     pub sidebar_open: bool,
+    pub chrome_background: String,
     pub sidebar_files: bool,
     pub sidebar_search: bool,
     pub sidebar_bookmarks: bool,
-    pub note_rows: Vec<crate::model::NoteRow>,
     pub file_rows: Vec<crate::model::FileRow>,
     pub tab_rows: Vec<crate::model::TabRow>,
     pub vault_rows: Vec<crate::model::VaultRow>,
@@ -124,6 +125,10 @@ pub struct Gloss {
     pub restore_note: String,
     #[libra(skip)]
     pub context_path: String,
+    #[libra(skip)]
+    pub rename_to: Option<String>,
+    #[libra(skip)]
+    pub post_select: Option<String>,
 }
 
 impl Gloss {
@@ -162,17 +167,28 @@ impl Gloss {
             self.has_frontmatter,
             &self.frontmatter_yaml,
             &self.editor_body,
+            &self.selected_path,
+            &self.loaded_body,
         )
     }
 
     pub fn set_note_text(&mut self, full: &str) {
         let (yaml, editor, has, title, fields) = apply_loaded_note(self.reader_mode, full);
         self.frontmatter_yaml = yaml;
+        let mut editor = editor;
+        if self.reader_mode {
+            let chrome_title = crate::model::file_stem(&self.selected_path);
+            editor = crate::model::strip_leading_title_heading(&editor, &chrome_title);
+        }
         self.editor_body = editor;
+        self.title_draft = crate::model::file_stem(&self.selected_path);
         self.has_frontmatter = has;
         self.frontmatter_title = title.clone();
         self.has_frontmatter_title = !title.is_empty();
-        self.frontmatter_fields = fields;
+        self.frontmatter_fields = fields
+            .into_iter()
+            .filter(|f| f.key != "title")
+            .collect();
     }
 
     pub fn expand_ancestors(&mut self, path: &str) {

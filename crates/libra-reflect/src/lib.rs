@@ -121,8 +121,7 @@ pub(crate) fn derive_model_impl(
         .to_compile_error();
     };
 
-    let bindable: Vec<&syn::Field> =
-        named.named.iter().filter(|f| !has_skip(&f.attrs)).collect();
+    let bindable: Vec<&syn::Field> = named.named.iter().filter(|f| !has_skip(&f.attrs)).collect();
 
     // Vec<T> fields can't go through `field()` — Vec has no Display —
     // so they route to `collection()` instead (§6.2: <for each={...}>
@@ -138,20 +137,25 @@ pub(crate) fn derive_model_impl(
             #path => ::core::option::Option::Some(::std::string::ToString::to_string(&self.#ident)),
         }
     });
-    let names = scalar_fields.iter().map(|f| f.ident.as_ref().expect("named field").to_string());
+    let names = scalar_fields
+        .iter()
+        .map(|f| f.ident.as_ref().expect("named field").to_string());
 
     // PLAN-ACCESSORS: `{user.name}` — non-leaf scalar fields are assumed
     // `ReflectState + Display`; dotted tails recurse into the nested
     // impl. Leaf / generic types stay whole-value only.
-    let nested_arms = scalar_fields.iter().filter(|f| is_nestable_type(&f.ty)).map(|f| {
-        let ident = f.ident.as_ref().expect("named field");
-        let prefix = format!("{}.", ident);
-        quote! {
-            p if p.starts_with(#prefix) => {
-                ::libra_core::ReflectState::field(&self.#ident, &p[#prefix.len()..])
+    let nested_arms = scalar_fields
+        .iter()
+        .filter(|f| is_nestable_type(&f.ty))
+        .map(|f| {
+            let ident = f.ident.as_ref().expect("named field");
+            let prefix = format!("{}.", ident);
+            quote! {
+                p if p.starts_with(#prefix) => {
+                    ::libra::ReflectState::field(&self.#ident, &p[#prefix.len()..])
+                }
             }
-        }
-    });
+        });
 
     // PLAN-ACCESSORS: `{items.len}` / `{name.isEmpty}` (optional trailing
     // `()` folded away below). Whitelist only — not arbitrary methods.
@@ -201,9 +205,9 @@ pub(crate) fn derive_model_impl(
         // Vec<String>). Everything else is assumed ReflectState+Display
         // so `{t.field}` works (PLAN-ITEM-FIELDS).
         let row_fn = if is_opaque_vec_element(&f.ty) {
-            quote! { ::libra_core::collection_row_opaque }
+            quote! { ::libra::collection_row_opaque }
         } else {
-            quote! { ::libra_core::collection_row_from_state }
+            quote! { ::libra::collection_row_from_state }
         };
         quote! {
             #path => ::core::option::Option::Some(
@@ -214,7 +218,7 @@ pub(crate) fn derive_model_impl(
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     quote! {
-        impl #impl_generics ::libra_core::ReflectState for #name #ty_generics #where_clause {
+        impl #impl_generics ::libra::ReflectState for #name #ty_generics #where_clause {
             fn field(&self, path: &str) -> ::core::option::Option<::std::string::String> {
                 // `{items.len()}` and `{items.len}` are the same binding.
                 let path = path.strip_suffix("()").unwrap_or(path);
@@ -238,7 +242,7 @@ pub(crate) fn derive_model_impl(
             fn collection_rows(
                 &self,
                 path: &str,
-            ) -> ::core::option::Option<::std::vec::Vec<::libra_core::CollectionRow>> {
+            ) -> ::core::option::Option<::std::vec::Vec<::libra::CollectionRow>> {
                 match path {
                     #(#collection_row_arms)*
                     _ => ::core::option::Option::None,
@@ -255,8 +259,14 @@ pub(crate) fn derive_model_impl(
 /// fails to compile, which is the same tradeoff `is_string_type`
 /// already makes in `attrs.rs`.
 fn is_vec_type(ty: &syn::Type) -> bool {
-    let syn::Type::Path(tp) = ty else { return false };
-    tp.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
+    let syn::Type::Path(tp) = ty else {
+        return false;
+    };
+    tp.path
+        .segments
+        .last()
+        .map(|s| s.ident == "Vec")
+        .unwrap_or(false)
 }
 
 /// Element types that must stay whole-value Display rows (no field map).
@@ -285,7 +295,9 @@ fn vec_element_type(ty: &syn::Type) -> Option<&syn::Type> {
 }
 
 fn path_ends_with(ty: &syn::Type, name: &str) -> bool {
-    let syn::Type::Path(tp) = ty else { return false };
+    let syn::Type::Path(tp) = ty else {
+        return false;
+    };
     tp.path.segments.last().is_some_and(|s| s.ident == name)
 }
 
@@ -356,11 +368,15 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
     // Single-Instant tuple variants are §12.5's
     // <Interval onTick={ticked}> handlers — same shape again.
     let instant_arms = single_typed_tuple_arms(name, data, "Instant", "instant");
-    let names = data.variants.iter().map(|v| pascal_to_camel(&v.ident.to_string()));
+    let stream_arms = single_typed_tuple_arms(name, data, "StreamEvent", "event");
+    let names = data
+        .variants
+        .iter()
+        .map(|v| pascal_to_camel(&v.ident.to_string()));
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     quote! {
-        impl #impl_generics ::libra_core::ReflectAction for #name #ty_generics #where_clause {
+        impl #impl_generics ::libra::ReflectAction for #name #ty_generics #where_clause {
             fn action_by_name(name: &str) -> ::core::option::Option<Self> {
                 match name {
                     #(#ctor_arms)*
@@ -376,7 +392,7 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
                     }
                 }
             }
-            fn action_with_frame_info(name: &str, info: ::libra_core::FrameInfo) -> ::core::option::Option<Self> {
+            fn action_with_frame_info(name: &str, info: ::libra::FrameInfo) -> ::core::option::Option<Self> {
                 match name {
                     #(#frame_info_arms)*
                     _ => {
@@ -385,11 +401,20 @@ fn derive_msg(input: &DeriveInput, data: &syn::DataEnum) -> TokenStream {
                     }
                 }
             }
-            fn action_with_instant(name: &str, instant: ::libra_core::Instant) -> ::core::option::Option<Self> {
+            fn action_with_instant(name: &str, instant: ::libra::Instant) -> ::core::option::Option<Self> {
                 match name {
                     #(#instant_arms)*
                     _ => {
                         let _ = instant;
+                        ::core::option::Option::None
+                    }
+                }
+            }
+            fn action_with_stream_event(name: &str, event: ::libra::StreamEvent) -> ::core::option::Option<Self> {
+                match name {
+                    #(#stream_arms)*
+                    _ => {
+                        let _ = event;
                         ::core::option::Option::None
                     }
                 }
@@ -422,12 +447,22 @@ fn single_typed_tuple_arms(
         .filter_map(|v| {
             let ident = &v.ident;
             let public_name = pascal_to_camel(&ident.to_string());
-            let Fields::Unnamed(fields) = &v.fields else { return None };
+            let Fields::Unnamed(fields) = &v.fields else {
+                return None;
+            };
             if fields.unnamed.len() != 1 {
                 return None;
             }
-            let syn::Type::Path(tp) = &fields.unnamed[0].ty else { return None };
-            if tp.path.segments.last().map(|s| s.ident != ty_name).unwrap_or(true) {
+            let syn::Type::Path(tp) = &fields.unnamed[0].ty else {
+                return None;
+            };
+            if tp
+                .path
+                .segments
+                .last()
+                .map(|s| s.ident != ty_name)
+                .unwrap_or(true)
+            {
                 return None;
             }
             Some(quote! {

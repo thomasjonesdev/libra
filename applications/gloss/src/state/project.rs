@@ -3,14 +3,13 @@
 use crate::model::{
     char_count_label, frontmatter_scan_rows, frontmatter_title, project_bookmark_rows,
     project_file_rows, project_link_rows, project_palette_rows, save_busy, save_ok, vault_name,
-    word_count_label, IoKind, NoteRow, SidebarView, TabRow, VaultRow,
+    word_count_label, IoKind, SidebarView, TabRow, VaultRow,
 };
 use crate::state::Gloss;
 
 impl Gloss {
     pub fn rebuild_rows(&mut self) {
         let full = self.full_note_text();
-        self.project_note_rows(&full);
         self.project_sidebar_rows();
         self.project_tabs();
         self.project_vaults();
@@ -20,29 +19,6 @@ impl Gloss {
         if self.split_list == 0.0 {
             self.split_list = 0.32;
         }
-    }
-
-    fn project_note_rows(&mut self, full: &str) {
-        let q = self.query.to_ascii_lowercase();
-        self.note_rows = self
-            .note_paths
-            .iter()
-            .filter(|p| q.is_empty() || p.to_ascii_lowercase().contains(&q))
-            .map(|p| {
-                let selected = p == &self.selected_path;
-                let body = if selected { full } else { "" };
-                NoteRow {
-                    id: p.clone(),
-                    title: crate::model::note_title(p, body),
-                    snippet: if selected {
-                        crate::model::note_snippet(body)
-                    } else {
-                        String::new()
-                    },
-                    selected,
-                }
-            })
-            .collect();
     }
 
     fn project_sidebar_rows(&mut self) {
@@ -114,7 +90,7 @@ impl Gloss {
         self.selected_title = if self.selected_path.is_empty() {
             String::new()
         } else {
-            crate::model::note_title(&self.selected_path, full)
+            crate::model::file_stem(&self.selected_path)
         };
         self.empty_message = self.empty_sidebar_message();
         self.word_count = word_count_label(full);
@@ -122,10 +98,18 @@ impl Gloss {
         self.save_busy = save_busy(&self.status);
         self.save_ok = save_ok(self.has_selected, &self.status);
         self.mode_label = if self.reader_mode { "Raw" } else { "Reader" }.into();
+        self.chrome_background = if self.sidebar_open {
+            "surface_raised".into()
+        } else {
+            "surface".into()
+        };
         if self.reader_mode {
             self.frontmatter_title = frontmatter_title(&self.frontmatter_yaml);
             self.has_frontmatter_title = !self.frontmatter_title.is_empty();
-            self.frontmatter_fields = frontmatter_scan_rows(&self.frontmatter_yaml);
+            self.frontmatter_fields = frontmatter_scan_rows(&self.frontmatter_yaml)
+                .into_iter()
+                .filter(|f| f.key != "title")
+                .collect();
         }
     }
 

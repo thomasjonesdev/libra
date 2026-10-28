@@ -167,7 +167,7 @@ pub fn app(input: TokenStream) -> TokenStream {
     // App trait's own default (no subscriptions).
     let subscriptions_fn = spec.subscriptions.map(|p| {
         quote! {
-            fn subscriptions(&self) -> ::std::vec::Vec<::libra_core::Sub<Action>> {
+            fn subscriptions(&self) -> ::std::vec::Vec<::libra::Sub<Action>> {
                 #p(self)
             }
         }
@@ -176,7 +176,7 @@ pub fn app(input: TokenStream) -> TokenStream {
     // by the shell/harness via `build_shortcut_table`.
     let shortcuts_fn = spec.shortcuts.map(|p| {
         quote! {
-            fn shortcuts() -> ::std::vec::Vec<::libra_core::Shortcut> {
+            fn shortcuts() -> ::std::vec::Vec<::libra::Shortcut> {
                 #p()
             }
         }
@@ -184,14 +184,14 @@ pub fn app(input: TokenStream) -> TokenStream {
     // §19.3: state-dependent native menubar. Omitted ⇒ empty (OS default).
     let menu_fn = spec.menu.map(|p| {
         quote! {
-            fn menu(&self) -> ::libra_core::MenuDecl {
+            fn menu(&self) -> ::libra::MenuDecl {
                 #p(self)
             }
         }
     });
     let context_menu_fn = spec.context_menu.map(|p| {
         quote! {
-            fn context_menu(&self) -> ::std::option::Option<::libra_core::MenuDecl> {
+            fn context_menu(&self) -> ::std::option::Option<::libra::MenuDecl> {
                 #p(self)
             }
         }
@@ -203,36 +203,43 @@ pub fn app(input: TokenStream) -> TokenStream {
         #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
         #[allow(clippy::all)]
         mod __libra_view_codegen {
+            // PLAN-SDK S2: generated view.rs names these crates without a
+            // leading `::` so this crate can alias them through the facade.
+            // Conformance still resolves the real crates via the extern prelude.
+            use ::libra::__private::components as libra_components;
+            use ::libra as libra_core;
             include!(concat!(env!("OUT_DIR"), "/view.rs"));
         }
 
         #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
-        fn __libra_build_view(state: &#state_ty) -> ::libra_components::ViewNode {
+        fn __libra_build_view(
+            state: &#state_ty,
+        ) -> ::libra::__private::components::ViewNode {
             __libra_view_codegen::build_view(state)
         }
 
         /// View source for the windowed shell (PLAN-PACKAGE P0): interpreter
         /// in debug; codegen in release when the crate's `build.rs` ran
         /// [`libra_build::compile_app`].
-        pub fn view_driver() -> ::libra_platform::ViewDriver<#state_ty> {
+        pub fn view_driver() -> ::libra::ViewDriver<#state_ty> {
             #[cfg(all(not(debug_assertions), libra_has_view_codegen))]
             {
-                ::libra_platform::ViewDriver::with_codegen(VIEW, __libra_build_view)
+                ::libra::ViewDriver::with_codegen(VIEW, __libra_build_view)
             }
             #[cfg(not(all(not(debug_assertions), libra_has_view_codegen)))]
             {
-                ::libra_platform::ViewDriver::new(VIEW)
+                ::libra::ViewDriver::new(VIEW)
             }
         }
 
-        impl ::libra_core::App for #state_ty {
+        impl ::libra::App for #state_ty {
             type Msg = Action;
 
-            fn init() -> (Self, ::std::vec::Vec<::libra_core::Effect<Action>>) {
+            fn init() -> (Self, ::std::vec::Vec<::libra::Effect<Action>>) {
                 #init_expr
             }
 
-            fn update(&mut self, msg: Action) -> ::std::vec::Vec<::libra_core::Effect<Action>> {
+            fn update(&mut self, msg: Action) -> ::std::vec::Vec<::libra::Effect<Action>> {
                 reduce(self, msg)
             }
 
@@ -255,12 +262,14 @@ pub fn app(input: TokenStream) -> TokenStream {
         /// In debug builds, if the source `.lx` file is present on disk
         /// (i.e. running from the source tree, not an installed binary),
         /// it is watched so edits hot-reload with state preserved. The
-        /// watch path is absolute (derived from `CARGO_MANIFEST_DIR`), so
-        /// it works regardless of the current working directory; release
-        /// builds and installed binaries never reference it.
-        pub fn options() -> ::libra_platform::Options {
+        /// shell polls the view *directory* (PLAN-SDK S3) so a composed
+        /// component `.lx` reload counts too. The watch path is absolute
+        /// (derived from `CARGO_MANIFEST_DIR`), so it works regardless of
+        /// the current working directory; release builds and installed
+        /// binaries never reference it.
+        pub fn options() -> ::libra::Options {
             #[allow(unused_mut)]
-            let mut opts = ::libra_platform::Options::new(#title, #window);
+            let mut opts = ::libra::Options::new(#title, #window);
             #[cfg(debug_assertions)]
             {
                 let dev_view = ::std::path::Path::new(concat!(
@@ -279,9 +288,28 @@ pub fn app(input: TokenStream) -> TokenStream {
         /// native window running this app until closed, using [`options`].
         /// `main.rs` calls this and handles the `Result` — unless it needs
         /// to customize the options, in which case it builds on [`options`]
-        /// and calls `::libra_platform::run_with` itself.
+        /// and calls `::libra::run_with` itself.
+        ///
+        /// Debug builds use `run_rehydrating` (§18.2) so a `libra dev`
+        /// Rust restart restores the last snapshot. The snapshot id is
+        /// `app_id` when one is set, otherwise the crate name. Release
+        /// builds stay on `run_with` — a packaged app does not resume a
+        /// dev session.
         pub fn run() -> ::std::result::Result<(), ::std::boxed::Box<dyn ::std::error::Error>> {
-            ::libra_platform::run_with::<#state_ty>(view_driver(), options())
+            #[cfg(debug_assertions)]
+            {
+                let opts = options();
+                let opts = if opts.app_id.is_none() {
+                    opts.app_id(env!("CARGO_PKG_NAME"))
+                } else {
+                    opts
+                };
+                ::libra::run_rehydrating::<#state_ty>(view_driver(), opts)
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                ::libra::run_with::<#state_ty>(view_driver(), options())
+            }
         }
     }
     .into()

@@ -6,10 +6,15 @@
 //! is the substrate for later Tab paint — do not start a second parser.
 
 mod ast;
+mod editor;
 mod parse;
 mod wikilink;
 
 pub use ast::{flatten_blocks, flatten_inlines, Block, Document, Inline, Wikilink};
+pub use editor::{
+    flatten_runs, hard_line_ranges, inline_runs, line_is_active, line_view, BlockKind, DisplayRun,
+    LineView, RunStyle,
+};
 pub use parse::{parse, parse_preview, split_frontmatter};
 pub use wikilink::{split as split_wikilinks, Piece as WikilinkPiece};
 

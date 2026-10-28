@@ -83,22 +83,23 @@ impl LaidTree {
                     cx.cmds.push(DrawCmd::PushClip { rect: clip });
                 }
                 match &item.kind {
-                    // Containers, scroll viewports, and mounted sources paint nothing.
-                    ItemKind::Box | ItemKind::Scroll | ItemKind::Source(_) => {}
+                    // Containers, scroll viewports, mounted sources, and inline
+                    // link hit targets paint nothing.
+                    ItemKind::Box | ItemKind::Scroll | ItemKind::Source(_) | ItemKind::LinkTarget => {}
                     ItemKind::Separator => catalog::separator::paint(&mut cx, item),
                     ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm, inset, .. } => {
                         catalog::list_item::paint(
                             &mut cx, item, title, subtitle, meta, *selected, *px_md, *px_sm, *inset,
                         )
                     }
-                    ItemKind::Textarea { value, placeholder, px } => {
-                        catalog::textarea::paint(&mut cx, item, value, placeholder, *px)
+                    ItemKind::Textarea { value, placeholder, px, markdown, .. } => {
+                        catalog::textarea::paint(&mut cx, item, value, placeholder, *px, *markdown)
                     }
                     ItemKind::Chart { handle, panel } => {
                         catalog::chart::paint(&mut cx, item, handle, *panel)
                     }
-                    ItemKind::Input { value, placeholder, px } => {
-                        catalog::input::paint(&mut cx, item, value, placeholder, *px)
+                    ItemKind::Input { value, placeholder, px, variant, bold, .. } => {
+                        catalog::input::paint(&mut cx, item, value, placeholder, *px, *variant, *bold)
                     }
                     ItemKind::Search { value, placeholder, px, .. } => {
                         catalog::search::paint(&mut cx, item, value, placeholder, *px)
@@ -356,7 +357,14 @@ mod tests {
                 Some("press"),
             ),
             item(
-                ItemKind::Input { value: String::new(), placeholder: String::new(), px: 14.0 },
+                ItemKind::Input {
+                    value: String::new(),
+                    placeholder: String::new(),
+                    px: 14.0,
+                    on_submit: None,
+                    variant: InputVariant::Field,
+                    bold: false,
+                },
                 Rect::new(0.0, 60.0, 100.0, 20.0),
                 Role::TextInput,
                 Some("changed"),

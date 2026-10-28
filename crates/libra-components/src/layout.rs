@@ -107,8 +107,11 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Sparkline { handle, width, height, test_id } => {
             catalog::chart::build_sparkline(cx, *handle, *width, *height, test_id)
         }
-        ViewNode::Input { value, placeholder, on_change, test_id } => {
-            catalog::input::build(cx, value, placeholder, on_change, test_id)
+        ViewNode::Input { value, placeholder, on_change, on_submit, variant, size, bold, test_id } => {
+            catalog::input::build(
+                cx, value, placeholder, on_change, on_submit.as_deref(), *variant, *size, *bold,
+                test_id,
+            )
         }
         ViewNode::Search { value, placeholder, on_change, on_submit, test_id } => {
             catalog::search::build(cx, value, placeholder, on_change, on_submit, test_id)
@@ -123,13 +126,14 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             on_menu,
             on_menu_arg,
             inset,
+            grow,
             test_id,
         } => catalog::list_item::build(
             cx, title, subtitle, meta, *selected, on_press, on_press_arg, on_menu, on_menu_arg,
-            *inset, test_id,
+            *inset, *grow, test_id,
         ),
-        ViewNode::Textarea { value, placeholder, on_change, test_id } => {
-            catalog::textarea::build(cx, value, placeholder, on_change, test_id)
+        ViewNode::Textarea { value, placeholder, on_change, test_id, markdown, on_wikilink } => {
+            catalog::textarea::build(cx, value, placeholder, on_change, test_id, *markdown, on_wikilink)
         }
         ViewNode::Markdown { source, skip_title, test_id, on_wikilink } => {
             catalog::markdown::build(cx, source, skip_title, test_id, on_wikilink)
@@ -201,8 +205,8 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
                 test_id: test_id.clone(),
             }),
         ),
-        ViewNode::Split { fraction, on_resize, test_id, children } => {
-            catalog::split::build(cx, *fraction, on_resize, test_id, children)
+        ViewNode::Split { fraction, left_min, on_resize, test_id, children } => {
+            catalog::split::build(cx, *fraction, *left_min, on_resize, test_id, children)
         }
         ViewNode::Spacer { size } => catalog::spacer::build(cx, *size),
         ViewNode::Separator { vertical } => catalog::separator::build(cx, *vertical),
@@ -289,7 +293,32 @@ pub fn layout(
         }
     }
 
+    inject_markdown_wikilink_hits(&mut items, measurer, theme);
+
     Ok(LaidTree { items, width: viewport.0, height: viewport.1 })
+}
+
+fn inject_markdown_wikilink_hits(items: &mut Vec<Item>, measurer: &dyn TextMeasurer, theme: &Theme) {
+    let hits: Vec<Item> = items
+        .iter()
+        .filter_map(|parent| {
+            let ItemKind::Textarea {
+                ref value,
+                px,
+                markdown: true,
+                on_wikilink: Some(ref action),
+                ..
+            } = &parent.kind
+            else {
+                return None;
+            };
+            Some(catalog::markdown_textarea::wikilink_hits(
+                parent, value, *px, measurer, theme, action,
+            ))
+        })
+        .flatten()
+        .collect();
+    items.extend(hits);
 }
 
 /// After the first layout pass, `<Text wrap>` nodes get a height from their
@@ -345,7 +374,7 @@ fn reflow_textareas(
     };
     let mut changed = false;
     for (id, kind, _, _) in meta {
-        let ItemKind::Textarea { value, px, .. } = kind else {
+        let ItemKind::Textarea { value, px, markdown, .. } = kind else {
             continue;
         };
         let laid = tree.layout(*id).map_err(|e| LayoutError(format!("{e:?}")))?;
@@ -353,7 +382,7 @@ fn reflow_textareas(
         if inner_w <= 0.0 {
             continue;
         }
-        let h = catalog::textarea::wrapped_height(value, inner_w, *px, measurer, theme);
+        let h = catalog::textarea::wrapped_height(value, inner_w, *px, measurer, theme, *markdown, None);
         if (laid.size.height - h).abs() > 0.5 {
             let mut st = tree.style(*id).map_err(|e| LayoutError(format!("{e:?}")))?.clone();
             st.min_size.height = length(h);

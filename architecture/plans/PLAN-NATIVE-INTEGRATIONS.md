@@ -18,8 +18,10 @@ Umbrella: [[PLAN-UI-SURFACE]].
 
 Libra is desktop-native (`winit` + softbuffer). “Native” here means
 **host OS capabilities**, not React Native modules. Window *content*
-stays Libra-rendered and deterministic; window *chrome* and system
-sheets may be OS-owned ([[19-platform-integration|§19]] policy).
+stays Libra-rendered and **identical on macOS, Windows, and Linux**; window
+*chrome* and system sheets are OS-owned and must be **explicit on each OS**
+([[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]]). Silent
+no-ops are a bug.
 
 ## Mirror map (json-render actions → Libra)
 
@@ -72,7 +74,8 @@ Not always Effects — sometimes layout/input plumbing:
 | **N4** | `Share` + document clipboard relationship |
 | **N5** | Safe-area insets plumbing + `<SafeArea>` |
 | **N6** | `WindowOp` subset used by real apps — [[PLAN-RESIDENCY]] R3 needs `Show`/`Hide`/`Raise`/`Quit`; build the variant **once**, in whichever lands first |
-| **N7** | **Started.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. See [[19.3-native-menus|§19.3]] |
+| **N7** | **Started.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. macOS + Windows attach only. See [[19.3-native-menus|§19.3]] |
+| **N8** | **OS chrome parity** ([[19.4-desktop-os-matrix|§19.4]]). Close silent no-ops: Linux muda `attach_bar` / `popup_at` (real GTK path), Wayland clipboard (arboard data-control or honest failure), frameless / CSD on Windows and Linux or typed refusal when `Options.frameless` is set. Every new N-stage effect implements all three desktop OS or returns typed `Unsupported` |
 
 ## Design rules
 

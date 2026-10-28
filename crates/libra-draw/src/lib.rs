@@ -597,7 +597,7 @@ mod theme_tests {
     #[test]
     fn shipped_sample_theme_parses() {
         // The designer-facing sample must always load (§11 / PLAN-TOKENS).
-        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../themes/solarized.toml"));
+        let src = include_str!("../tests/fixtures/solarized.toml");
         let t = Theme::from_toml_str(src).expect("themes/solarized.toml parses");
         assert_eq!(t.name, "solarized-dark");
     }

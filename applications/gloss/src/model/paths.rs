@@ -2,6 +2,8 @@
 
 use gloss_core::{resolve_link_target, RelPath};
 
+use super::note::file_stem;
+
 pub fn vault_name(path: &str) -> String {
     let p = path.trim().trim_end_matches('/');
     if p.is_empty() {
@@ -59,6 +61,27 @@ pub fn expand_ancestors_into(expanded: &mut std::collections::HashSet<String>, p
         expanded.insert(parent.to_string());
         rest = parent;
     }
+}
+
+pub fn title_needs_rename(path: &str, draft: &str) -> bool {
+    !path.is_empty() && draft.trim() != file_stem(path)
+}
+
+/// Build a renamed note path from the current path and a new file stem.
+pub fn renamed_note_path(from: &str, new_stem: &str) -> Result<String, String> {
+    let stem = new_stem.trim();
+    if stem.is_empty() {
+        return Err("Title cannot be empty".into());
+    }
+    if stem.contains('/') || stem.contains('\\') {
+        return Err("Title cannot contain slashes".into());
+    }
+    let file = format!("{stem}.md");
+    let path = match parent_prefix(from) {
+        Some(parent) => format!("{parent}/{file}"),
+        None => file,
+    };
+    RelPath::parse(&path).map(|p| p.to_string()).map_err(|e| e.to_string())
 }
 
 /// Resolve a wikilink target against vault paths via gloss-core.

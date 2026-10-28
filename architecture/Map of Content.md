@@ -144,6 +144,7 @@ See [[04-system-overview|§4 System Overview]] and [[04.1-layer-diagram|§4.1 La
 - [[19.1-touch|19.1 Touch (first-class, not an afterthought)]]
 - [[19.2-keyboard-shortcuts-declarations-not-handlers|19.2 Keyboard shortcuts: declarations, not handlers]]
 - [[19.3-native-menus|19.3 Native menus: declarations, not markup]]
+- [[19.4-desktop-os-matrix|19.4 Desktop OS matrix: identical content, explicit chrome]]
 
 ### [[20-packaging|20. Packaging & Distribution]]
 

@@ -18,6 +18,11 @@ use winit::window::Window;
 pub(crate) enum ShellEvent<M> {
     App(M),
     Menu(MenuId),
+    /// §18.2: SIGTERM/SIGINT asked the process to snapshot and exit so
+    /// `libra dev` can restart onto the same model.
+    PersistAndExit,
+    /// A mounted stream has events waiting (PLAN-STREAM-DELIVERY).
+    Streams,
 }
 
 pub(crate) struct NativeMenus {
