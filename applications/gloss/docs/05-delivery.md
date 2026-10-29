@@ -95,8 +95,9 @@ target given MLX and Core Audio taps.
 2. `codesign` with Developer ID Application, hardened runtime enabled
 3. `notarytool submit --wait`, then `stapler staple`
 
-Sparkle is a later Gloss choice. Libra has no updater on purpose
-([[24-non-goals|§24]]). Do not treat auto-update as a framework task.
+Updates, when Gloss wants them, are `[package.update]` plus `libra publish`
+([[20-packaging|§20]], [[PLAN-RELEASE]]). The shell confirms before it
+replaces the bundle. `libra package` remains the local backup.
 
 **Entitlements needed:** microphone, audio input, and — for system-audio taps —
 screen recording (Core Audio process taps are gated behind it). Request them

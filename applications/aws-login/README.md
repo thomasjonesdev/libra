@@ -171,12 +171,11 @@ provider_short_name = "YourTeamShortName"  # optional; Apple Developer team shor
 
    `libra package` writes `signing-identity` (and optional `provider-short-name`) into the generated `Packager.toml`, sets `APPLE_KEYCHAIN_PROFILE` from `notary_profile`, and delegates codesign + notarization to cargo-packager.
 
-### CI recipe (GitHub Actions sketch)
+### CI
 
-- Import the signing certificate via `apple-actions/import-codesign-certs`.
-- Store the notary profile on the runner keychain before `libra package` (same `notarytool store-credentials` step, secrets for Apple ID + app password + team id).
-- Run `libra package -p aws-login` on a `macos-latest` runner.
-- Upload `applications/aws-login/dist/*.dmg` as a release artifact.
+`libra publish --ci` writes `.github/workflows/release.yml` from `libra.toml`. The workflow runs `libra package`, then `libra publish --from-dist`. Secrets, when signing is configured: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_PASSWORD`, `APPLE_TEAM_ID`. Add `LIBRA_UPDATE_KEY` only when `[package.update]` is set.
+
+`libra package` on this Mac stays the backup. It does not need `gh`. With the keychain notary profile it still notarizes; without a sign table it ad-hoc signs.
 
 Unsigned builds remain valid for local testing; signing is never required for development.
 

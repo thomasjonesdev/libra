@@ -36,6 +36,7 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-RESIDENCY]] | planned (R1–R6) | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
 | [[PLAN-NATIVE-INTEGRATIONS]] | planned (N7 started; N8 OS chrome parity) | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | **done** (P0–P6) | [[23-roadmap|§23]], [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] |
+| [[PLAN-RELEASE]] | shipped (icon, publish, signed feed) | [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[24-non-goals\|§24]], [[PLAN-PACKAGE]] |
 | [[PLAN-SDK]] | shipped (S1–S4, crates.io 0.1.1) | [[18.1-cli\|§18.1]], [[20-packaging\|§20]], [[21-crate-layout\|§21]], [[05.8-app-assembly\|§5.8]], [[26-open-questions\|§26]], [[PLAN-PACKAGE]], [[PLAN-PHASE4-DX]] |
 | [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |

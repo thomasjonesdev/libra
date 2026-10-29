@@ -170,6 +170,8 @@ Across all of them, `Harness::autopilot(steps)` drives *discovered* affordances 
 
 **Non-goals** (scope fence) → [[24-non-goals|§24]]
 
+**Release path** ([[PLAN-RELEASE]], §20): `libra icon`, `libra package` (local backup, including keychain notarization), `libra publish`, and a signed `latest.json` check in the shell when `[package.update]` is set.
+
 ---
 
 ## 9. How to change the system safely

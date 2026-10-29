@@ -23,6 +23,10 @@ pub(crate) enum ShellEvent<M> {
     PersistAndExit,
     /// A mounted stream has events waiting (PLAN-STREAM-DELIVERY).
     Streams,
+    /// A signed feed offered a newer build (PLAN-RELEASE).
+    UpdateOffer(crate::update::UpdateOffer),
+    /// The verified replacement `.app` is ready to swap in.
+    ApplyUpdate(std::path::PathBuf),
 }
 
 pub(crate) struct NativeMenus {

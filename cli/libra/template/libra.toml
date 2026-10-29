@@ -8,3 +8,15 @@ app_user_model_id = "Libra.Starter"
 
 [package]
 icon = "assets/icon.png"
+
+# Local backup: `libra package` writes dist/ on this machine. It does not
+# need GitHub. With [package.sign.macos] and a keychain notary profile it
+# also notarizes. `libra publish` uploads that bundle.
+
+# [package.publish]
+# provider = "github"
+# repo = "owner/name"
+
+# [package.update]
+# endpoint = "https://github.com/owner/name/releases/latest/download/latest.json"
+# pubkey = ""

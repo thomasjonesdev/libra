@@ -22,7 +22,8 @@ Stated so scope creep has to argue with a document:
 - **No CSS, no stylesheets, no cascade.** Tokens + node attributes only.
 - **No GPU renderer until profiling demands it** ([[09.4-gpu-executor|§9.4]]), and never as the canonical test target.
 - **No async runtime in the public API.** Concurrency is the runtime's problem; apps see actions.
-- **No auto-updater, no i18n framework** in v0.x (text *display* is international from day one; *editing* scope is [[10-text|§10]]'s).
+- **No i18n framework** in v0.x (text *display* is international from day one; *editing* scope is [[10-text|§10]]'s).
+- **A signed update feed is in** ([[20-packaging|§20]], [[PLAN-RELEASE]]). The shell checks `latest.json` when `[package.update]` is set, confirms, then replaces the bundle. There is no Sparkle dependency and no updater inside `update()`. Apps that omit the table never check.
 - **No attributed editing buffer, no formatting toolbar.** The edit core stays
   `EditState × EditOp` on a plain UTF-8 string ([[10.1-text-entry|§10.1]]).
   No bold button, no block editor, no markdown-as-you-type that mutates

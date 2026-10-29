@@ -21,9 +21,11 @@ Libra apps ship as native binaries wrapped by **`libra build`** (release artifac
 |---|---|
 | `libra dev [path]` | Debug run; hot-reloads `.lx`; uses `[package].icon` when present. Path-based — `libra dev examples/counter`, not `-p` |
 | `libra build [path] [-p crate]` | Release binary (view codegen + LTO). Pins the workspace manifest. In-repo: `libra build -p aws-login`. Out-of-tree: `libra build` from the app dir (`templates/app`) |
-| `libra package -p <crate>` | Platform bundle from `libra.toml` → `<app>/dist/` |
+| `libra icon <png> [-o dir]` | Desktop icon set from one square PNG |
+| `libra package -p <crate>` | Platform bundle from `libra.toml` → `<app>/dist/`. **Local backup** — never calls GitHub |
 | `libra package … --target macos\|windows\|linux` | Host must match target (cross-compile deferred). `--target` selects a bundle format, not a rustc triple |
 | `libra package … --format <fmt>` | Override default format(s) for the target |
+| `libra publish` | Upload `dist/` and, when configured, `latest.json`. `--ci` writes the workflow. `--no-upload` stops after the local feed |
 
 Install the CLI once: `cargo install --path cli/libra --force`.
 
@@ -36,12 +38,14 @@ Minimal manifest beside the app `Cargo.toml`. Paths are relative to the manifest
 | Section | Fields | Notes |
 |---|---|---|
 | `[app]` | `name`, `bundle_id`, `app_user_model_id` | Display name + OS identity (NT3/R5 consumers) |
-| `[package]` | `icon` | Square PNG; packager derives `.icns` / platform sizes |
-| `[package.sign.macos]` | `identity`, `notary_profile`, `provider_short_name` | Optional; unsigned OK for local sharing |
+| `[package]` | `icon` | Square PNG. `libra icon` writes `.icns` / `.ico` beside it; `libra package` passes those through when the files exist |
+| `[package.sign.macos]` | `identity`, `notary_profile`, `provider_short_name` | Optional. Absent → ad-hoc sign. Present, with a keychain profile → local notarization. This is the laptop path |
 | `[package.sign.windows]` | `thumbprint` | Optional Authenticode signing |
 | `[package.sign.linux]` | — | Reserved (deb/AppImage signing later) |
+| `[package.publish]` | `provider = "github"`, `repo` | Optional. Absent → nothing to upload. `libra package` still works |
+| `[package.update]` | `endpoint`, `pubkey` | Optional. Absent → the shell never checks. The private key stays in `LIBRA_UPDATE_KEY` |
 
-`libra package` also writes `packaging/libra-identity.toml` (gitignored) and bundles it as a packager **resource** — `app_user_model_id`, `bundle_id`, and `product_name` for [[PLAN-NOTIFY]] NT3 and [[PLAN-RESIDENCY]] R5 consumers at runtime.
+`libra package` also writes `packaging/libra-identity.toml` (gitignored) and bundles it as a packager **resource** — `app_user_model_id`, `bundle_id`, `product_name`, `version`, and, when `[package.update]` is set, `update_endpoint` plus `update_pubkey`. [[PLAN-NOTIFY]] NT3 and [[PLAN-RESIDENCY]] R5 read the identity fields. The shell reads the update fields ([[PLAN-RELEASE]]).
 
 Window title and logical size remain on `libra::app!` for single-window v1 apps ([[26-open-questions|§26]] defers multi-window manifest fields).
 
@@ -55,11 +59,17 @@ Full schema and stage plan: [[PLAN-PACKAGE]].
 | Windows | NSIS installer | **Shipped** — run on Windows; `[package.sign.windows].thumbprint` optional |
 | Linux | `.deb` + AppImage | **Shipped** — run on Linux |
 
-- Icon pipeline: one square PNG → platform icon sets (no author sizing matrix).
-- Signing/notarization: config-file driven via `[package.sign.*]`; CI recipes in the app README scaffold.
+- Icon pipeline: `libra icon` turns one square PNG (at least 512 px) into png / icns / ico / hicolor. `libra package` passes `icon.icns` and `icon.ico` through when they sit next to the source PNG under `icons/`.
+- Signing/notarization: config-file driven via `[package.sign.*]`. On a Mac, `libra package` is enough: the keychain notary profile notarizes, and a missing sign table stays ad-hoc. `libra publish --ci` writes a workflow that runs that same `libra package` on a runner.
 - Binary size: single-digit MB (no browser, no JS runtime; bundled fonts dominate).
-- Auto-update: **out of scope v0** ([[24-non-goals|§24]]) — cargo-packager can emit update-feed metadata later.
+- Updates: when `[package.update]` is set, `libra publish` uploads a minisign-signed `latest.json` whose first understood target is `darwin-aarch64` (the JSON has a slot per host). The shell fetches it, verifies, confirms, replaces the `.app`, and relaunches. Decline leaves the app running. `LIBRA_NO_UPDATE=1` skips the check. No check runs from `libra dev`.
 - Three-OS **content** is identical regardless of where you package ([[19.4-desktop-os-matrix|§19.4]]). Bundles are host-native; the framebuffer is not.
+
+## Local build
+
+`libra package` is the backup. It does not read `[package.publish]`, does not call `gh`, and still notarizes when `[package.sign.macos]` and the keychain profile are present. `libra publish` uploads a `dist/` that command already produced. `libra publish --no-upload` writes `latest.json` beside it and stops. `libra publish --ci` only writes the workflow.
+
+Execution plan: [[PLAN-RELEASE]].
 
 ## Reference implementation
 

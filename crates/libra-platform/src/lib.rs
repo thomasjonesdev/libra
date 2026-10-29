@@ -15,6 +15,7 @@
 pub mod a11y;
 pub mod icon;
 mod menu;
+mod update;
 
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
@@ -475,6 +476,7 @@ where
 
     let event_loop = EventLoop::<menu::ShellEvent<A::Msg>>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
+    let update_proxy = proxy.clone();
     if save_hook.is_some() {
         arm_persist_on_signal(proxy.clone());
     }
@@ -573,6 +575,8 @@ where
         frame_period: DEFAULT_FRAME_PERIOD,
         pending_relayout: false,
         frame_stats: FrameStats::new(),
+        update_proxy,
+        update_started: false,
     };
     event_loop.run_app(&mut shell)?;
     Ok(())
@@ -624,7 +628,10 @@ fn cursor_icon(cursor: Cursor) -> CursorIcon {
     }
 }
 
-struct Shell<A: App> {
+struct Shell<A: App>
+where
+    A::Msg: 'static,
+{
     opts: Options,
     app: A,
     ast: Option<Node>,
@@ -717,6 +724,9 @@ struct Shell<A: App> {
     /// rebuilds view/layout once.
     pending_relayout: bool,
     frame_stats: FrameStats,
+    /// PLAN-RELEASE: wakes the loop when a signed feed has a newer build.
+    update_proxy: winit::event_loop::EventLoopProxy<menu::ShellEvent<A::Msg>>,
+    update_started: bool,
 }
 
 impl<A: App + 'static> Shell<A>
@@ -747,11 +757,7 @@ where
         let has_instant_action =
             |m: &str| A::Msg::action_with_instant(m, LxInstant::at(0.0)).is_some();
         let has_stream_event_action = |m: &str| {
-            A::Msg::action_with_stream_event(
-                m,
-                libra_core::StreamEvent::Dropped(0),
-            )
-            .is_some()
+            A::Msg::action_with_stream_event(m, libra_core::StreamEvent::Dropped(0)).is_some()
         };
         let scope = Scope {
             field: &field,
@@ -962,7 +968,11 @@ where
         }
         self.pumping_streams = true;
         for _ in 0..8 {
-            let mounted: Vec<String> = self.markup_streams.iter().map(|(id, _)| id.clone()).collect();
+            let mounted: Vec<String> = self
+                .markup_streams
+                .iter()
+                .map(|(id, _)| id.clone())
+                .collect();
             let batch = self.effects.sync_streams(&mounted);
             if batch.is_empty() {
                 break;
@@ -1833,6 +1843,132 @@ where
         self.frame_stats.record(t0.elapsed());
     }
 
+    /// PLAN-RELEASE. Only a packaged `.app` with an update endpoint in
+    /// its identity resource checks. Decline leaves the app running.
+    fn start_update_check(&mut self) {
+        if self.update_started || !update::check_enabled() {
+            return;
+        }
+        self.update_started = true;
+        #[cfg(target_os = "macos")]
+        {
+            let Some(path) = update::bundled_identity_path() else {
+                return;
+            };
+            let cfg = match update::load_config(&path) {
+                Ok(Some(cfg)) => cfg,
+                Ok(None) => return,
+                Err(e) => {
+                    eprintln!("[libra] update check: {e}");
+                    return;
+                }
+            };
+            let proxy = self.update_proxy.clone();
+            let target = update::host_target().to_string();
+            std::thread::spawn(move || match update::fetch_text(&cfg.endpoint) {
+                Ok(body) => match update::offer_from_feed(&cfg, &target, &body) {
+                    Ok(Some(offer)) => {
+                        let _ = proxy.send_event(menu::ShellEvent::UpdateOffer(offer));
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("[libra] update check: {e}"),
+                },
+                Err(e) => eprintln!("[libra] update check: {e}"),
+            });
+        }
+    }
+
+    fn confirm_update(&mut self, offer: update::UpdateOffer) {
+        let notes: String = offer.notes.chars().take(400).collect();
+        let description = if notes.is_empty() {
+            format!(
+                "{} {} is available (you have {}).",
+                offer.product_name, offer.version, offer.current
+            )
+        } else {
+            format!(
+                "{} {} is available (you have {}).\n\n{notes}",
+                offer.product_name, offer.version, offer.current
+            )
+        };
+        let answer = rfd::MessageDialog::new()
+            .set_title("Update available")
+            .set_description(&description)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show();
+        if answer != rfd::MessageDialogResult::Yes {
+            return;
+        }
+        let pubkey = match update::bundled_identity_path().and_then(|path| {
+            update::load_config(&path)
+                .ok()
+                .flatten()
+                .map(|cfg| cfg.pubkey)
+        }) {
+            Some(pubkey) => pubkey,
+            None => {
+                eprintln!("[libra] update: identity resource disappeared");
+                return;
+            }
+        };
+        let proxy = self.update_proxy.clone();
+        std::thread::spawn(move || match update::stage(&pubkey, &offer) {
+            Ok(staged) => {
+                let _ = proxy.send_event(menu::ShellEvent::ApplyUpdate(staged));
+            }
+            Err(e) => eprintln!("[libra] update: {e}"),
+        });
+    }
+
+    fn apply_update(&mut self, event_loop: &ActiveEventLoop, staged: PathBuf) {
+        let exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(e) => {
+                eprintln!("[libra] update: {e}");
+                return;
+            }
+        };
+        let Some(dest) = update::app_bundle(&exe) else {
+            eprintln!("[libra] update: the running binary is not inside a .app");
+            return;
+        };
+        let script = update::relaunch_script(std::process::id(), &dest, &staged);
+        let path = std::env::temp_dir().join(format!("libra-update-{}.sh", std::process::id()));
+        if let Err(e) = std::fs::write(&path, &script) {
+            eprintln!("[libra] update: {e}");
+            return;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
+        }
+        let mut cmd = std::process::Command::new("/bin/sh");
+        cmd.arg(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            unsafe {
+                cmd.pre_exec(|| {
+                    let _ = libc::setsid();
+                    Ok(())
+                });
+            }
+        }
+        if let Err(e) = cmd.spawn() {
+            eprintln!("[libra] update: {e}");
+            return;
+        }
+        eprintln!(
+            "[libra] update: replacing {} after this process exits",
+            dest.display()
+        );
+        self.persist_and_exit(event_loop);
+    }
+
     fn persist_and_exit(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(save) = &self.save_hook {
             save(&self.app);
@@ -1905,6 +2041,7 @@ where
         // arms the display loop — do not sync on empty handlers first.
         self.relayout();
         self.sync_native_menu();
+        self.start_update_check();
     }
 
     /// Effect results, a11y actions, and `<Interval>` ticks arrive here
@@ -1920,6 +2057,8 @@ where
                 self.persist_and_exit(event_loop);
             }
             menu::ShellEvent::Streams => self.pump_streams(),
+            menu::ShellEvent::UpdateOffer(offer) => self.confirm_update(offer),
+            menu::ShellEvent::ApplyUpdate(staged) => self.apply_update(event_loop, staged),
         }
     }
 

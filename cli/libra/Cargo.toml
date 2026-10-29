@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Libra CLI: new, dev, check, test, build, package"
+description = "Libra CLI: new, dev, check, test, build, icon, package, publish"
 
 # `template/` is untracked, and `cargo package` only ships git-tracked
 # files. List it so `libra new` still embeds the starter (PLAN-SDK S4).
@@ -21,6 +21,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 toml.workspace = true
 libc.workspace = true
+image.workspace = true
+icns.workspace = true
+ico.workspace = true
+minisign.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

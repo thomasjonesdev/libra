@@ -11,13 +11,18 @@
 //!   managed `libra.toml` manifests are still open (§16, §18.4).
 //! - `libra build` — release binary with codegen views + LTO (PLAN-PACKAGE P1).
 //! - `libra package` — platform bundles via cargo-packager (PLAN-PACKAGE P3–P6).
+//!   This stays the local backup: it never calls GitHub.
+//! - `libra icon` — one square PNG to the desktop icon set (PLAN-RELEASE).
+//! - `libra publish` — upload that bundle, or write the release workflow.
 
 mod app;
 mod build;
 mod dev;
+mod icon;
 mod manifest;
 mod new;
 mod package;
+mod publish;
 mod test;
 
 use std::path::{Path, PathBuf};
@@ -31,6 +36,8 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "dev" => dev::dev(rest),
         Some((cmd, rest)) if cmd == "build" => build::build(rest),
         Some((cmd, rest)) if cmd == "package" => package::package(rest),
+        Some((cmd, rest)) if cmd == "icon" => icon::icon(rest),
+        Some((cmd, rest)) if cmd == "publish" => publish::publish(rest),
         Some((cmd, rest)) if cmd == "test" => test::test(rest),
         _ => {
             eprintln!("usage:");
@@ -38,7 +45,9 @@ fn main() -> ExitCode {
             eprintln!("  libra check [paths…]          validate .lx markup (default: workspace)");
             eprintln!("  libra dev [path] [-- args…]   run app in debug with view hot reload");
             eprintln!("  libra build [path] [-p crate] release binary (codegen + LTO)");
-            eprintln!("  libra package [-p crate] [--target macos|windows|linux] [--format …]  platform bundle");
+            eprintln!("  libra icon <png> [-o dir]     desktop icon set from one square PNG");
+            eprintln!("  libra package [-p crate] [--target macos|windows|linux] [--format …]  platform bundle (local backup)");
+            eprintln!("  libra publish [-p crate] [--ci | --no-upload | --from-dist | --keygen]");
             eprintln!("  libra test [path] [filter…]   run tests (no path = workspace)");
             ExitCode::from(2)
         }
