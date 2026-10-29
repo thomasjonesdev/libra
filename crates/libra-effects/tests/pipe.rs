@@ -41,7 +41,11 @@ fn stdout_larger_than_the_pipe_buffer_is_delivered_whole() {
             "{bytes} bytes: truncated stdout ({:?})",
             result.status
         );
-        assert_eq!(result.status, libra_core::ProcessStatus::Exited(0), "{bytes} bytes");
+        assert_eq!(
+            result.status,
+            libra_core::ProcessStatus::Exited(0),
+            "{bytes} bytes"
+        );
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "{bytes} bytes took {:?} — the reader is not draining concurrently",

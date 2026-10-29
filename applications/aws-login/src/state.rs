@@ -6,9 +6,9 @@ use libra_core::{Effect, ProcessId};
 
 use crate::actions::Action;
 use crate::model::{
-    AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig, DEFAULT_AWS_REGION, DEFAULT_ROLE,
-    DEFAULT_SCOPES, DEFAULT_SESSION, DEFAULT_SSO_REGION, DEFAULT_START_URL, STORE_KEY,
-    aws_version_cmd,
+    aws_version_cmd, AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig,
+    DEFAULT_AWS_REGION, DEFAULT_ROLE, DEFAULT_SCOPES, DEFAULT_SESSION, DEFAULT_SSO_REGION,
+    DEFAULT_START_URL, STORE_KEY,
 };
 
 #[derive(Default)]
@@ -36,6 +36,12 @@ pub struct AwsLogin {
     pub next_refresh: String,
     pub error_message: String,
     pub auto_refresh: bool,
+    pub launch_at_login: bool,
+    pub device_url: String,
+    pub device_code: String,
+    pub login_stream: String,
+    pub show_device_stream: bool,
+    pub has_device_code: bool,
     pub config_rows: Vec<ConfigRow>,
 
     // ---- projections (§6.3) ----
@@ -108,6 +114,9 @@ pub struct AwsLogin {
     #[libra(skip)]
     #[serde(skip, default)]
     pub token_cache_index: usize,
+    #[libra(skip)]
+    #[serde(skip, default)]
+    pub device_login: bool,
 }
 
 impl AwsLogin {
@@ -121,6 +130,7 @@ impl AwsLogin {
         self.role_name = DEFAULT_ROLE.into();
         self.profile_name = DEFAULT_ROLE.into();
         self.auto_refresh = true;
+        self.login_stream = crate::model::LOGIN_STREAM.into();
     }
 
     pub fn alloc_process_id(&mut self) -> ProcessId {
@@ -144,7 +154,10 @@ impl AwsLogin {
         state.claude_status_line = "Claude CLI: not checked yet".into();
         state.__libra_project();
         let fx = state.spawn_process(aws_version_cmd());
-        (state, vec![fx])
+        (
+            state,
+            vec![fx, Effect::login_item_query(Action::LoginItemChanged)],
+        )
     }
 
     pub fn load_config_effect(&mut self) -> Effect<Action> {

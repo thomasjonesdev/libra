@@ -2,34 +2,37 @@
 //!
 //! Architecture: ARCHITECTURE.md §5.9, §12.6 (process effect).
 
-use libra_core::{ClipboardResult, Effect, Instant, KvResult, ProcessResult, ProcessStatus};
+use libra_core::{
+    Capture, ClipboardResult, Effect, Instant, KvResult, LoginItemResult, Notification,
+    ProcessResult, ProcessStatus, StreamClose, StreamEvent, WindowOp,
+};
 
 use crate::model::{
-    aws_caller_identity, aws_configure_set, aws_configure_sso_session_set, aws_list_profiles, aws_sso_list_accounts,
-    aws_sso_login, aws_sso_login_session, aws_version_cmd, claude_version_cmd,
-    account_id_from_profile, config_profile_write_pairs, config_session_write_pairs,
-    config_write_pairs, configure_sso_command, export_profile_line, find_profile_for_role,
-    format_duration_ago, format_next_refresh, parse_aws_major_version, parse_caller_identity,
-    parse_sso_access_token, parse_sso_account_ids, read_file_cmd, sso_config_conflict_hint,
-    sso_token_cache_paths, strip_url_fragment, url_fragment_warning, validate_onboarding,
-    AppScreen, AuthStatus, ConfigRow, ProcessStep, SavedConfig, PROBE_INTERVAL_MS,
-    REFRESH_INTERVAL_MS, STORE_KEY,
+    account_id_from_profile, aws_caller_identity, aws_configure_set, aws_configure_sso_session_set,
+    aws_list_profiles, aws_sso_list_accounts, aws_sso_login, aws_sso_login_device,
+    aws_sso_login_session, aws_version_cmd, claude_version_cmd, config_profile_write_pairs,
+    config_session_write_pairs, config_write_pairs, configure_sso_command, export_profile_line,
+    find_profile_for_role, format_duration_ago, format_next_refresh, parse_aws_major_version,
+    parse_caller_identity, parse_device_line, parse_sso_access_token, parse_sso_account_ids,
+    read_file_cmd, sso_config_conflict_hint, sso_token_cache_paths, strip_url_fragment,
+    url_fragment_warning, validate_onboarding, AppScreen, AuthStatus, ConfigRow, ProcessStep,
+    SavedConfig, LOGIN_STREAM, PROBE_INTERVAL_MS, REFRESH_INTERVAL_MS, STORE_KEY,
 };
 use crate::state::AwsLogin;
 
 #[libra::actions]
 impl AwsLogin {
-    pub fn tick(&mut self, instant: Instant) -> Option<Effect<Action>> {
+    pub fn tick(&mut self, instant: Instant) -> Vec<Effect<Action>> {
         self.now_t_ms = instant.t_ms;
         self.refresh_time_labels();
         if self.screen != AppScreen::Steady || !self.configured {
-            return None;
+            return vec![];
         }
         if self.auth == AuthStatus::LoggingIn
             || self.auth == AuthStatus::Verifying
             || self.process_step != ProcessStep::Idle
         {
-            return None;
+            return vec![];
         }
         let due_probe = self.now_t_ms - self.last_probe_t_ms >= PROBE_INTERVAL_MS as f64;
         let due_refresh = self.auto_refresh
@@ -37,23 +40,91 @@ impl AwsLogin {
             && self.now_t_ms - self.last_login_t_ms >= REFRESH_INTERVAL_MS as f64;
         if due_refresh {
             self.begin_login();
-            return Some(self.spawn_process(aws_sso_login(&self.profile_name())));
+            return vec![
+                self.session_attention(),
+                self.spawn_process(aws_sso_login(&self.profile_name())),
+            ];
         }
         if due_probe {
             self.process_step = ProcessStep::Probe;
             self.last_probe_t_ms = self.now_t_ms;
-            return Some(self.spawn_process(aws_caller_identity(&self.profile_name())));
+            return vec![self.spawn_process(aws_caller_identity(&self.profile_name()))];
         }
-        None
+        vec![]
     }
 
     pub fn authenticate(&mut self) -> Effect<Action> {
         self.error_message.clear();
+        self.device_url.clear();
+        self.device_code.clear();
         self.begin_login();
-        self.spawn_process(aws_sso_login(&self.profile_name()))
+        self.device_login = true;
+        self.login_stream = LOGIN_STREAM.into();
+        Effect::spawn(
+            LOGIN_STREAM,
+            aws_sso_login_device(&self.profile_name()),
+            Capture::Both,
+        )
+    }
+
+    pub fn show_window(&mut self) -> Effect<Action> {
+        Effect::window(WindowOp::Raise)
+    }
+
+    pub fn quit(&mut self) -> Effect<Action> {
+        Effect::window(WindowOp::Quit)
+    }
+
+    pub fn login_item_changed(&mut self, result: LoginItemResult) {
+        self.launch_at_login = matches!(result, LoginItemResult::Enabled);
+    }
+
+    pub fn toggle_launch_at_login(&mut self) -> Effect<Action> {
+        Effect::login_item(!self.launch_at_login, Action::LoginItemChanged)
+    }
+
+    pub fn copy_device_code(&mut self) -> Effect<Action> {
+        Effect::clipboard_set_acked(self.device_code.clone(), Action::ClipboardDone)
+    }
+
+    pub fn login_line(&mut self, event: StreamEvent) -> Vec<Effect<Action>> {
+        match event {
+            StreamEvent::Line { text, .. } => {
+                let parsed = parse_device_line(&text);
+                if let Some(url) = parsed.url {
+                    self.device_url = url;
+                }
+                if let Some(code) = parsed.code {
+                    self.device_code = code;
+                }
+                vec![]
+            }
+            StreamEvent::Closed(StreamClose::Process(ProcessStatus::Exited(0))) => {
+                self.device_login = false;
+                self.auth = AuthStatus::Verifying;
+                self.process_step = ProcessStep::Verify;
+                vec![self.spawn_process(aws_caller_identity(&self.profile_name()))]
+            }
+            StreamEvent::Closed(_) => {
+                self.device_login = false;
+                self.auth = AuthStatus::Failed;
+                self.error_message = "Sign-in did not finish".into();
+                self.process_step = ProcessStep::Idle;
+                vec![]
+            }
+            StreamEvent::Chunk(_) | StreamEvent::Dropped(_) => vec![],
+        }
     }
 
     pub fn cancel(&mut self) -> Vec<Effect<Action>> {
+        if self.device_login {
+            self.device_login = false;
+            self.device_url.clear();
+            self.device_code.clear();
+            self.auth = AuthStatus::LoggedOut;
+            self.process_step = ProcessStep::Idle;
+            return vec![Effect::close_stream(LOGIN_STREAM)];
+        }
         let Some(id) = self.active_process.take() else {
             return vec![];
         };
@@ -89,7 +160,10 @@ impl AwsLogin {
     }
 
     pub fn copy_export_line(&mut self) -> Effect<Action> {
-        Effect::clipboard_set_acked(export_profile_line(&self.profile_name()), Action::ClipboardDone)
+        Effect::clipboard_set_acked(
+            export_profile_line(&self.profile_name()),
+            Action::ClipboardDone,
+        )
     }
 
     pub fn copy_configure_sso(&mut self) -> Effect<Action> {
@@ -205,16 +279,26 @@ impl AwsLogin {
         self.is_steady = self.screen == AppScreen::Steady;
         self.is_active = self.auth == AuthStatus::Active;
         self.has_error = !self.error_message.is_empty();
-        self.is_busy = matches!(
-            self.auth,
-            AuthStatus::LoggingIn | AuthStatus::Verifying
-        ) || self.active_process.is_some();
+        self.is_busy = matches!(self.auth, AuthStatus::LoggingIn | AuthStatus::Verifying)
+            || self.active_process.is_some();
         self.aws_missing = self.screen == AppScreen::Preflight && !self.aws_ok;
-        self.preflight_busy =
-            self.screen == AppScreen::Preflight && self.active_process.is_some();
+        self.preflight_busy = self.screen == AppScreen::Preflight && self.active_process.is_some();
         self.has_url_warning = !self.url_fragment_warning.is_empty();
         self.has_onboarding_error = !self.onboarding_error.is_empty();
+        self.show_device_stream = self.device_login;
+        self.has_device_code = !self.device_code.is_empty();
         self.refresh_time_labels();
+    }
+}
+
+impl AwsLogin {
+    /// Banner text is fixed. It must not name a profile, account, or ARN
+    /// (PLAN-NOTIFY rule 4 / PLAN-AWS-LOGIN A8).
+    fn session_attention(&self) -> Effect<Action> {
+        Effect::notify_activate(
+            Notification::new("AWS session", "Your session needs attention").tag("aws-session"),
+            Action::ShowWindow,
+        )
     }
 }
 
@@ -333,16 +417,22 @@ impl AwsLogin {
 
     fn handle_preflight_claude(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
         if exit_ok(&result) {
-            self.claude_status_line =
-                format!("Claude CLI: {}", String::from_utf8_lossy(&result.stdout).trim());
+            self.claude_status_line = format!(
+                "Claude CLI: {}",
+                String::from_utf8_lossy(&result.stdout).trim()
+            );
         } else {
-            self.claude_status_line = "Claude CLI: not installed (optional — for Claude Code setup)".into();
+            self.claude_status_line =
+                "Claude CLI: not installed (optional — for Claude Code setup)".into();
         }
         self.process_step = ProcessStep::LoadConfig;
         vec![self.load_config_effect()]
     }
 
-    fn handle_list_profiles_for_validation(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
+    fn handle_list_profiles_for_validation(
+        &mut self,
+        result: ProcessResult,
+    ) -> Vec<Effect<Action>> {
         self.list_profiles_for_validation = false;
         let profiles: Vec<String> = if exit_ok(&result) {
             String::from_utf8_lossy(&result.stdout)
@@ -355,8 +445,7 @@ impl AwsLogin {
             vec![]
         };
         self.known_profiles = profiles;
-        if let Err(msg) =
-            validate_onboarding(&self.session_name, &self.start_url, &self.role_name)
+        if let Err(msg) = validate_onboarding(&self.session_name, &self.start_url, &self.role_name)
         {
             self.onboarding_error = msg;
             return vec![];
@@ -546,7 +635,8 @@ impl AwsLogin {
     fn handle_verify(&mut self, result: ProcessResult) -> Vec<Effect<Action>> {
         if !exit_ok(&result) {
             self.auth = AuthStatus::Failed;
-            self.error_message = self.profile_error_message(&result, "identity verification failed");
+            self.error_message =
+                self.profile_error_message(&result, "identity verification failed");
             self.process_step = ProcessStep::Idle;
             return vec![];
         }
@@ -588,11 +678,12 @@ impl AwsLogin {
         }
         self.auth = AuthStatus::LoggedOut;
         self.identity_line = "Not authenticated".into();
+        let mut fx = vec![self.session_attention()];
         if self.auto_refresh && self.screen == AppScreen::Steady {
             self.begin_login();
-            return vec![self.spawn_process(aws_sso_login(&self.profile_name()))];
+            fx.push(self.spawn_process(aws_sso_login(&self.profile_name())));
         }
-        vec![]
+        fx
     }
 }
 

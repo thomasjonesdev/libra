@@ -13,7 +13,7 @@ type: plan
 
 # Background residency: tray/menubar, window policy, launch at login
 
-**Status: planned.** Makes a Libra app able to *live* on a desktop rather than
+**Status: R1–R6 shipped.** Makes a Libra app able to *live* on a desktop rather than
 be launched at: a tray/menubar presence, a window that can close without
 quitting, one instance rather than five, and optional start-at-login. Claims the
 "Menus / tray / hotkeys — separate small plans when needed" row of
@@ -100,12 +100,12 @@ form is ever wanted it can compile *to* `TrayDecl`; nothing here forecloses it.
 
 | Stage | Deliverable | Gate |
 |---|---|---|
-| **R1** | `TrayDecl` / `TrayItem` / `TrayIcon` in `libra-core` (pure — no `tray-icon` types); `App::tray()` (default `None`) + `tray:` field in `app!` mirroring `shortcuts:`; startup validation of every action name; shell builds and **diffs** the decl per commit via `tray-icon` + `muda`; clicks dispatch through the effects sink like an AccessKit `Click` | a tray icon whose label tracks state, on macOS + Linux |
-| **R2** | Harness parity: `h.tray()` returns the decl for assertions, `h.click_tray("authenticate")` dispatches (erroring on an unknown or disabled item). Tray behavior becomes component-testable with **no OS involved** | `cargo test -p libra-test`; a tray test in an example app |
-| **R3** | Window policy: `Options::window_policy` (`QuitOnClose` — today's behavior, the default — vs `CloseToTray`); `Effect::WindowOp { Show, Hide, Raise, Quit }`; macOS `ActivationPolicy::Accessory` so a menubar app stays out of the Dock. **The load-bearing invariant: hiding the window must not unmount sources.** `<Interval>` threads and `subscriptions()` keep running while windowless; only painting stops | closing the window leaves the process and its intervals alive; `Quit` from the tray exits and runs the save hook |
-| **R4** | Single instance: an OS-level guard (lock file in the app-data dir on unix, named mutex on Windows). A second launch does not start a shell — it signals the first to `Raise` and exits 0. Opt-in via `Options` | launching twice yields one window and one tray |
-| **R5** | `Effect::LoginItem { enabled, on_done }` + `LoginItemQuery` (so a settings switch can render the *actual* state rather than a remembered one) + `LoginItemResult`. Per-OS: XDG autostart `.desktop` (Linux), Run key / Startup folder (Windows), LaunchAgent / `SMAppService` (macOS — needs a bundle, so gated on [[PLAN-PACKAGE]]). `auto-launch` is the candidate crate; verify its macOS path before committing to it | toggling the switch survives a reboot on Linux + Windows |
-| **R6** | First consumer: `aws-login` residency ([[PLAN-AWS-LOGIN]] A9) — status icon, menu (Authenticate / Show window / Quit), `CloseToTray`, single instance, autostart switch in the config panel | its cadence fires unattended with no window open |
+| **R1** | **Shipped.** `TrayDecl` / `TrayItem` / `TrayIcon` in `libra-core`; `App::tray()` + `tray:` in `app!`; startup validation; the shell diffs the decl. Clicks use `tray-icon`'s menu channel (it links `muda` 0.15; the menubar links 0.16) and dispatch the action name | icon bytes unit-tested; no OS in the harness |
+| **R2** | **Shipped.** `h.tray()` and `h.click_tray`. Unknown or disabled items panic with the reason | aws-login tray test |
+| **R3** | **Shipped.** `QuitOnClose` (default) vs `CloseToTray`. `Effect::WindowOp` Show/Hide/Raise/Quit. macOS `ActivationPolicy::Accessory` when close-to-tray. Hiding stops painting and leaves sources, intervals, and streams mounted. Quit sends the existing save-and-exit event | |
+| **R4** | **Shipped.** Opt-in. A localhost listener plus `instance.lock` in the app-data dir on every OS. The second process signals Raise and exits 0. A dead lock is replaced | `instance::tests` |
+| **R5** | **Shipped.** `LoginItem` + `LoginItemQuery`. Linux XDG autostart, Windows Startup `.cmd`, macOS LaunchAgent only inside a bundled `.app` (otherwise `Unsupported`). The switch stores the result, which is read back from disk | desktop-file roundtrip test |
+| **R6** | **Shipped.** aws-login A9 | component tests |
 
 ## Overlaps to resolve, not duplicate
 

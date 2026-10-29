@@ -12,8 +12,7 @@ type: plan
 
 # AWS SSO session manager (and the process effect it needs)
 
-**Status: v1 shipped (P1, P2, A1–A7 — 2026-07-27); A8–A10 planned behind
-[[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] and [[PLAN-STREAM-DELIVERY]].** Builds `applications/aws-login` — a Libra app that replaces
+**Status: A1–A10 shipped.** Builds `applications/aws-login` — a Libra app that replaces
 `applications/aws-login/refresh_aws_sso.sh`: onboarding once, one **Authenticate**
 button after that, and a session kept alive on a six-hour cadence against an
 eight-hour token.
@@ -61,9 +60,9 @@ framework forward in a reusable shape.
 
 | Stage | Deliverable | Blocked on |
 |---|---|---|
-| **A8** | Notify on "needs attention": one `Effect::Notify` when the probe finds a dead session or the six-hour nudge fires, `tag: "aws-session"` so an unattended overnight run produces **one** banner rather than a dozen, `on_activate` raising the window. The banner text names no profile, account, or ARN ([[PLAN-NOTIFY]] rule 4) | [[PLAN-NOTIFY]] NT1–NT4 |
-| **A9** | Residency, which is what actually closes the "app must stay running" hole: tray status icon (`Ok` / `Warn` / `Error` from `AuthStatus`), menu of Authenticate / Show window / Quit, `CloseToTray`, single instance, and a launch-at-login `Switch` in the config panel reading real on-disk state via `LoginItemQuery` | [[PLAN-RESIDENCY]] R1–R5 |
-| **A10** | Device-code login in-app, replacing the clipboard hand-off: `Effect::Spawn` of `aws sso login --use-device-code --no-browser`, `<Stream>` mounted in the same commit, the verification URL and user code parsed out of the streamed lines and shown as selectable text + **Copy code**; Cancel closes the stream and kills the child. **Verify the CLI streams over a pipe before designing the screen** — if it gates output on a TTY, cut the stage rather than reaching for a PTY | [[PLAN-STREAM-DELIVERY]] D1–D5 |
+| **A8** | **Shipped.** One `Effect::Notify` tagged `aws-session` when a probe finds a dead session or the six-hour nudge fires. The banner text is fixed. `on_activate` is `WindowOp::Raise` | fixture test |
+| **A9** | **Shipped.** Tray icon from `AuthStatus`, menu Authenticate / Show window / Quit, `CloseToTray`, single instance, launch-at-login switch | component tests |
+| **A10** | **Shipped.** Authenticate spawns `aws sso login --use-device-code --no-browser` and mounts `<Stream>`. The URL and user code are parsed from the lines. Copy code and Cancel (`CloseStream`) are on that screen. No PTY | fixture test; no real `aws` |
 
 ## Execution notes
 

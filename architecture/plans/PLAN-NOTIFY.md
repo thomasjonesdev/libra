@@ -12,7 +12,7 @@ type: plan
 
 # Desktop notifications (`Effect::Notify`)
 
-**Status: planned.** Expands [[PLAN-NATIVE-INTEGRATIONS]] **N3** from a table
+**Status: NT1–NT4 shipped.** Expands [[PLAN-NATIVE-INTEGRATIONS]] **N3** from a table
 row into a stage plan, following that plan's own precedent for tray/menus
 ("separate small plans when needed"). It stays governed by
 [[12.1-effect-vocabulary|§12.1]] and [[19-platform-integration|§19]]; N3 is now a
@@ -111,10 +111,10 @@ doesn't work on my Mac in dev" turn into a redesign.
 
 | Stage | Deliverable | Gate |
 |---|---|---|
-| **NT1** | `Notification` / `Urgency` / `NotifyResult` + `Effect::Notify` in `libra-core` (+ hand-written `PartialEq` arm); shell handler via `notify-rust`; `Unsupported` on every host without a mechanism; §12.1 updated from the sketch to the shipped shape | `cargo test --workspace`; a banner appears on Linux |
-| **NT2** | Activation routing: `on_activate` dispatched through the effects sink like an AccessKit `Click` (§17); raising/showing the window on activation is [[PLAN-RESIDENCY]] R3's `WindowOp`, referenced not duplicated | manual: click a banner, observe the action |
-| **NT3** | `tag` replace semantics on all three platforms; macOS bundle + consent prompt; Windows AppUserModelID registration wired into `libra package` | repeat notify with one tag yields one banner, not N |
-| **NT4** | Harness parity per [[PLAN-NATIVE-INTEGRATIONS]] rule 2: `fx::notify()` / `fx::notify_tag("session")`, `resolve_notify(effect, NotifyResult::Shown)`, `h.activate_notification(effect)` to drive `on_activate`. First consumer: `aws-login` "needs attention" ([[PLAN-AWS-LOGIN]] A8) | fixture-driven integration test; no test shows a real banner |
+| **NT1** | **Shipped.** `Notification` / `Urgency` / `NotifyResult` + `Effect::Notify` in `libra-core`; shell handler via `notify-rust`; `Unsupported` when the host has no mechanism | unit tests; no test calls `show` |
+| **NT2** | **Shipped.** `on_activate` is dispatched through the event-loop proxy. Raising the window is `WindowOp::Raise` | `h.activate_notification` |
+| **NT3** | **Shipped.** Same tag → same id. macOS uses UserNotifications and returns `Unsupported` outside a bundled `.app`. Windows reads `app_user_model_id` from the packaged identity and returns `Unsupported` without it. notify-rust 4's Windows toast builder does not read that id, so a Windows repeat can still stack | `host_gate` / `tag_id` tests |
+| **NT4** | **Shipped.** `fx::notify_tag`, `h.activate_notification`, aws-login A8 | fixture test; no real banner |
 
 ## Design rules
 
@@ -149,10 +149,12 @@ doesn't work on my Mac in dev" turn into a redesign.
 
 ## In code
 
-- *(planned)* `crates/libra-core/src/lib.rs` — NT1
-- *(planned)* `crates/libra-platform/src/lib.rs` — NT1–NT3 (shell handler,
-  alongside `SetTheme` / `ClipboardSet`)
-- *(planned)* `crates/libra-test/src/lib.rs` — NT4
+- `crates/libra-core/src/lib.rs` — NT1
+- `crates/libra-platform/src/notify.rs` — NT1 (shell handler, alongside
+  `SetTheme` / `ClipboardSet` in `lib.rs`)
+- *(planned)* `crates/libra-platform` — NT2–NT3
+- `crates/libra-test/src/lib.rs` — `fx::notify` / `resolve_notify` (NT1).
+  `activate_notification` is still NT4
 - `crates/libra-platform/src/a11y.rs` — the AT-click-through-the-sink precedent
   NT2 copies
 

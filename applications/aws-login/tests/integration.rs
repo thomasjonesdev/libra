@@ -2,13 +2,13 @@
 
 mod common;
 
-use libra_core::{Effect, ProcessResult, ProcessStatus};
+use libra_core::{Effect, ProcessStatus};
 use libra_test::{by, fx};
 
 use common::{
-    aws_ok, fill_onboarding_fixture, finish_new_profile_onboarding, fixture_saved_config,
-    harness, through_preflight_to_kv, FIXTURE_PROFILE, FIXTURE_SESSION, FIXTURE_START_URL,
-    FIXTURE_SSO_REGION, FIXTURE_SCOPES,
+    aws_ok, fill_onboarding_fixture, finish_new_profile_onboarding, fixture_saved_config, harness,
+    through_preflight_to_kv, FIXTURE_PROFILE, FIXTURE_SCOPES, FIXTURE_SESSION, FIXTURE_SSO_REGION,
+    FIXTURE_START_URL,
 };
 
 #[test]
@@ -26,7 +26,9 @@ fn onboarding_writes_session_then_discovers_account_from_aws() {
     let save = h.expect_effect(fx::any_kv_set());
     h.resolve_kv_set(save, libra_core::KvResult::Ok);
     let login = h.expect_effect(fx::process_program("aws"));
-    let Effect::Process { command, .. } = &login else { unreachable!() };
+    let Effect::Process { command, .. } = &login else {
+        unreachable!()
+    };
     assert!(command.args.windows(2).any(|w| w == ["sso", "login"]));
     assert!(command
         .args
@@ -63,7 +65,9 @@ fn onboarding_adopts_an_existing_profile_without_configure_set() {
     let save = h.expect_effect(fx::any_kv_set());
     h.resolve_kv_set(save, libra_core::KvResult::Ok);
     let login = h.expect_effect(fx::process_program("aws"));
-    let Effect::Process { command, .. } = &login else { unreachable!() };
+    let Effect::Process { command, .. } = &login else {
+        unreachable!()
+    };
     assert!(command.args.windows(2).any(|w| w == ["sso", "login"]));
     assert!(command
         .args
@@ -85,18 +89,17 @@ fn login_failure_surfaces_stderr() {
     );
 
     h.click(by::test_id("authenticate"));
-    let login = h.expect_effect(fx::process_program("aws"));
-    h.resolve_process(
-        login,
-        ProcessResult {
-            status: ProcessStatus::Exited(1),
-            stdout: vec![],
-            stderr: b"Token has expired".to_vec(),
-            finished_at_unix_ms: 1,
-        },
+    let login = h.expect_effect(fx::spawn_program("aws"));
+    let Effect::Spawn { command, .. } = &login else {
+        unreachable!()
+    };
+    assert!(command.args.iter().any(|a| a == "--use-device-code"));
+    h.close_stream(
+        "login",
+        libra_core::StreamClose::Process(ProcessStatus::Exited(1)),
     );
     h.query(by::test_id("error-detail"))
-        .assert_text("aws sso login failed: Token has expired");
+        .assert_text("Sign-in did not finish");
 }
 
 #[test]
@@ -114,6 +117,8 @@ fn copy_export_line_uses_clipboard_effect() {
 
     h.click(by::test_id("copy-export"));
     let clip = h.expect_effect(fx::clipboard_set());
-    let Effect::ClipboardSet { text, .. } = &clip else { unreachable!() };
+    let Effect::ClipboardSet { text, .. } = &clip else {
+        unreachable!()
+    };
     assert_eq!(text, "export AWS_PROFILE=Dev_Admin-111122223333");
 }

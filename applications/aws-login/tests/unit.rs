@@ -86,7 +86,10 @@ fn strip_url_fragment_removes_hash_suffix() {
         strip_url_fragment("https://start.example/d-abc#/?tab=accounts"),
         "https://start.example/d-abc"
     );
-    assert_eq!(strip_url_fragment("https://start.example"), "https://start.example");
+    assert_eq!(
+        strip_url_fragment("https://start.example"),
+        "https://start.example"
+    );
 }
 
 #[test]
@@ -120,7 +123,10 @@ fn sso_config_conflict_hint_ignores_unrelated_errors() {
 
 #[test]
 fn duration_and_refresh_labels_are_deterministic() {
-    assert_eq!(format_duration_ago(120_000.0, 60_000.0), "verified 1 minute ago");
+    assert_eq!(
+        format_duration_ago(120_000.0, 60_000.0),
+        "verified 1 minute ago"
+    );
     assert_eq!(
         format_next_refresh(REFRESH_INTERVAL_MS as f64 + 60_001.0, 60_000.0, true),
         "refresh due"

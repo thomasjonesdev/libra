@@ -57,7 +57,13 @@ impl App for Counter {
     // it is named Action here.
     type Msg = Action;
     fn init() -> (Self, Vec<Effect<Action>>) {
-        (Counter { status: "idle".into(), ticks: 0 }, vec![])
+        (
+            Counter {
+                status: "idle".into(),
+                ticks: 0,
+            },
+            vec![],
+        )
     }
     fn update(&mut self, action: Action) -> Vec<Effect<Action>> {
         match action {

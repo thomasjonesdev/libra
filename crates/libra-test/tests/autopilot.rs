@@ -176,7 +176,10 @@ fn effects_are_answered_out_of_emission_order() {
     );
     let mut sorted = order.clone();
     sorted.sort_by_key(|s| s.parse::<u32>().expect("numeric"));
-    assert_eq!(sorted, emitted, "the shuffle dropped or duplicated an effect");
+    assert_eq!(
+        sorted, emitted,
+        "the shuffle dropped or duplicated an effect"
+    );
 }
 
 #[test]

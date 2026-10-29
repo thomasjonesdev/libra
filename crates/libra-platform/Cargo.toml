@@ -27,12 +27,20 @@ directories.workspace = true
 arboard.workspace = true
 rfd.workspace = true
 muda.workspace = true
+tray-icon.workspace = true
 accesskit.workspace = true
 accesskit_winit.workspace = true
 png.workspace = true
+notify-rust.workspace = true
 toml.workspace = true
 ureq.workspace = true
 minisign-verify.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+notify-rust = { workspace = true, features = ["preview-macos-un"] }
 
 [dev-dependencies]
 minisign.workspace = true

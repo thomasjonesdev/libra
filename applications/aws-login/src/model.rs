@@ -14,6 +14,8 @@ pub const TICK_MS: u64 = 60_000;
 pub const PROBE_INTERVAL_MS: u64 = 5 * 60 * 1000;
 pub const REFRESH_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
 pub const LOGIN_TIMEOUT_MS: u64 = 10 * 60 * 1000;
+/// Stream id for the device-code `aws sso login` child (PLAN-AWS-LOGIN A10).
+pub const LOGIN_STREAM: &str = "login";
 pub const VERIFY_TIMEOUT_MS: u64 = 30_000;
 
 /// Org-wide SSO defaults — same for every user at this org (§27.1 onboarding).
@@ -113,7 +115,10 @@ impl fmt::Display for ConfigRow {
 
 impl ConfigRow {
     pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
-        ConfigRow { key: key.into(), value: value.into() }
+        ConfigRow {
+            key: key.into(),
+            value: value.into(),
+        }
     }
 }
 
@@ -125,11 +130,15 @@ pub fn default_profile_name(role: &str, account: &str) -> String {
 }
 
 pub fn aws_version_cmd() -> CommandSpec {
-    CommandSpec::new("aws").args(["--version"]).timeout_ms(5_000)
+    CommandSpec::new("aws")
+        .args(["--version"])
+        .timeout_ms(5_000)
 }
 
 pub fn claude_version_cmd() -> CommandSpec {
-    CommandSpec::new("claude").args(["--version"]).timeout_ms(5_000)
+    CommandSpec::new("claude")
+        .args(["--version"])
+        .timeout_ms(5_000)
 }
 
 pub fn aws_configure_set(key: &str, value: &str) -> CommandSpec {
@@ -225,7 +234,14 @@ pub fn account_id_from_profile(profile: &str) -> Option<String> {
 
 pub fn aws_sso_list_accounts(access_token: &str, region: &str) -> CommandSpec {
     CommandSpec::new("aws")
-        .args(["sso", "list-accounts", "--access-token", access_token, "--region", region])
+        .args([
+            "sso",
+            "list-accounts",
+            "--access-token",
+            access_token,
+            "--region",
+            region,
+        ])
         .timeout_ms(VERIFY_TIMEOUT_MS)
 }
 
@@ -233,6 +249,53 @@ pub fn aws_sso_login(profile: &str) -> CommandSpec {
     CommandSpec::new("aws")
         .args(["sso", "login", "--profile", profile])
         .timeout_ms(LOGIN_TIMEOUT_MS)
+}
+
+/// Device-code login. The CLI writes the URL and user code to the
+/// pipes (`--no-browser`); this does not allocate a PTY. If a build of
+/// the CLI withholds that text until a TTY is attached, the stream
+/// simply never yields a code and the screen stays empty.
+pub fn aws_sso_login_device(profile: &str) -> CommandSpec {
+    CommandSpec::new("aws")
+        .args([
+            "sso",
+            "login",
+            "--profile",
+            profile,
+            "--use-device-code",
+            "--no-browser",
+        ])
+        .timeout_ms(LOGIN_TIMEOUT_MS)
+}
+
+/// One stdout/stderr line from `aws sso login --use-device-code`.
+pub struct DeviceLine {
+    pub url: Option<String>,
+    pub code: Option<String>,
+}
+
+pub fn parse_device_line(line: &str) -> DeviceLine {
+    let url = line.split_whitespace().find_map(|word| {
+        let word = word.trim_matches(|c: char| matches!(c, ',' | ')' | '(' | '"' | '\''));
+        (word.starts_with("https://") || word.starts_with("http://")).then(|| word.to_string())
+    });
+    let code = line.split_whitespace().find_map(|word| {
+        let word = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-');
+        is_user_code(word).then(|| word.to_string())
+    });
+    DeviceLine { url, code }
+}
+
+fn is_user_code(s: &str) -> bool {
+    let Some((left, right)) = s.split_once('-') else {
+        return false;
+    };
+    let part = |p: &str| {
+        (4..=5).contains(&p.len())
+            && p.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    };
+    part(left) && part(right)
 }
 
 pub fn aws_caller_identity(profile: &str) -> CommandSpec {
@@ -354,7 +417,10 @@ pub fn format_duration_ago(t_ms: f64, then_t_ms: f64) -> String {
         0 => "verified just now".into(),
         m if m < 60 => format!("verified {m} minute{} ago", if m == 1 { "" } else { "s" }),
         _ => match mins / 60 {
-            hours => format!("verified {hours} hour{} ago", if hours == 1 { "" } else { "s" }),
+            hours => format!(
+                "verified {hours} hour{} ago",
+                if hours == 1 { "" } else { "s" }
+            ),
         },
     }
 }
@@ -372,9 +438,15 @@ pub fn format_next_refresh(t_ms: f64, last_login_t_ms: f64, auto_refresh: bool) 
     }
     let mins = (remaining / 60_000.0).ceil() as u64;
     match mins {
-        m if m < 60 => format!("next refresh in {m} minute{}", if m == 1 { "" } else { "s" }),
+        m if m < 60 => format!(
+            "next refresh in {m} minute{}",
+            if m == 1 { "" } else { "s" }
+        ),
         _ => match mins / 60 {
-            hours => format!("next refresh in {hours} hour{}", if hours == 1 { "" } else { "s" }),
+            hours => format!(
+                "next refresh in {hours} hour{}",
+                if hours == 1 { "" } else { "s" }
+            ),
         },
     }
 }
@@ -409,7 +481,10 @@ pub fn strip_url_fragment(start_url: &str) -> String {
 /// refuses to proceed if it disagrees with the linked session's value — it
 /// never auto-heals. Surface an actionable hint instead of the raw CLI error.
 pub fn sso_config_conflict_hint(stderr: &str, profile: &str) -> Option<String> {
-    if stderr.contains("inconsistent") && stderr.contains("sso_start_url") && stderr.contains("sso-session") {
+    if stderr.contains("inconsistent")
+        && stderr.contains("sso_start_url")
+        && stderr.contains("sso-session")
+    {
         Some(format!(
             "Fix: open ~/.aws/config, find [profile {profile}], and delete its `sso_start_url = …` line \
              (keep `sso_session = …` — AWS reads the URL from the linked [sso-session] block now). \
@@ -436,4 +511,31 @@ pub fn export_profile_line(profile: &str) -> String {
 
 pub fn configure_sso_command() -> String {
     "aws configure sso".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn device_code_lines_yield_a_url_and_a_code() {
+        let url = parse_device_line("https://device.sso.us-gov-west-1.amazonaws.com/");
+        assert_eq!(
+            url.url.as_deref(),
+            Some("https://device.sso.us-gov-west-1.amazonaws.com/")
+        );
+        assert!(url.code.is_none());
+        let code = parse_device_line("Then enter the code: ABCD-EFGH");
+        assert_eq!(code.code.as_deref(), Some("ABCD-EFGH"));
+        assert!(code.url.is_none());
+        assert!(parse_device_line("us-gov-west-1").code.is_none());
+    }
+
+    #[test]
+    fn device_login_argv_does_not_open_a_browser() {
+        let cmd = aws_sso_login_device("Dev_Admin");
+        assert!(cmd.args.iter().any(|a| a == "--use-device-code"));
+        assert!(cmd.args.iter().any(|a| a == "--no-browser"));
+        assert!(cmd.args.windows(2).any(|w| w == ["--profile", "Dev_Admin"]));
+    }
 }

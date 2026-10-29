@@ -102,6 +102,17 @@
         <Text size="sm" muted testId="next">{next_refresh}</Text>
       </Card>
 
+      <if test={show_device_stream}>
+        <Stream id={login_stream} onEvent={loginLine} />
+      </if>
+      <if test={has_device_code}>
+        <Card gap={8}>
+          <Text size="sm" wrap testId="device-url">{device_url}</Text>
+          <Text testId="device-code">{device_code}</Text>
+          <Button variant="secondary" onPress={copyDeviceCode} testId="copy-code">Copy code</Button>
+        </Card>
+      </if>
+
       <Row gap={8}>
         <if test={is_busy}>
           <Button variant="secondary" onPress={cancel} testId="cancel">Cancel</Button>
@@ -126,6 +137,10 @@
         <Row gap={8} cross="center">
           <Switch checked={auto_refresh} onToggle={toggleAutoRefresh} testId="auto-refresh" />
           <Text size="sm" muted>Refresh automatically every 6 hours</Text>
+        </Row>
+        <Row gap={8} cross="center">
+          <Switch checked={launch_at_login} onToggle={toggleLaunchAtLogin} testId="launch-at-login" />
+          <Text size="sm" muted>Launch at login</Text>
         </Row>
         <Row gap={8}>
           <Button variant="ghost" onPress={copyExportLine} testId="copy-export">Copy AWS_PROFILE line</Button>

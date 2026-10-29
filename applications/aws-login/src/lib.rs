@@ -17,6 +17,28 @@ libra::app! {
     init: AwsLogin::init,
     window: (420.0, 640.0),
     title: "AWS Session",
+    tray: tray,
+}
+
+fn tray(app: &AwsLogin) -> Option<libra_core::TrayDecl> {
+    use crate::model::AuthStatus;
+    use libra_core::{TrayDecl, TrayIcon, TrayItem};
+    let icon = match app.auth {
+        AuthStatus::Active => TrayIcon::Ok,
+        AuthStatus::Failed => TrayIcon::Error,
+        AuthStatus::LoggedOut => TrayIcon::Warn,
+        _ => TrayIcon::Default,
+    };
+    Some(TrayDecl::new(
+        "AWS Session",
+        icon,
+        vec![
+            TrayItem::action("Authenticate", "authenticate").enabled(!app.is_busy),
+            TrayItem::action("Show window", "showWindow"),
+            TrayItem::separator(),
+            TrayItem::action("Quit", "quit"),
+        ],
+    ))
 }
 
 /// Window options with KV identity and the §12.6 process allowlist.
@@ -24,6 +46,8 @@ pub fn app_options() -> libra_platform::Options {
     options()
         .app_id("aws-login")
         .process_allowlist(["aws", "claude", "sh"])
+        .window_policy(libra_core::WindowPolicy::CloseToTray)
+        .single_instance(true)
 }
 
 pub fn run_app() -> Result<(), Box<dyn std::error::Error>> {

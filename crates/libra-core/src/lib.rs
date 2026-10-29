@@ -6,9 +6,13 @@
 //! for `update`), §12.1 (the Effect vocabulary).
 
 mod menu;
+mod tray;
 
 pub use libra_reflect::LibraReflect;
 pub use menu::{collect_menu_actions, find_menu_action, validate_menu, Menu, MenuDecl, MenuItem};
+pub use tray::{
+    tray_clickable, union_stream_handlers, validate_tray, TrayDecl, TrayIcon, TrayItem,
+};
 
 /// An action constructor: how an effect result becomes an action. Enum
 /// tuple variants coerce to this directly (`Action::HttpDone` is a
@@ -145,17 +149,33 @@ impl Instant {
 }
 
 /// Ongoing event sources, declared by `App::subscriptions` and diffed
-/// by the runtime (§12.2). Phase 2 subset: frame ticks. Streams join
-/// with WebSocket/process effects.
+/// by the runtime (§12.2). The shell unions these with markup sources
+/// (§12.5): `<Frames>` with [`Sub::Frames`], `<Stream>` with [`Sub::Stream`].
 #[derive(Clone)]
 pub enum Sub<M> {
     /// One action per vsync-coalesced tick while subscribed.
     Frames { on_frame: ActionCtor<FrameInfo, M> },
+    /// Ambient stream, unioned with a mounted `<Stream id>` (D5).
+    /// The handler name is resolved with `action_with_stream_event`,
+    /// the same way the markup element is.
+    Stream {
+        id: String,
+        on_event: String,
+        _msg: std::marker::PhantomData<fn() -> M>,
+    },
 }
 
 impl<M> Sub<M> {
     pub fn frames(on_frame: ActionCtor<FrameInfo, M>) -> Self {
         Sub::Frames { on_frame }
+    }
+
+    pub fn stream(id: impl Into<String>, on_event: impl Into<String>) -> Self {
+        Sub::Stream {
+            id: id.into(),
+            on_event: on_event.into(),
+            _msg: std::marker::PhantomData,
+        }
     }
 }
 
@@ -163,6 +183,9 @@ impl<M> std::fmt::Debug for Sub<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Sub::Frames { .. } => write!(f, "Sub::Frames"),
+            Sub::Stream { id, on_event, .. } => {
+                write!(f, "Sub::Stream {{ id: {id}, on_event: {on_event} }}")
+            }
         }
     }
 }
@@ -421,6 +444,121 @@ pub enum Effect<M> {
     CloseStream {
         stream: String,
     },
+
+    /// Desktop notification (PLAN-NOTIFY, §12.1). Shell-handled, like
+    /// `SetTheme` — never the worker pool. `on_activate` is dispatched
+    /// when the user clicks the banner. `on_done` reports whether a
+    /// banner appeared. A missing mechanism is [`NotifyResult::Unsupported`],
+    /// not a panic.
+    Notify {
+        note: Notification,
+        on_activate: Option<M>,
+        on_done: Option<ActionCtor<NotifyResult, M>>,
+    },
+
+    /// Show, hide, raise, or quit the window (PLAN-RESIDENCY R3).
+    /// Shell-handled. Hiding does not unmount sources.
+    WindowOp {
+        op: WindowOp,
+    },
+
+    /// Turn launch-at-login on or off (PLAN-RESIDENCY R5). The result
+    /// is the on-disk state after the attempt, which is what a settings
+    /// switch must show.
+    LoginItem {
+        enabled: bool,
+        on_done: ActionCtor<LoginItemResult, M>,
+    },
+
+    /// Read launch-at-login from the OS, not from remembered state.
+    LoginItemQuery {
+        on_done: ActionCtor<LoginItemResult, M>,
+    },
+}
+
+/// What [`Effect::WindowOp`] asks the shell to do. One enum so later
+/// title / fullscreen / resize ops extend it instead of adding a second.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowOp {
+    Show,
+    Hide,
+    Raise,
+    Quit,
+}
+
+/// How the window treats the close button (PLAN-RESIDENCY R3).
+/// [`WindowPolicy::QuitOnClose`] is the default so existing apps keep
+/// quitting when the window closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowPolicy {
+    #[default]
+    QuitOnClose,
+    /// Hide the window and keep the process, timers, and streams running.
+    CloseToTray,
+}
+
+/// Outcome of [`Effect::LoginItem`] and [`Effect::LoginItemQuery`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoginItemResult {
+    Enabled,
+    Disabled,
+    /// No mechanism on this host (for example a macOS binary that is
+    /// not inside a bundled `.app`).
+    Unsupported(String),
+    Failed(String),
+}
+
+/// A banner (PLAN-NOTIFY). `tag` is the replace-key: a later notify
+/// with the same tag replaces this one (NT3). `None` always shows a
+/// new banner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notification {
+    pub tag: Option<String>,
+    pub title: String,
+    pub body: String,
+    pub urgency: Urgency,
+}
+
+impl Notification {
+    pub fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
+        Notification {
+            tag: None,
+            title: title.into(),
+            body: body.into(),
+            urgency: Urgency::Normal,
+        }
+    }
+
+    pub fn tag(mut self, tag: impl Into<String>) -> Self {
+        self.tag = Some(tag.into());
+        self
+    }
+
+    pub fn urgency(mut self, urgency: Urgency) -> Self {
+        self.urgency = urgency;
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Urgency {
+    Low,
+    #[default]
+    Normal,
+    Critical,
+}
+
+/// Outcome of [`Effect::Notify`]. Every variant is a state the app can
+/// render. None of them abort the flow that asked for the banner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotifyResult {
+    Shown,
+    /// No mechanism on this host (headless, no daemon). An absent
+    /// capability, not a failure the app should surface as an error.
+    Unsupported(String),
+    /// The user or OS declined. The app may offer to open settings.
+    PermissionDenied,
+    Failed(String),
 }
 
 /// Outcome of [`Effect::ClipboardSet`] (PLAN-NATIVE-INTEGRATIONS).
@@ -535,6 +673,21 @@ impl<M: PartialEq> PartialEq for Effect<M> {
                 },
             ) => sa == sb && ca == cb && pa == pb,
             (Effect::CloseStream { stream: a }, Effect::CloseStream { stream: b }) => a == b,
+            (
+                Effect::Notify {
+                    note: na,
+                    on_activate: aa,
+                    on_done: da,
+                },
+                Effect::Notify {
+                    note: nb,
+                    on_activate: ab,
+                    on_done: db,
+                },
+            ) => na == nb && aa == ab && da.is_some() == db.is_some(),
+            (Effect::WindowOp { op: a }, Effect::WindowOp { op: b }) => a == b,
+            (Effect::LoginItem { enabled: a, .. }, Effect::LoginItem { enabled: b, .. }) => a == b,
+            (Effect::LoginItemQuery { .. }, Effect::LoginItemQuery { .. }) => true,
             _ => false,
         }
     }
@@ -620,7 +773,11 @@ impl<M> Effect<M> {
         }
     }
     pub fn sample(series: SeriesId, t_ms: f64, value: f64) -> Self {
-        Effect::Sample { series, t_ms, value }
+        Effect::Sample {
+            series,
+            t_ms,
+            value,
+        }
     }
     pub fn spawn(stream: impl Into<String>, command: CommandSpec, capture: Capture) -> Self {
         Effect::Spawn {
@@ -633,6 +790,36 @@ impl<M> Effect<M> {
         Effect::CloseStream {
             stream: stream.into(),
         }
+    }
+    pub fn notify(note: Notification) -> Self {
+        Effect::Notify {
+            note,
+            on_activate: None,
+            on_done: None,
+        }
+    }
+    pub fn notify_acked(note: Notification, on_done: ActionCtor<NotifyResult, M>) -> Self {
+        Effect::Notify {
+            note,
+            on_activate: None,
+            on_done: Some(on_done),
+        }
+    }
+    pub fn notify_activate(note: Notification, on_activate: M) -> Self {
+        Effect::Notify {
+            note,
+            on_activate: Some(on_activate),
+            on_done: None,
+        }
+    }
+    pub fn window(op: WindowOp) -> Self {
+        Effect::WindowOp { op }
+    }
+    pub fn login_item(enabled: bool, on_done: ActionCtor<LoginItemResult, M>) -> Self {
+        Effect::LoginItem { enabled, on_done }
+    }
+    pub fn login_item_query(on_done: ActionCtor<LoginItemResult, M>) -> Self {
+        Effect::LoginItemQuery { on_done }
     }
 }
 
@@ -1106,6 +1293,13 @@ pub trait App: Sized + ReflectState {
     fn context_menu(&self) -> Option<MenuDecl> {
         None
     }
+
+    /// Tray / menubar status item (PLAN-RESIDENCY R1). `None` (the
+    /// default) shows no icon. The shell diffs this after every
+    /// dispatch. Action names are validated at startup.
+    fn tray(&self) -> Option<TrayDecl> {
+        None
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1461,6 +1655,18 @@ mod tests {
             Msg::Got(HttpResult::Failed(String::new()))
         });
         assert_ne!(acked, Effect::kv_set("k", vec![1]));
+        // Notify: same banner, different ack ctor → equal. Different
+        // tag or a present click-action → unequal.
+        fn ack(_: NotifyResult) -> Msg {
+            Msg::Got(HttpResult::Failed(String::new()))
+        }
+        let note = Notification::new("Session", "needs attention").tag("session");
+        let n1: Effect<Msg> = Effect::notify_acked(note.clone(), ack);
+        let n2: Effect<Msg> = Effect::notify_acked(note.clone(), |_| {
+            Msg::Got(HttpResult::Failed(String::new()))
+        });
+        assert_eq!(n1, n2);
+        assert_ne!(n1, Effect::notify(note));
     }
 
     // ---- §19.2 keyboard shortcuts ----
@@ -1499,6 +1705,51 @@ mod tests {
             Shortcut::action("cmd+i", "inc"),
         ]);
         assert!(dup.unwrap_err().contains("declared twice"));
+    }
+
+    #[test]
+    fn tray_decl_validates_action_names_and_click_targets() {
+        let bad = TrayDecl::new(
+            "Session",
+            TrayIcon::Ok,
+            vec![TrayItem::action("Nope", "missing")],
+        );
+        assert!(validate_tray::<Msg>(&bad).unwrap_err().contains("missing"));
+        let decl = TrayDecl::new(
+            "Session",
+            TrayIcon::Warn,
+            vec![TrayItem::action("Show", "inc")],
+        );
+        assert!(validate_tray::<Msg>(&decl).is_ok());
+        assert!(tray_clickable(&decl, "inc").is_ok());
+        let off = TrayDecl::new(
+            "Session",
+            TrayIcon::Error,
+            vec![TrayItem::action("Show", "inc").enabled(false)],
+        );
+        assert!(tray_clickable(&off, "inc")
+            .unwrap_err()
+            .contains("disabled"));
+        assert!(tray_clickable(&decl, "absent")
+            .unwrap_err()
+            .contains("not in the tray"));
+    }
+
+    #[test]
+    fn ambient_streams_fill_ids_markup_did_not_declare() {
+        let markup = vec![("login".into(), "loginLine".into())];
+        let ambient = vec![
+            ("login".into(), "other".into()),
+            ("probe".into(), "onProbe".into()),
+        ];
+        let union = union_stream_handlers(&markup, &ambient);
+        assert_eq!(
+            union,
+            vec![
+                ("login".into(), "loginLine".into()),
+                ("probe".into(), "onProbe".into()),
+            ]
+        );
     }
 
     #[test]

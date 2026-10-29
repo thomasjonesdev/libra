@@ -27,6 +27,14 @@ pub(crate) enum ShellEvent<M> {
     UpdateOffer(crate::update::UpdateOffer),
     /// The verified replacement `.app` is ready to swap in.
     ApplyUpdate(std::path::PathBuf),
+    /// A notification click (PLAN-NOTIFY NT2).
+    NotifyActivate(M),
+    /// The second instance asked this process to raise its window.
+    RaiseWindow,
+    /// A tray menu click. The string is the reflected action name.
+    /// `tray-icon` speaks a different `muda` than the menubar, so this
+    /// is not a [`muda::MenuId`].
+    TrayClick(String),
 }
 
 pub(crate) struct NativeMenus {
@@ -230,6 +238,7 @@ fn attach_bar(menu: &MudaMenu, window: Option<&Window>) {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (menu, window);
+        note_linux_menu_unsupported();
     }
 }
 
@@ -254,6 +263,34 @@ fn popup_at(menu: &MudaMenu, window: &Window, physical: (f64, f64)) {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (menu, window, pos);
+        note_linux_menu_unsupported();
+    }
+}
+
+/// Linux winit windows are X11/Wayland, not `gtk::Window`. muda's GTK
+/// attach needs that window. Compiling GTK and discarding the menu
+/// would hide the gap (§19.4), so this is a typed refusal.
+#[cfg_attr(any(target_os = "macos", target_os = "windows"), allow(dead_code))]
+pub fn linux_menu_support() -> Result<(), &'static str> {
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("winit has no GTK window for muda")
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn note_linux_menu_unsupported() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ONCE: AtomicBool = AtomicBool::new(false);
+    if ONCE.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if let Err(reason) = linux_menu_support() {
+        eprintln!("[libra] native menu unsupported on this host: {reason} (§19.4)");
     }
 }
 
@@ -316,6 +353,19 @@ fn chord_code(c: &Chord) -> Option<Code> {
         ChordKey::Left => Code::ArrowLeft,
         ChordKey::Right => Code::ArrowRight,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::linux_menu_support;
+
+    #[test]
+    fn linux_menus_are_a_typed_refusal() {
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert!(linux_menu_support().unwrap_err().contains("GTK"));
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        assert!(linux_menu_support().is_ok());
+    }
 }
 
 fn char_code(c: char) -> Option<Code> {

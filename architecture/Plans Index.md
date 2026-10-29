@@ -30,11 +30,11 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-COMPONENTS]] | in progress (C0–C3 done) | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[PLAN-UI-SURFACE]], [[PLAN-TOKENS]] |
 | [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
-| [[PLAN-AWS-LOGIN]] | v1 shipped (P1, P2, A1–A7); A8–A10 planned | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]], [[PLAN-STREAM-DELIVERY]] |
-| [[PLAN-STREAM-DELIVERY]] | D1–D4 shipped; D5–D6 not started | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
-| [[PLAN-NOTIFY]] | planned (NT1–NT4) | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
-| [[PLAN-RESIDENCY]] | planned (R1–R6) | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
-| [[PLAN-NATIVE-INTEGRATIONS]] | planned (N7 started; N8 OS chrome parity) | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-AWS-LOGIN]] | A1–A10 shipped | [[27.1-aws-sso-session-manager\|§27.1]], [[12.6-the-process-effect\|§12.6]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]], [[PLAN-STREAM-DELIVERY]] |
+| [[PLAN-STREAM-DELIVERY]] | D1–D6 shipped | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
+| [[PLAN-NOTIFY]] | NT1–NT4 shipped | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
+| [[PLAN-RESIDENCY]] | R1–R6 shipped | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
+| [[PLAN-NATIVE-INTEGRATIONS]] | N7 started; N8 shipped. N1–N6 still open | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | **done** (P0–P6) | [[23-roadmap|§23]], [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] |
 | [[PLAN-RELEASE]] | shipped (icon, publish, signed feed) | [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[24-non-goals\|§24]], [[PLAN-PACKAGE]] |
 | [[PLAN-SDK]] | shipped (S1–S4, crates.io 0.1.1) | [[18.1-cli\|§18.1]], [[20-packaging\|§20]], [[21-crate-layout\|§21]], [[05.8-app-assembly\|§5.8]], [[26-open-questions\|§26]], [[PLAN-PACKAGE]], [[PLAN-PHASE4-DX]] |

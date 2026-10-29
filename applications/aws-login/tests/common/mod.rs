@@ -1,8 +1,8 @@
 //! Shared harness helpers for aws-login tests.
 
+use aws_login::model::SavedConfig;
 use aws_login::Action;
 use aws_login::AwsLogin;
-use aws_login::model::SavedConfig;
 use libra_core::{ProcessResult, ProcessStatus};
 use libra_test::{fx, Harness};
 
@@ -49,7 +49,8 @@ pub fn fixture_sso_accounts_result() -> ProcessResult {
 pub fn fixture_sso_token_result() -> ProcessResult {
     ProcessResult {
         status: ProcessStatus::Exited(0),
-        stdout: br#"{"accessToken":"test-access-token","expiresAt":"2099-01-01T00:00:00Z"}"#.to_vec(),
+        stdout: br#"{"accessToken":"test-access-token","expiresAt":"2099-01-01T00:00:00Z"}"#
+            .to_vec(),
         stderr: vec![],
         finished_at_unix_ms: 1,
     }
@@ -78,6 +79,12 @@ pub fn fill_onboarding_fixture(h: &mut Harness<AwsLogin>) {
 }
 
 pub fn through_preflight_to_kv(h: &mut Harness<AwsLogin>) {
+    if h.pending_effects()
+        .any(|e| matches!(e, libra_core::Effect::LoginItemQuery { .. }))
+    {
+        let query = h.expect_effect(fx::login_item_query());
+        h.resolve_login_item(query, libra_core::LoginItemResult::Disabled);
+    }
     let aws = h.expect_effect(fx::process_program("aws"));
     h.resolve_process(aws, aws_ok(b"aws-cli/2.15.0"));
     let claude = h.expect_effect(fx::process_program("claude"));
@@ -99,7 +106,9 @@ pub fn finish_new_profile_onboarding(h: &mut Harness<AwsLogin>) {
         FIXTURE_SCOPES,
     ) {
         let fx = h.expect_effect(fx::process_program("aws"));
-        let Effect::Process { command, .. } = &fx else { unreachable!() };
+        let Effect::Process { command, .. } = &fx else {
+            unreachable!()
+        };
         assert_eq!(
             command.args,
             vec![
@@ -114,7 +123,9 @@ pub fn finish_new_profile_onboarding(h: &mut Harness<AwsLogin>) {
         h.resolve_process(fx, aws_ok(&[]));
     }
     let session_login = h.expect_effect(fx::process_program("aws"));
-    let Effect::Process { command, .. } = &session_login else { unreachable!() };
+    let Effect::Process { command, .. } = &session_login else {
+        unreachable!()
+    };
     assert!(command.args.windows(2).any(|w| w == ["sso", "login"]));
     assert!(command
         .args
@@ -124,8 +135,13 @@ pub fn finish_new_profile_onboarding(h: &mut Harness<AwsLogin>) {
     let read_token = h.expect_effect(fx::process_program("cat"));
     h.resolve_process(read_token, fixture_sso_token_result());
     let list = h.expect_effect(fx::process_program("aws"));
-    let Effect::Process { command, .. } = &list else { unreachable!() };
-    assert!(command.args.windows(2).any(|w| w == ["sso", "list-accounts"]));
+    let Effect::Process { command, .. } = &list else {
+        unreachable!()
+    };
+    assert!(command
+        .args
+        .windows(2)
+        .any(|w| w == ["sso", "list-accounts"]));
     assert!(command
         .args
         .windows(2)
@@ -133,8 +149,13 @@ pub fn finish_new_profile_onboarding(h: &mut Harness<AwsLogin>) {
     h.resolve_process(list, fixture_sso_accounts_result());
     for (key, value) in config_profile_write_pairs(&cfg) {
         let fx = h.expect_effect(fx::process_program("aws"));
-        let Effect::Process { command, .. } = &fx else { unreachable!() };
-        assert_eq!(command.args, vec!["configure", "set", key.as_str(), value.as_str()]);
+        let Effect::Process { command, .. } = &fx else {
+            unreachable!()
+        };
+        assert_eq!(
+            command.args,
+            vec!["configure", "set", key.as_str(), value.as_str()]
+        );
         h.resolve_process(fx, aws_ok(&[]));
     }
 }

@@ -28,7 +28,9 @@ fn snapshot_steady_active() {
     let mut cfg = fixture_saved_config();
     cfg.start_url =
         "https://start.us-gov-west-1.us-gov-home.awsapps.com/directory/d-98671f268f".into();
-    h.dispatch(Action::ConfigLoaded(Some(serde_json::to_vec(&cfg).unwrap())));
+    h.dispatch(Action::ConfigLoaded(Some(
+        serde_json::to_vec(&cfg).unwrap(),
+    )));
     let probe = h.expect_effect(fx::process_program("aws"));
     h.resolve_process(
         probe,
@@ -48,7 +50,9 @@ fn snapshot_steady_signed_out() {
     through_preflight_to_kv(&mut h);
     let mut cfg = fixture_saved_config();
     cfg.auto_refresh = false;
-    h.dispatch(Action::ConfigLoaded(Some(serde_json::to_vec(&cfg).unwrap())));
+    h.dispatch(Action::ConfigLoaded(Some(
+        serde_json::to_vec(&cfg).unwrap(),
+    )));
     let probe = h.expect_effect(fx::process_program("aws"));
     h.resolve_process(
         probe,

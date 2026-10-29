@@ -121,6 +121,12 @@ pub mod fx {
         SetTheme,
         ClipboardSet,
         PickFolder,
+        Notify,
+        /// Match when `Notification.tag` equals this string.
+        NotifyTag(String),
+        WindowOp,
+        LoginItem,
+        LoginItemQuery,
         Process,
         /// Match when `CommandSpec.program` equals this string.
         ProcessProgram(Option<String>),
@@ -166,6 +172,21 @@ pub mod fx {
     pub fn pick_folder() -> Matcher {
         Matcher::PickFolder
     }
+    pub fn notify() -> Matcher {
+        Matcher::Notify
+    }
+    pub fn notify_tag(tag: &str) -> Matcher {
+        Matcher::NotifyTag(tag.to_string())
+    }
+    pub fn window_op() -> Matcher {
+        Matcher::WindowOp
+    }
+    pub fn login_item() -> Matcher {
+        Matcher::LoginItem
+    }
+    pub fn login_item_query() -> Matcher {
+        Matcher::LoginItemQuery
+    }
     pub fn process() -> Matcher {
         Matcher::Process
     }
@@ -206,6 +227,11 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::SetTheme, Effect::SetTheme { .. }) => true,
         (Matcher::ClipboardSet, Effect::ClipboardSet { .. }) => true,
         (Matcher::PickFolder, Effect::PickFolder { .. }) => true,
+        (Matcher::Notify, Effect::Notify { .. }) => true,
+        (Matcher::NotifyTag(tag), Effect::Notify { note, .. }) => note.tag.as_deref() == Some(tag),
+        (Matcher::WindowOp, Effect::WindowOp { .. }) => true,
+        (Matcher::LoginItem, Effect::LoginItem { .. }) => true,
+        (Matcher::LoginItemQuery, Effect::LoginItemQuery { .. }) => true,
         (Matcher::Process, Effect::Process { .. }) => true,
         (Matcher::ProcessProgram(want), Effect::Process { command, .. }) => {
             want.as_deref().map_or(true, |w| w == &command.program)
@@ -546,8 +572,16 @@ impl<A: App> Harness<A> {
             }
             // Samples are ring data, like the effects runtime. Paint
             // reads the store, so a chart snapshot sees the point.
-            if let Effect::Sample { series, t_ms, value } = effect {
-                self.store.ring(*series).push(libra_data::Sample { t_ms: *t_ms, v: *value });
+            if let Effect::Sample {
+                series,
+                t_ms,
+                value,
+            } = effect
+            {
+                self.store.ring(*series).push(libra_data::Sample {
+                    t_ms: *t_ms,
+                    v: *value,
+                });
             }
         }
         self.pending.extend(effects);
@@ -588,7 +622,11 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|| panic!("click: {what} is not interactive at ({cx},{cy})"));
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
-            let id = hit.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+            let id = hit
+                .semantics
+                .test_id
+                .clone()
+                .expect("Input has a testId (load-enforced)");
             let text = hit.semantics.text.clone();
             let focus = self.focus.as_ref().map(|(fid, e, _)| InputFocus {
                 test_id: fid.clone(),
@@ -597,7 +635,10 @@ impl<A: App> Harness<A> {
             });
             let byte = caret_byte_at(hit, cx, cy, &self.renderer, &self.theme, focus.as_ref())
                 .unwrap_or(text.len());
-            let already = self.focus.as_ref().is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
+            let already = self
+                .focus
+                .as_ref()
+                .is_some_and(|(fid, e, _)| fid == &id && e.text() == text);
             let switching = self.focus.as_ref().is_some_and(|(fid, _, _)| fid != &id);
             if switching {
                 self.dispatch_focused_submit();
@@ -605,7 +646,10 @@ impl<A: App> Harness<A> {
             if !already {
                 self.focus = Some((id, EditState::new(text), name));
             }
-            self.edit(EditOp::SetCaret { byte, select: false });
+            self.edit(EditOp::SetCaret {
+                byte,
+                select: false,
+            });
             return;
         }
         let on_press_arg = hit.on_press_arg.clone();
@@ -646,7 +690,11 @@ impl<A: App> Harness<A> {
     /// `type_text` against an exact index — see [`Harness::click_item`].
     pub(crate) fn type_into_item(&mut self, idx: usize, text: &str) {
         let item = &self.laid.items[idx];
-        let id = item.semantics.test_id.clone().expect("Input has a testId (load-enforced)");
+        let id = item
+            .semantics
+            .test_id
+            .clone()
+            .expect("Input has a testId (load-enforced)");
         let name = item.on_press.clone().expect("text field has onChange");
         let current = item.semantics.text.clone();
         // Moving focus off a field submits it, exactly as `click` does. There
@@ -727,7 +775,11 @@ impl<A: App> Harness<A> {
         let Some((id, ..)) = &self.focus else {
             return;
         };
-        let item = self.laid.items.iter().find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()));
+        let item = self
+            .laid
+            .items
+            .iter()
+            .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()));
         let Some(item) = item else {
             return;
         };
@@ -880,6 +932,68 @@ impl<A: App> Harness<A> {
         }
     }
 
+    /// Dispatch the click action stored on an intercepted `Effect::Notify`
+    /// (PLAN-NOTIFY NT2). No banner is shown.
+    pub fn activate_notification(&mut self, effect: Effect<A::Msg>) {
+        match effect {
+            Effect::Notify {
+                on_activate: Some(msg),
+                ..
+            } => self.dispatch(msg),
+            Effect::Notify {
+                on_activate: None, ..
+            } => panic!("activate_notification: effect has no on_activate"),
+            other => panic!("activate_notification: not a Notify effect: {other:?}"),
+        }
+    }
+
+    /// The app's current tray projection (PLAN-RESIDENCY R2).
+    pub fn tray(&self) -> Option<libra_core::TrayDecl> {
+        self.app.tray()
+    }
+
+    /// Dispatch a tray action by reflected name. Panics when the item is
+    /// missing or disabled.
+    pub fn click_tray(&mut self, action: &str) {
+        let Some(decl) = self.app.tray() else {
+            panic!("click_tray: '{action}' — the app has no tray");
+        };
+        if let Err(e) = libra_core::tray_clickable(&decl, action) {
+            panic!("{e}");
+        }
+        let msg = A::Msg::action_by_name(action).unwrap_or_else(|| {
+            panic!("click_tray: '{action}' did not resolve — reflection out of sync")
+        });
+        self.dispatch(msg);
+    }
+
+    /// Ack an intercepted `Effect::Notify` (PLAN-NOTIFY NT1). No banner
+    /// is shown. Headless default, when a test does not feed a result
+    /// through the effects runtime, is `Unsupported("headless")`.
+    pub fn resolve_notify(&mut self, effect: Effect<A::Msg>, result: libra_core::NotifyResult) {
+        match effect {
+            Effect::Notify {
+                on_done: Some(ctor),
+                ..
+            } => self.dispatch(ctor(result)),
+            Effect::Notify { on_done: None, .. } => {}
+            other => panic!("resolve_notify: not a Notify effect: {other:?}"),
+        }
+    }
+
+    pub fn resolve_login_item(
+        &mut self,
+        effect: Effect<A::Msg>,
+        result: libra_core::LoginItemResult,
+    ) {
+        match effect {
+            Effect::LoginItem { on_done, .. } | Effect::LoginItemQuery { on_done } => {
+                self.dispatch(on_done(result))
+            }
+            other => panic!("resolve_login_item: not a login-item effect: {other:?}"),
+        }
+    }
+
     pub fn resolve_folder_pick(&mut self, effect: Effect<A::Msg>, result: libra_core::FolderPick) {
         match effect {
             Effect::PickFolder { on_done } => self.dispatch(on_done(result)),
@@ -898,12 +1012,11 @@ impl<A: App> Harness<A> {
     /// Panics when that id is not mounted — a test must not lose a line
     /// the way a forgotten handler would.
     pub fn emit_stream(&mut self, id: &str, event: StreamEvent) {
-        let handler = self.stream_handler(id).unwrap_or_else(|| {
-            panic!("emit_stream: no <Stream id={id}> is mounted")
-        });
-        let msg = A::Msg::action_with_stream_event(&handler, event).unwrap_or_else(|| {
-            panic!("emit_stream: '{handler}' is not a StreamEvent action")
-        });
+        let handler = self
+            .stream_handler(id)
+            .unwrap_or_else(|| panic!("emit_stream: no <Stream id={id}> is mounted"));
+        let msg = A::Msg::action_with_stream_event(&handler, event)
+            .unwrap_or_else(|| panic!("emit_stream: '{handler}' is not a StreamEvent action"));
         self.dispatch(msg);
     }
 
@@ -913,12 +1026,30 @@ impl<A: App> Harness<A> {
     }
 
     fn stream_handler(&self, id: &str) -> Option<String> {
-        self.laid.items.iter().find_map(|item| match &item.kind {
-            ItemKind::Source(SourceDecl::Stream { id: sid, on_event }) if sid == id => {
-                Some(on_event.clone())
-            }
-            _ => None,
-        })
+        let markup: Vec<(String, String)> = self
+            .laid
+            .items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::Source(SourceDecl::Stream { id, on_event }) => {
+                    Some((id.clone(), on_event.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        let ambient: Vec<(String, String)> = self
+            .app
+            .subscriptions()
+            .into_iter()
+            .filter_map(|sub| match sub {
+                libra_core::Sub::Stream { id, on_event, .. } => Some((id, on_event)),
+                libra_core::Sub::Frames { .. } => None,
+            })
+            .collect();
+        libra_core::union_stream_handlers(&markup, &ambient)
+            .into_iter()
+            .find(|(sid, _)| sid == id)
+            .map(|(_, handler)| handler)
     }
 
     /// Feed a process fixture into an intercepted `Effect::Process`.
@@ -948,10 +1079,7 @@ impl<A: App> Harness<A> {
     ///     _ => Reply::Drop,
     /// });
     /// ```
-    pub fn responder(
-        mut self,
-        f: impl FnMut(&Effect<A::Msg>) -> Reply + 'static,
-    ) -> Self {
+    pub fn responder(mut self, f: impl FnMut(&Effect<A::Msg>) -> Reply + 'static) -> Self {
         self.responder = Some(Box::new(f));
         self
     }
@@ -1072,12 +1200,11 @@ impl<A: App> Harness<A> {
             (Effect::KvScan { .. }, Reply::KvScan(hits)) => self.resolve_kv_scan(effect, hits),
             (Effect::Random { .. }, Reply::Random(b)) => self.resolve_random(effect, b),
             (Effect::Process { .. }, Reply::Process(r)) => self.resolve_process(effect, r),
-            (Effect::ClipboardSet { .. }, Reply::Clipboard(r)) => {
-                self.resolve_clipboard(effect, r)
-            }
+            (Effect::ClipboardSet { .. }, Reply::Clipboard(r)) => self.resolve_clipboard(effect, r),
             (Effect::PickFolder { .. }, Reply::FolderPick(p)) => {
                 self.resolve_folder_pick(effect, p)
             }
+            (Effect::Notify { .. }, Reply::Notify(r)) => self.resolve_notify(effect, r),
             (Effect::Timer { .. }, Reply::Timer) => self.fire_timer(effect),
             (effect, reply) => panic!(
                 "responder answered {} with {reply:?} — wrong reply kind",

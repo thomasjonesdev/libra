@@ -98,7 +98,9 @@ fn emit_stream_delivers_in_order_once_the_handler_is_mounted() {
     h.dispatch(Action::Open);
     let effect = h.expect_effect(fx::spawn_program("echo"));
     match effect {
-        Effect::Spawn { stream, capture, .. } => {
+        Effect::Spawn {
+            stream, capture, ..
+        } => {
             assert_eq!(stream, "log");
             assert_eq!(capture, Capture::Stdout);
         }

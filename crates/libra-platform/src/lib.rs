@@ -14,7 +14,11 @@
 
 pub mod a11y;
 pub mod icon;
+mod instance;
+mod login_item;
 mod menu;
+mod notify;
+mod tray;
 mod update;
 
 use std::num::NonZeroU32;
@@ -26,7 +30,7 @@ use std::time::{Duration, Instant, SystemTime};
 use libra_components::{caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
 use libra_core::{
     shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction,
-    Rehydrate, RehydrateReport, Sub,
+    Rehydrate, RehydrateReport, Sub, WindowOp, WindowPolicy,
 };
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -127,12 +131,18 @@ pub struct Options {
     pub process_allowlist: Vec<String>,
     /// Window / title-bar icon (PNG). Also read from [`ICON_PATH_ENV`] when unset.
     pub icon: Option<PathBuf>,
-    /// macOS: transparent title bar, hidden title text, content under traffic
-    /// lights — Obsidian-style chrome. No-op on other platforms.
-    /// Window dragging is the native title-bar strip plus empty `<Toolbar>`
-    /// chrome (`Window::drag_window`). The content surface is not
-    /// movable-by-background — that would steal Split and text drags.
+    /// Transparent title bar on macOS (content under the traffic lights).
+    /// On Windows and Linux the same flag removes the native decorations
+    /// (`with_decorations(false)`). Window dragging is the native title-bar
+    /// strip plus empty `<Toolbar>` chrome (`Window::drag_window`). The
+    /// content surface is not movable-by-background — that would steal
+    /// Split and text drags.
     pub frameless: bool,
+    /// Close button behavior. [`WindowPolicy::QuitOnClose`] is the default.
+    pub window_policy: WindowPolicy,
+    /// When set, a second launch raises the first process and exits 0.
+    /// Requires [`Options::app_id`].
+    pub single_instance: bool,
 }
 
 impl Options {
@@ -146,6 +156,8 @@ impl Options {
             process_allowlist: vec![],
             icon: None,
             frameless: false,
+            window_policy: WindowPolicy::QuitOnClose,
+            single_instance: false,
         }
     }
     pub fn app_id(mut self, id: &str) -> Self {
@@ -173,6 +185,14 @@ impl Options {
     }
     pub fn frameless(mut self, on: bool) -> Self {
         self.frameless = on;
+        self
+    }
+    pub fn window_policy(mut self, policy: WindowPolicy) -> Self {
+        self.window_policy = policy;
+        self
+    }
+    pub fn single_instance(mut self, on: bool) -> Self {
+        self.single_instance = on;
         self
     }
 }
@@ -284,6 +304,19 @@ where
     A::Msg: Send + 'static,
 {
     run_with::<A>(view, Options::new(title, logical_size))
+}
+
+fn is_shell_effect<M>(effect: &Effect<M>) -> bool {
+    matches!(
+        effect,
+        Effect::SetTheme { .. }
+            | Effect::ClipboardSet { .. }
+            | Effect::PickFolder { .. }
+            | Effect::Notify { .. }
+            | Effect::WindowOp { .. }
+            | Effect::LoginItem { .. }
+            | Effect::LoginItemQuery { .. }
+    )
 }
 
 pub fn run_with<A: App + 'static>(
@@ -474,9 +507,25 @@ where
     let (app, init_cmds) = A::init();
     let app = rehydrated.unwrap_or(app);
 
-    let event_loop = EventLoop::<menu::ShellEvent<A::Msg>>::with_user_event().build()?;
+    let mut builder = EventLoop::<menu::ShellEvent<A::Msg>>::with_user_event();
+    #[cfg(target_os = "macos")]
+    if opts.window_policy == WindowPolicy::CloseToTray {
+        use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+        builder.with_activation_policy(ActivationPolicy::Accessory);
+    }
+    let event_loop = builder.build()?;
     let proxy = event_loop.create_proxy();
     let update_proxy = proxy.clone();
+    if opts.single_instance {
+        let raise = update_proxy.clone();
+        match instance::claim(opts.app_id.as_deref(), move || {
+            let _ = raise.send_event(menu::ShellEvent::RaiseWindow);
+        }) {
+            Ok(instance::Role::Secondary) => return Ok(()),
+            Ok(instance::Role::Primary) => {}
+            Err(e) => eprintln!("[libra] single instance unavailable ({e}); continuing"),
+        }
+    }
     if save_hook.is_some() {
         arm_persist_on_signal(proxy.clone());
     }
@@ -484,6 +533,12 @@ where
     muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
         let _ = menu_proxy.send_event(menu::ShellEvent::Menu(event.id));
     }));
+    let tray_proxy = update_proxy.clone();
+    tray_icon::menu::MenuEvent::set_event_handler(Some(
+        move |event: tray_icon::menu::MenuEvent| {
+            let _ = tray_proxy.send_event(menu::ShellEvent::TrayClick(event.id.0));
+        },
+    ));
     let sink: libra_effects::Sink<A::Msg> = Arc::new(move |msg| {
         // The window may be closing; a dead proxy just drops the msg.
         let _ = proxy.send_event(menu::ShellEvent::App(msg));
@@ -504,7 +559,9 @@ where
     effects.set_stream_wake(Arc::new(move || {
         let _ = wake_proxy.send_event(menu::ShellEvent::Streams);
     }));
-    effects.execute_all(init_cmds);
+    let (boot_effects, worker_cmds): (Vec<_>, Vec<_>) =
+        init_cmds.into_iter().partition(is_shell_effect);
+    effects.execute_all(worker_cmds);
 
     let watch_mtime = opts.watch.as_deref().and_then(watch_signature);
     let theme_mtime = opts
@@ -552,6 +609,9 @@ where
         text_click: None,
         menu_anchor: (0.0, 0.0),
         native_menus: menu::NativeMenus::new(),
+        tray: tray::TrayHost::new(),
+        window_hidden: false,
+        boot_effects,
         gfx: None,
         watch_mtime,
         next_watch_check: Instant::now() + WATCH_INTERVAL,
@@ -668,6 +728,13 @@ where
     menu_anchor: (f32, f32),
     /// §19.3 native menubar / context ids.
     native_menus: menu::NativeMenus,
+    /// PLAN-RESIDENCY R1 status item.
+    tray: tray::TrayHost,
+    /// Close-to-tray hides the window and stops painting. Sources stay mounted.
+    window_hidden: bool,
+    /// Shell-handled effects from `init`, applied once the window exists
+    /// so a login-item query reads the real host instead of the headless ack.
+    boot_effects: Vec<Effect<A::Msg>>,
     gfx: Option<Gfx>,
     watch_mtime: Option<std::time::SystemTime>,
     next_watch_check: Instant,
@@ -866,9 +933,14 @@ where
 
     fn dispatch(&mut self, msg: A::Msg) {
         let effects = self.app.update(msg);
+        self.handle_effects(effects);
+    }
+
+    fn handle_effects(&mut self, effects: Vec<Effect<A::Msg>>) {
         // SetTheme is presentation state (§11): the shell applies it;
         // ClipboardSet is a UI-thread OS call (arboard) acked inline;
         // PickFolder is the same for rfd's folder sheet;
+        // Notify is the same for the OS banner (PLAN-NOTIFY NT1);
         // everything else goes to the effects runtime.
         let mut rest = Vec::with_capacity(effects.len());
         let mut acks: Vec<A::Msg> = Vec::new();
@@ -903,6 +975,39 @@ where
                 acks.push(on_done(result));
                 continue;
             }
+            if let Effect::Notify {
+                note,
+                on_activate,
+                on_done,
+            } = &effect
+            {
+                let click = on_activate.clone().map(|action| {
+                    let proxy = self.update_proxy.clone();
+                    Box::new(move || {
+                        let _ = proxy.send_event(menu::ShellEvent::NotifyActivate(action));
+                    }) as Box<dyn FnOnce() + Send>
+                });
+                let aumid = update::bundled_app_user_model_id();
+                let result = notify::show(note, &self.opts.title, aumid.as_deref(), click);
+                if let Some(ctor) = on_done {
+                    acks.push(ctor(result));
+                }
+                continue;
+            }
+            if let Effect::WindowOp { op } = &effect {
+                self.apply_window(*op);
+                continue;
+            }
+            if let Effect::LoginItem { enabled, on_done } = &effect {
+                let result =
+                    login_item::set(self.opts.app_id.as_deref(), &self.opts.title, *enabled);
+                acks.push(on_done(result));
+                continue;
+            }
+            if let Effect::LoginItemQuery { on_done } = &effect {
+                acks.push(on_done(login_item::query(self.opts.app_id.as_deref())));
+                continue;
+            }
             rest.push(effect);
         }
         for ack in acks {
@@ -913,8 +1018,39 @@ where
         self.effects.execute_all(rest);
         self.relayout(); // collects mounted sources, then sync_subscriptions
         self.sync_native_menu();
-        if let Some(gfx) = &self.gfx {
-            gfx.window.request_redraw();
+        self.sync_tray();
+        if !self.window_hidden {
+            if let Some(gfx) = &self.gfx {
+                gfx.window.request_redraw();
+            }
+        }
+    }
+
+    fn sync_tray(&mut self) {
+        self.tray.sync::<A::Msg>(self.app.tray());
+    }
+
+    fn apply_window(&mut self, op: WindowOp) {
+        match op {
+            WindowOp::Quit => {
+                let _ = self
+                    .update_proxy
+                    .send_event(menu::ShellEvent::PersistAndExit);
+            }
+            WindowOp::Hide => {
+                self.window_hidden = true;
+                if let Some(gfx) = &self.gfx {
+                    gfx.window.set_visible(false);
+                }
+            }
+            WindowOp::Show | WindowOp::Raise => {
+                self.window_hidden = false;
+                if let Some(gfx) = &self.gfx {
+                    gfx.window.set_visible(true);
+                    gfx.window.focus_window();
+                    gfx.window.request_redraw();
+                }
+            }
         }
     }
 
@@ -968,18 +1104,14 @@ where
         }
         self.pumping_streams = true;
         for _ in 0..8 {
-            let mounted: Vec<String> = self
-                .markup_streams
-                .iter()
-                .map(|(id, _)| id.clone())
-                .collect();
+            let handlers = self.mounted_stream_handlers();
+            let mounted: Vec<String> = handlers.iter().map(|(id, _)| id.clone()).collect();
             let batch = self.effects.sync_streams(&mounted);
             if batch.is_empty() {
                 break;
             }
             for (id, event) in batch {
-                let handler = self
-                    .markup_streams
+                let handler = handlers
                     .iter()
                     .find(|(mounted_id, _)| mounted_id == &id)
                     .map(|(_, name)| name.clone());
@@ -991,6 +1123,22 @@ where
             }
         }
         self.pumping_streams = false;
+    }
+
+    /// Markup `<Stream>` handlers, then ambient `Sub::Stream` ids markup
+    /// did not declare (PLAN-STREAM-DELIVERY D5). A hidden window still
+    /// has `gfx`, so close-to-tray keeps delivering.
+    fn mounted_stream_handlers(&self) -> Vec<(String, String)> {
+        let ambient: Vec<(String, String)> = self
+            .app
+            .subscriptions()
+            .into_iter()
+            .filter_map(|sub| match sub {
+                Sub::Stream { id, on_event, .. } => Some((id, on_event)),
+                Sub::Frames { .. } => None,
+            })
+            .collect();
+        libra_core::union_stream_handlers(&self.markup_streams, &ambient)
     }
 
     /// §12.5: diff `markup_intervals` against the running set, starting
@@ -1079,6 +1227,7 @@ where
 
         let ctor = self.app.subscriptions().into_iter().find_map(|s| match s {
             Sub::Frames { on_frame } => Some(on_frame),
+            Sub::Stream { .. } => None,
         });
         if let Some(on_frame) = ctor {
             self.dispatch(on_frame(info));
@@ -1716,6 +1865,9 @@ where
     }
 
     fn present(&mut self) {
+        if self.window_hidden {
+            return;
+        }
         let t0 = Instant::now();
         let focus_paint = self.focus_paint();
         // Hover as an explicit paint input (ListItem washes): the
@@ -2012,6 +2164,10 @@ where
                 .with_fullsize_content_view(true)
                 .with_title_hidden(true);
         }
+        #[cfg(not(target_os = "macos"))]
+        if self.opts.frameless {
+            attrs = attrs.with_decorations(false);
+        }
         let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let context = softbuffer::Context::new(window.clone()).expect("softbuffer context");
         let surface =
@@ -2041,6 +2197,11 @@ where
         // arms the display loop — do not sync on empty handlers first.
         self.relayout();
         self.sync_native_menu();
+        self.sync_tray();
+        if !self.boot_effects.is_empty() {
+            let boot = std::mem::take(&mut self.boot_effects);
+            self.handle_effects(boot);
+        }
         self.start_update_check();
     }
 
@@ -2059,6 +2220,13 @@ where
             menu::ShellEvent::Streams => self.pump_streams(),
             menu::ShellEvent::UpdateOffer(offer) => self.confirm_update(offer),
             menu::ShellEvent::ApplyUpdate(staged) => self.apply_update(event_loop, staged),
+            menu::ShellEvent::NotifyActivate(msg) => self.dispatch(msg),
+            menu::ShellEvent::RaiseWindow => self.apply_window(WindowOp::Raise),
+            menu::ShellEvent::TrayClick(action) => {
+                if let Some(msg) = A::Msg::action_by_name(&action) {
+                    self.dispatch(msg);
+                }
+            }
         }
     }
 
@@ -2068,7 +2236,13 @@ where
             gfx.a11y.process_event(&window, &event);
         }
         match event {
-            WindowEvent::CloseRequested => self.persist_and_exit(event_loop),
+            WindowEvent::CloseRequested => {
+                if self.opts.window_policy == WindowPolicy::CloseToTray {
+                    self.apply_window(WindowOp::Hide);
+                } else {
+                    self.persist_and_exit(event_loop);
+                }
+            }
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                 // The window may have moved to a different-refresh-rate
                 // monitor (Stage 1) — cadence is cheap to recompute.

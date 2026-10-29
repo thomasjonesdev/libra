@@ -197,11 +197,7 @@ impl<'h, A: App> Autopilot<'h, A> {
     /// nothing outstanding. Use this for things that are allowed to be briefly
     /// untrue while work is in flight: "no I/O turn is left hanging", "no work
     /// left queued".
-    pub fn invariant(
-        mut self,
-        name: &str,
-        f: impl Fn(&A) -> bool + 'static,
-    ) -> Autopilot<'h, A> {
+    pub fn invariant(mut self, name: &str, f: impl Fn(&A) -> bool + 'static) -> Autopilot<'h, A> {
         self.invariants.push((name.into(), Box::new(f)));
         self
     }
@@ -345,7 +341,10 @@ impl<'h, A: App> Autopilot<'h, A> {
             let pick = harness.pick(targets.len());
             let target = targets[pick].clone();
             if verbose {
-                println!("[autopilot] step {step}: {:?} {}", target.kind, target.label);
+                println!(
+                    "[autopilot] step {step}: {:?} {}",
+                    target.kind, target.label
+                );
             }
 
             let started = std::time::Instant::now();

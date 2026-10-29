@@ -19,7 +19,7 @@ The phase blurbs below are the historical build order. **Where this stands (2026
 
 1. **First app outside the repo.** The SDK is not the blocker. `libra new` / `dev` / `test` / `package` already work against crates.io.
 2. **Iteration loop — shipped in 0.1.1** ([[18.2-iteration-loop|§18.2]]). `.lx` and theme TOML reload in place. Rust saves snapshot, restart, and rehydrate field by field. The published CLI is 0.1.1.
-3. **Desktop behavior first-party apps already assume.** Notifications ([[PLAN-NOTIFY]]), tray / close-to-tray / single instance / launch-at-login ([[PLAN-RESIDENCY]]), `<Stream>` event delivery ([[PLAN-STREAM-DELIVERY]]), and three-OS chrome with typed `Unsupported` instead of a silent no-op ([[19.4-desktop-os-matrix|§19.4]], [[PLAN-NATIVE-INTEGRATIONS]] N8).
+3. **Desktop behavior first-party apps already assume. Shipped.** Notifications ([[PLAN-NOTIFY]] NT1–NT4), tray / close-to-tray / single instance / launch-at-login ([[PLAN-RESIDENCY]] R1–R6), `<Stream>` delivery plus `Sub::Stream` and the aws-login device-code screen ([[PLAN-STREAM-DELIVERY]] D5–D6), and the §19.4 chrome gaps ([[PLAN-NATIVE-INTEGRATIONS]] N8: Linux menus are a typed refusal, Wayland clipboard is enabled, frameless drops decorations on Windows and Linux). Windows toast replace is limited by notify-rust 4, which does not read the tag id.
 4. **Text and catalog still open.** Textarea IME / soft-wrap / touch ([[PLAN-TEXTAREA]] stages 2–4). Image is blocked on decode. Table, VirtualList, and LogView remain catalog targets ([[07.1-builtin-catalog|§7.1]]).
 5. **Phase 4 DX, after an app is in daily use** ([[PLAN-PHASE4-DX]]). Inspector, `libra lsp`, automation server, `.lreplay`, docs site from gallery fixtures.
 6. **Phase 5+ stays later.** Video, the wgpu executor, mobile.
@@ -46,16 +46,15 @@ The target is **macOS + Windows + Linux** with **identical rendering** and **exp
 
 **Content (already the contract).** Same `State` → same display list → same PNG on every OS ([[09.2-canonical-executor|§9.2]]). Snapshots are the proof. Do not add OS-specific paint.
 
-**Chrome (the remaining work).** Native menus, dialogs, clipboard, tray, notifications, frameless titlebars, IME, and the rest of the §19 table are implemented with each OS's API, or they return typed `Unsupported`. Silent no-ops (Linux muda attach, Wayland clipboard drop, frameless ignored off macOS) are gaps to close, not accepted v1 shape.
+**Chrome.** Native menus, clipboard, tray, notifications, and frameless titlebars are implemented per OS or return typed `Unsupported`. Linux menubars are a typed refusal (no GTK window). IME, touch, dialogs, and `OpenUrl` remain later.
 
 | Work | Owner |
 |---|---|
-| Linux native menubar + context popup | [[PLAN-NATIVE-INTEGRATIONS]] N8 |
-| Wayland clipboard; frameless CSD / typed refusal on Win+Linux | N8 |
+| Linux native menubar | N8 shipped as a typed refusal (no GTK window) |
+| Wayland clipboard; frameless on Win+Linux | N8 shipped |
+| Notifications, tray, close-to-tray, single instance, launch-at-login | [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] shipped |
 | IME / CJK | [[PLAN-TEXTAREA]] stage 2 |
 | Touch + OSK | [[19.1-touch|§19.1]], Textarea stage 3 |
-| Notifications (honest `Unsupported` in dev) | [[PLAN-NOTIFY]] |
-| Tray, close-to-tray, single instance, launch-at-login | [[PLAN-RESIDENCY]] |
 | File/save/alert, `OpenUrl`, `Share` | N1–N4 |
 | Host-native packages (already shipped; cross-compile deferred) | [[20-packaging|§20]] |
 

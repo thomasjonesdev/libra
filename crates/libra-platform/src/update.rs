@@ -39,6 +39,26 @@ struct IdentityFile {
     update_endpoint: String,
     #[serde(default)]
     update_pubkey: String,
+    #[serde(default)]
+    app_user_model_id: String,
+}
+
+/// Windows toast identity from the packaged `libra-identity.toml`
+/// (PLAN-NOTIFY NT3). Absent outside a bundle.
+pub fn bundled_app_user_model_id() -> Option<String> {
+    let path = bundled_identity_path()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    app_user_model_id_from_str(&text)
+}
+
+pub fn app_user_model_id_from_str(text: &str) -> Option<String> {
+    let file: IdentityFile = toml::from_str(text).ok()?;
+    let id = file.app_user_model_id.trim();
+    if id.is_empty() {
+        None
+    } else {
+        Some(id.to_string())
+    }
 }
 
 #[derive(Debug, Deserialize)]

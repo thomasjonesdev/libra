@@ -12,7 +12,7 @@ type: plan
 
 # Streaming effect results: `Effect::Spawn` + `<Stream>` delivery
 
-**Status: D1–D4 shipped.** D5 (`Sub::Stream`) and D6 (aws-login device code) are not started. Finishes the half of [[PLAN-SOURCES]] that was deferred:
+**Status: D1–D6 shipped.** Finishes the half of [[PLAN-SOURCES]] that was deferred:
 `<Stream id={…} onEvent={…}/>` parses, lays out, mounts and answers
 `by::source("stream")` today, but **nothing is ever delivered to it.** This plan
 gives streams a producer (`Effect::Spawn`) and a delivery path, and makes
@@ -131,8 +131,8 @@ explicit form of the same thing.
 | **D2** | Executor in `libra-effects`: stream registry keyed by name, dedicated thread per stream (a blocking pipe read must not hold a pool worker — the Timer precedent), line splitting with a max line length, `Capture` tagging, bounded ring + `Dropped(n)`, child reap on close, kill on `CloseStream`. Unit tests for buffer replay, overflow, and kill-on-close | `cargo test -p libra-effects` |
 | **D3** | Delivery in `libra-platform`: `markup_streams` (already collected per commit) becomes a real differ — newly-mounted ids drain their buffer then receive live events as dispatched actions; unmounted ids close. Hidden/​windowless shells still deliver (see [[PLAN-RESIDENCY]]) | a manual example streams `Both` from a boring portable program |
 | **D4** | Harness parity per [[PLAN-NATIVE-INTEGRATIONS]] rule 2: `fx::spawn()` / `fx::spawn_program("aws")`, `h.emit_stream(id, StreamEvent::…)` (asserts a handler is mounted, then dispatches), `h.close_stream(id, …)`. Integration test proving buffered-then-live ordering | `cargo test -p libra-test` |
-| **D5** | `Sub::Stream` for Rust-declared streams, so `subscriptions(state)` has parity with markup ([[12.2-subscriptions|§12.2]] union). Optional — cut if no app needs it | conformance unchanged (grammar already exists) |
-| **D6** | First consumer: `aws-login` device-code screen ([[PLAN-AWS-LOGIN]] A10) — verify the CLI streams over a pipe *first* | fixture-driven integration test, no real `aws` |
+| **D5** | **Shipped.** `Sub::Stream` unions with markup `<Stream>`. Markup keeps the handler when both name an id | `union_stream_handlers` test; no grammar change |
+| **D6** | **Shipped.** aws-login device-code screen. The child is `Effect::Spawn` with `--use-device-code --no-browser`. Lines are parsed for a URL and a user code. There is no PTY. A CLI that withholds text until a TTY is attached leaves the code empty and the close path reports that sign-in did not finish | fixture test; no real `aws` |
 
 ## Acceptance
 

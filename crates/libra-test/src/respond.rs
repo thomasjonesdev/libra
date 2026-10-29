@@ -14,7 +14,7 @@
 //! test exclusively.
 
 use libra_core::{
-    ClipboardResult, Effect, FolderPick, HttpResult, KvResult, ProcessResult,
+    ClipboardResult, Effect, FolderPick, HttpResult, KvResult, NotifyResult, ProcessResult,
 };
 
 /// A test's answer for one intercepted effect.
@@ -39,6 +39,7 @@ pub enum Reply {
     Process(ProcessResult),
     Clipboard(ClipboardResult),
     FolderPick(FolderPick),
+    Notify(NotifyResult),
     /// Fire a timer's action now — tests own the clock (§15.4).
     Timer,
 }
@@ -101,12 +102,22 @@ pub(crate) fn label<M>(effect: &Effect<M>) -> String {
         Effect::SetTheme { name } => format!("SetTheme({name})"),
         Effect::ClipboardSet { .. } => "ClipboardSet".into(),
         Effect::PickFolder { .. } => "PickFolder".into(),
+        Effect::Notify { note, .. } => format!("Notify({})", note.title),
+        Effect::WindowOp { op } => format!("WindowOp({op:?})"),
+        Effect::LoginItem { enabled, .. } => format!("LoginItem({enabled})"),
+        Effect::LoginItemQuery { .. } => "LoginItemQuery".into(),
         Effect::Process { command, .. } => {
             format!("Process({} {})", command.program, command.args.join(" "))
         }
         Effect::CancelProcess { .. } => "CancelProcess".into(),
-        Effect::Spawn { stream, command, .. } => {
-            format!("Spawn({stream} {} {})", command.program, command.args.join(" "))
+        Effect::Spawn {
+            stream, command, ..
+        } => {
+            format!(
+                "Spawn({stream} {} {})",
+                command.program,
+                command.args.join(" ")
+            )
         }
         Effect::CloseStream { stream } => format!("CloseStream({stream})"),
         // `Effect` is `non_exhaustive` (PLAN-SDK S4).

@@ -74,7 +74,9 @@ impl Streams {
         let mut events = Vec::new();
         let mut more = false;
         for id in mounted {
-            let Some(slot) = slots.get_mut(id) else { continue };
+            let Some(slot) = slots.get_mut(id) else {
+                continue;
+            };
             slot.live = true;
             let queued = take_pending(slot);
             let room = BATCH.saturating_sub(events.len());
@@ -181,7 +183,9 @@ fn content_len(slot: &Slot) -> usize {
 fn push_event(streams: &Streams, id: &str, gen: u64, event: StreamEvent) {
     let wake = {
         let mut slots = streams.slots.lock().expect("streams");
-        let Some(slot) = slots.get_mut(id) else { return };
+        let Some(slot) = slots.get_mut(id) else {
+            return;
+        };
         if slot.gen != gen {
             return;
         }
@@ -268,7 +272,12 @@ fn run_child(
             while let Ok(ev) = rx.try_recv() {
                 push_event(streams, id, gen, ev);
             }
-            push_event(streams, id, gen, StreamEvent::Closed(StreamClose::Cancelled));
+            push_event(
+                streams,
+                id,
+                gen,
+                StreamEvent::Closed(StreamClose::Cancelled),
+            );
             return;
         }
         match rx.recv_timeout(Duration::from_millis(25)) {
@@ -496,7 +505,10 @@ mod tests {
         for _ in 0..50 {
             let drain = streams.sync(&["log".into()]);
             got.extend(drain.events);
-            if got.iter().any(|(_, ev)| matches!(ev, StreamEvent::Closed(_))) {
+            if got
+                .iter()
+                .any(|(_, ev)| matches!(ev, StreamEvent::Closed(_)))
+            {
                 break;
             }
             std::thread::sleep(Duration::from_millis(20));
@@ -510,7 +522,9 @@ mod tests {
         );
         assert!(matches!(
             got.last().map(|(_, ev)| ev),
-            Some(StreamEvent::Closed(StreamClose::Process(ProcessStatus::Exited(0))))
+            Some(StreamEvent::Closed(StreamClose::Process(
+                ProcessStatus::Exited(0)
+            )))
         ));
     }
 

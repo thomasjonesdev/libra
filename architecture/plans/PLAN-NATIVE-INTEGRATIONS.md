@@ -11,7 +11,7 @@ type: plan
 
 # Native system integrations
 
-**Status: planned.** Maps Vercel json-render RN **standard actions** and
+**Status: N3, the WindowOp subset, N7 (started), and N8 shipped.** N1, N2, N4, N5, and title/fullscreen/resize remain open. Maps Vercel json-render RN **standard actions** and
 Libra [[19-platform-integration|§19]] OS concerns onto Libra's
 **effects-as-data** model ([[12.1-effect-vocabulary|§12.1]]).
 Umbrella: [[PLAN-UI-SURFACE]].
@@ -73,9 +73,9 @@ Not always Effects — sometimes layout/input plumbing:
 | **N3** | `Notify` — split out to [[PLAN-NOTIFY]] (NT1–NT4) |
 | **N4** | `Share` + document clipboard relationship |
 | **N5** | Safe-area insets plumbing + `<SafeArea>` |
-| **N6** | `WindowOp` subset used by real apps — [[PLAN-RESIDENCY]] R3 needs `Show`/`Hide`/`Raise`/`Quit`; build the variant **once**, in whichever lands first |
+| **N6** | `WindowOp` Show/Hide/Raise/Quit shipped with [[PLAN-RESIDENCY]] R3. Title, fullscreen, and resize are still this stage |
 | **N7** | **Started.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. macOS + Windows attach only. See [[19.3-native-menus|§19.3]] |
-| **N8** | **OS chrome parity** ([[19.4-desktop-os-matrix|§19.4]]). Close silent no-ops: Linux muda `attach_bar` / `popup_at` (real GTK path), Wayland clipboard (arboard data-control or honest failure), frameless / CSD on Windows and Linux or typed refusal when `Options.frameless` is set. Every new N-stage effect implements all three desktop OS or returns typed `Unsupported` |
+| **N8** | **Shipped.** Linux menus log a typed refusal (winit has no GTK window; GTK is not linked and discarded). Linux clipboard enables `wayland-data-control`. `Options.frameless` calls `with_decorations(false)` on Windows and Linux. macOS keeps the transparent titlebar |
 
 ## Design rules
 

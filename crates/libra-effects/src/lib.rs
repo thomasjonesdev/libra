@@ -45,7 +45,15 @@ pub struct Effects<M> {
 const WORKERS: usize = 4;
 
 const FILTERED_ENV_KEYS: &[&str] = &[
-    "HOME", "USERPROFILE", "PATH", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT", "TEMP", "TMP",
+    "HOME",
+    "USERPROFILE",
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
 ];
 
 impl<M: Send + 'static> Effects<M> {
@@ -101,7 +109,10 @@ impl<M: Send + 'static> Effects<M> {
     }
 
     /// Programs the worker pool may spawn (§12.6). Empty allowlist rejects all.
-    pub fn with_process_allowlist(mut self, programs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn with_process_allowlist(
+        mut self,
+        programs: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         self.process_allowlist = programs.into_iter().map(Into::into).collect();
         self
     }
@@ -132,7 +143,11 @@ impl<M: Send + 'static> Effects<M> {
                     sink(on_done(value));
                 });
             }
-            Effect::KvSet { key, value, on_done } => {
+            Effect::KvSet {
+                key,
+                value,
+                on_done,
+            } => {
                 let (kv, sink) = (self.kv.clone(), Arc::clone(&self.sink));
                 self.spawn(move || {
                     let result = match &kv {
@@ -165,7 +180,11 @@ impl<M: Send + 'static> Effects<M> {
                     sink(on_done(hits));
                 });
             }
-            Effect::Timer { id, after_ms, action } => {
+            Effect::Timer {
+                id,
+                after_ms,
+                action,
+            } => {
                 let sink = Arc::clone(&self.sink);
                 let cancelled = Arc::clone(&self.cancelled_timers);
                 // Dedicated thread: a sleeping timer must not occupy a
@@ -196,8 +215,14 @@ impl<M: Send + 'static> Effects<M> {
             }
             Effect::IngestOpen { source, series } => self.store.ingest_open(series, source),
             Effect::IngestClose { series } => self.store.ingest_close(series),
-            Effect::Sample { series, t_ms, value } => {
-                self.store.ring(series).push(libra_data::Sample { t_ms, v: value });
+            Effect::Sample {
+                series,
+                t_ms,
+                value,
+            } => {
+                self.store
+                    .ring(series)
+                    .push(libra_data::Sample { t_ms, v: value });
             }
             // Shell-handled: the windowed shell intercepts SetTheme
             // before effects reach the pool; reaching here means
@@ -207,7 +232,20 @@ impl<M: Send + 'static> Effects<M> {
             // headless reach-through is a no-op.
             Effect::ClipboardSet { .. } => {}
             Effect::PickFolder { .. } => {}
-            Effect::Process { id, command, on_done } => {
+            // Shell-handled. Reaching here means headless: there is no
+            // banner to show. Ack so a waiting app is not left hanging.
+            Effect::Notify { on_done, .. } => {
+                if let Some(ctor) = on_done {
+                    (self.sink)(ctor(libra_core::NotifyResult::Unsupported(
+                        "headless".into(),
+                    )));
+                }
+            }
+            Effect::Process {
+                id,
+                command,
+                on_done,
+            } => {
                 let process_id = id.unwrap_or_else(|| self.alloc_process_id());
                 let sink = Arc::clone(&self.sink);
                 let allowlist = self.process_allowlist.clone();
@@ -223,20 +261,35 @@ impl<M: Send + 'static> Effects<M> {
                 });
             }
             Effect::CancelProcess { id } => {
-                self.cancelled_processes.lock().expect("cancel set").insert(id);
-                if let Some(cancel) = self.running_processes.lock().expect("running set").remove(&id) {
+                self.cancelled_processes
+                    .lock()
+                    .expect("cancel set")
+                    .insert(id);
+                if let Some(cancel) = self
+                    .running_processes
+                    .lock()
+                    .expect("running set")
+                    .remove(&id)
+                {
                     cancel.store(true, Ordering::Relaxed);
                 }
             }
-            Effect::Spawn { stream, command, capture } => {
-                self.streams.spawn_shared(
-                    stream,
-                    command,
-                    capture,
-                    &self.process_allowlist,
-                );
+            Effect::Spawn {
+                stream,
+                command,
+                capture,
+            } => {
+                self.streams
+                    .spawn_shared(stream, command, capture, &self.process_allowlist);
             }
             Effect::CloseStream { stream } => self.streams.close(&stream),
+            // Shell-handled. Headless has no window to move.
+            Effect::WindowOp { .. } => {}
+            Effect::LoginItem { on_done, .. } | Effect::LoginItemQuery { on_done } => {
+                (self.sink)(on_done(libra_core::LoginItemResult::Unsupported(
+                    "headless".into(),
+                )));
+            }
             // `Effect` is `non_exhaustive` (PLAN-SDK S4). A future variant
             // is a no-op here until this runtime learns it.
             _ => {}
@@ -483,7 +536,10 @@ fn do_process(
     };
 
     let cancel_flag = Arc::new(AtomicBool::new(false));
-    running.lock().expect("running set").insert(process_id, Arc::clone(&cancel_flag));
+    running
+        .lock()
+        .expect("running set")
+        .insert(process_id, Arc::clone(&cancel_flag));
 
     // Drain both pipes from their own threads for as long as the child runs.
     // A pipe holds ~64 KB; a child that writes more than that blocks in
@@ -644,7 +700,8 @@ mod tests {
     }
 
     fn recv(rx: &mpsc::Receiver<Action>) -> Action {
-        rx.recv_timeout(Duration::from_secs(5)).expect("effect result arrives")
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("effect result arrives")
     }
 
     #[test]
@@ -660,9 +717,17 @@ mod tests {
     fn timer_fires_and_cancelled_timer_never_delivers() {
         let (fx, rx, _dir) = runtime();
         let id = TimerId(7);
-        fx.execute(Effect::Timer { id: Some(id), after_ms: 200, action: Action::Tick });
+        fx.execute(Effect::Timer {
+            id: Some(id),
+            after_ms: 200,
+            action: Action::Tick,
+        });
         fx.execute(Effect::CancelTimer { id });
-        fx.execute(Effect::Timer { id: None, after_ms: 30, action: Action::Tick });
+        fx.execute(Effect::Timer {
+            id: None,
+            after_ms: 30,
+            action: Action::Tick,
+        });
         // The un-cancelled timer fires…
         assert_eq!(recv(&rx), Action::Tick);
         // …and the cancelled one never does (wait past its deadline).
@@ -672,7 +737,10 @@ mod tests {
     #[test]
     fn random_yields_requested_bytes() {
         let (fx, rx, _dir) = runtime();
-        fx.execute(Effect::Random { bytes: 16, on_done: Action::Entropy });
+        fx.execute(Effect::Random {
+            bytes: 16,
+            on_done: Action::Entropy,
+        });
         match recv(&rx) {
             Action::Entropy(b) => assert_eq!(b.len(), 16),
             other => panic!("unexpected: {other:?}"),
@@ -702,8 +770,14 @@ mod tests {
                 .iter()
                 .position(|&p| p == "/usr/local/bin")
                 .expect("/usr/local/bin");
-            let usr = parts.iter().position(|&p| p == "/usr/bin").expect("/usr/bin");
-            assert!(local < usr, "user/local bin must precede system PATH: {path}");
+            let usr = parts
+                .iter()
+                .position(|&p| p == "/usr/bin")
+                .expect("/usr/bin");
+            assert!(
+                local < usr,
+                "user/local bin must precede system PATH: {path}"
+            );
         }
         #[cfg(windows)]
         {
@@ -717,10 +791,7 @@ mod tests {
     #[test]
     fn process_rejects_unlisted_program() {
         let (fx, rx, _dir) = runtime_with_allowlist(&["echo"]);
-        fx.execute(Effect::process(
-            CommandSpec::new("true"),
-            Action::Ran,
-        ));
+        fx.execute(Effect::process(CommandSpec::new("true"), Action::Ran));
         match recv(&rx) {
             Action::Ran(r) => assert!(matches!(r.status, ProcessStatus::SpawnFailed(_))),
             other => panic!("unexpected: {other:?}"),
@@ -780,10 +851,16 @@ mod tests {
         });
 
         let (fx, rx, _dir) = runtime();
-        fx.execute(Effect::http(HttpRequest::get(format!("http://{addr}/zen")), Action::Fetched));
+        fx.execute(Effect::http(
+            HttpRequest::get(format!("http://{addr}/zen")),
+            Action::Fetched,
+        ));
         assert_eq!(
             recv(&rx),
-            Action::Fetched(HttpResult::Response { status: 200, body: b"Mind the gap.".to_vec() })
+            Action::Fetched(HttpResult::Response {
+                status: 200,
+                body: b"Mind the gap.".to_vec()
+            })
         );
     }
 }
