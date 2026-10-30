@@ -14,6 +14,7 @@ pub(crate) fn build(
     placeholder: &str,
     on_change: &str,
     test_id: &str,
+    keyboard: Keyboard,
     markdown: bool,
     on_wikilink: &Option<String>,
 ) -> Result<NodeId, taffy::TaffyError> {
@@ -42,6 +43,7 @@ pub(crate) fn build(
             px,
             markdown,
             on_wikilink: on_wikilink.clone(),
+            keyboard,
         },
         Semantics {
             role: Role::TextInput,
@@ -253,6 +255,13 @@ fn paint_textarea(
     cmds.push(DrawCmd::PushClip { rect });
     let (tx, ty) = (rect.x + theme.btn_pad_x, rect.y + theme.btn_pad_y);
     let max_w = (rect.w - 2.0 * theme.btn_pad_x).max(0.0);
+    let shown;
+    let value = if let Some(p) = focus.and_then(|f| f.preedit.as_ref()) {
+        shown = p.splice(value);
+        shown.as_str()
+    } else {
+        value
+    };
 
     if value.is_empty() && !placeholder.is_empty() {
         cmds.push(DrawCmd::Text {
@@ -294,7 +303,7 @@ fn paint_plain_textarea(
             let sel = &f.selection;
             let s = sel.start.max(ls);
             let e = sel.end.min(le);
-            if s < e {
+            if f.preedit.is_none() && s < e {
                 let x0 = tx + m.measure(&value[ls..s], px, FontStyle::Regular).0;
                 let x1 = tx + m.measure(&value[ls..e], px, FontStyle::Regular).0;
                 cmds.push(DrawCmd::Rect {
@@ -314,13 +323,122 @@ fn paint_plain_textarea(
             });
         }
         if let Some(f) = focus {
-            let caret = f.caret.min(value.len());
-            if caret >= ls && caret <= le {
-                let cx = tx + m.measure(&value[ls..caret], px, FontStyle::Regular).0;
-                cmds.push(DrawCmd::Rect { rect: Rect::new(cx, ly, 1.0, th), color: theme.text });
+            if let Some(p) = &f.preedit {
+                let ps = p.at;
+                let pe = p.at + p.text.len();
+                let s = ps.max(ls);
+                let e = pe.min(le);
+                if s < e {
+                    let x0 = tx + m.measure(&value[ls..s], px, FontStyle::Regular).0;
+                    let x1 = tx + m.measure(&value[ls..e], px, FontStyle::Regular).0;
+                    let y = (ly + th).floor();
+                    cmds.push(DrawCmd::Rect {
+                        rect: Rect::new(x0.floor(), y, (x1 - x0).max(1.0), 1.0),
+                        color: theme.accent,
+                    });
+                }
+            }
+            if f.show_caret {
+                let caret = f.caret.min(value.len());
+                if caret >= ls && caret <= le {
+                    let cx = tx + m.measure(&value[ls..caret], px, FontStyle::Regular).0;
+                    cmds.push(DrawCmd::Rect {
+                        rect: Rect::new(cx, ly, 1.0, th),
+                        color: theme.text,
+                    });
+                }
+            }
+            if f.handles && !f.selection.is_empty() {
+                for byte in [f.selection.start, f.selection.end] {
+                    if byte >= ls && byte <= le {
+                        let cx = tx + m.measure(&value[ls..byte.min(le)], px, FontStyle::Regular).0;
+                        let size = 6.0;
+                        cmds.push(DrawCmd::RRect {
+                            rect: Rect::new(cx - size / 2.0, ly + (th - size) / 2.0, size, size),
+                            radius: size / 2.0,
+                            color: theme.accent,
+                        });
+                    }
+                }
             }
         }
     }
+}
+
+/// Caret after moving `dir` visual rows (−1 / +1). `sticky_x` is the
+/// remembered distance from the text origin; `None` measures it from
+/// the caret. Hard newlines and soft wraps are both rows. The editing
+/// core stays font-free — this is the layout side of sticky Up/Down.
+pub(crate) fn vertical_caret(
+    value: &str,
+    max_w: f32,
+    px: f32,
+    caret: usize,
+    dir: i32,
+    sticky_x: Option<f32>,
+    m: &dyn TextMeasurer,
+) -> (usize, Option<f32>) {
+    if value.is_empty() || dir == 0 {
+        return (caret.min(value.len()), sticky_x);
+    }
+    let lines = wrap_visual_lines(value, max_w, px, m);
+    let caret = caret.min(value.len());
+    let row = visual_row_index(&lines, caret);
+    let (ls, le) = lines[row];
+    let x = sticky_x.unwrap_or_else(|| {
+        let end = caret.clamp(ls, le);
+        m.measure(&value[ls..end], px, FontStyle::Regular).0
+    });
+    let next = row as i32 + dir;
+    if next < 0 {
+        return (lines[0].0, Some(x));
+    }
+    if next as usize >= lines.len() {
+        return (value.len(), Some(x));
+    }
+    let (ns, ne) = lines[next as usize];
+    (byte_at_x(value, ns, ne, x, px, m), Some(x))
+}
+
+fn visual_row_index(lines: &[(usize, usize)], caret: usize) -> usize {
+    let last = lines.len() - 1;
+    for (i, &(s, e)) in lines.iter().enumerate() {
+        let soft_break = caret == e && lines.get(i + 1).is_some_and(|&(ns, _)| ns == e);
+        if soft_break {
+            continue;
+        }
+        if caret >= s && caret <= e {
+            return i;
+        }
+    }
+    last
+}
+
+fn byte_at_x(
+    value: &str,
+    ls: usize,
+    le: usize,
+    rel: f32,
+    px: f32,
+    m: &dyn TextMeasurer,
+) -> usize {
+    if rel <= 0.0 {
+        return ls;
+    }
+    let mut prev_i = ls;
+    let mut prev_w = 0.0f32;
+    let mut i = ls;
+    while i < le {
+        let ch = value[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+        let w = m.measure(&value[ls..i], px, FontStyle::Regular).0;
+        if w >= rel {
+            return if (rel - prev_w) <= (w - rel) { prev_i } else { i };
+        }
+        prev_i = i;
+        prev_w = w;
+    }
+    le
 }
 
 #[cfg(test)]
@@ -350,5 +468,14 @@ mod tests {
         let text = "aa\nbb";
         let lines = wrap_visual_lines(text, 1000.0, 14.0, &Fixed);
         assert_eq!(lines, vec![(0, 2), (3, 5)]);
+    }
+
+    #[test]
+    fn vertical_move_follows_soft_wrap_and_keeps_x() {
+        let text = "hello world";
+        let (byte, x) = vertical_caret(text, 60.0, 14.0, 1, 1, None, &Fixed);
+        assert_eq!(byte, 7, "one column into the wrapped line");
+        let (back, _) = vertical_caret(text, 60.0, 14.0, byte, -1, x, &Fixed);
+        assert_eq!(back, 1);
     }
 }

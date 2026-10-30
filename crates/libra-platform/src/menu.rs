@@ -35,6 +35,12 @@ pub(crate) enum ShellEvent<M> {
     /// `tray-icon` speaks a different `muda` than the menubar, so this
     /// is not a [`muda::MenuId`].
     TrayClick(String),
+    /// One JSON line from the automation socket (§16). The shell answers
+    /// on `reply` so the listener thread never touches the app.
+    Automate {
+        line: String,
+        reply: std::sync::mpsc::Sender<String>,
+    },
 }
 
 pub(crate) struct NativeMenus {
@@ -87,21 +93,32 @@ pub(crate) fn show_context<M: ReflectAction>(
     window: &Window,
     physical: (f64, f64),
 ) {
-    if decl.is_empty() {
-        return;
-    }
     if let Err(e) = validate_menu::<M>(decl) {
         panic!("[libra] invalid context menu: {e}");
     }
-    let items = match decl.menus.as_slice() {
-        [one] => &one.items,
-        _ => return,
+    let items = match context_items(decl) {
+        Ok(items) => items,
+        Err(reason) => {
+            eprintln!("[libra] context menu refused: {reason}");
+            return;
+        }
     };
     let mut ids = HashMap::new();
     let popup = MudaMenu::new();
     fill(&popup, items, &mut ids);
     native.ids.extend(ids);
     popup_at(&popup, window, physical);
+}
+
+/// A context popup is one menu. A menubar (several top-level menus) or
+/// an empty decl is refused out loud — a silent return would leave the
+/// right-click looking like a dead control (§19.4).
+pub(crate) fn context_items(decl: &MenuDecl) -> Result<&[MenuItem], &'static str> {
+    match decl.menus.as_slice() {
+        [one] => Ok(one.items.as_slice()),
+        [] => Err("context menu is empty"),
+        _ => Err("a context menu is one menu"),
+    }
 }
 
 fn build_bar(decl: &MenuDecl) -> (MudaMenu, HashMap<MenuId, (String, Option<String>)>) {
@@ -357,7 +374,8 @@ fn chord_code(c: &Chord) -> Option<Code> {
 
 #[cfg(test)]
 mod tests {
-    use super::linux_menu_support;
+    use super::{chord_accel, context_items, linux_menu_support};
+    use libra_core::{Menu, MenuDecl};
 
     #[test]
     fn linux_menus_are_a_typed_refusal() {
@@ -365,6 +383,39 @@ mod tests {
         assert!(linux_menu_support().unwrap_err().contains("GTK"));
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         assert!(linux_menu_support().is_ok());
+    }
+
+    #[test]
+    fn a_context_menu_is_exactly_one_menu() {
+        let one = MenuDecl::new(vec![Menu::new("edit", "Edit", vec![])]);
+        assert!(context_items(&one).is_ok());
+        let none = MenuDecl::default();
+        assert_eq!(context_items(&none).unwrap_err(), "context menu is empty");
+        let two = MenuDecl::new(vec![
+            Menu::new("a", "A", vec![]),
+            Menu::new("b", "B", vec![]),
+        ]);
+        assert_eq!(
+            context_items(&two).unwrap_err(),
+            "a context menu is one menu"
+        );
+    }
+
+    #[test]
+    fn every_parsed_chord_becomes_an_accelerator() {
+        for key in [
+            "a", "z", "0", "9", "escape", "backspace", "delete", "enter", "space", "tab", "up",
+            "down", "left", "right",
+        ] {
+            let spec = format!("cmd+shift+{key}");
+            let accel = chord_accel(&spec).unwrap_or_else(|| panic!("{spec} dropped"));
+            let rendered = format!("{accel:?}");
+            #[cfg(target_os = "macos")]
+            assert!(rendered.contains("SUPER"), "{spec} -> {rendered}");
+            #[cfg(not(target_os = "macos"))]
+            assert!(rendered.contains("CONTROL"), "{spec} -> {rendered}");
+            assert!(rendered.contains("SHIFT"), "{spec} -> {rendered}");
+        }
     }
 }
 

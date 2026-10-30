@@ -18,6 +18,7 @@ mod layout;
 mod node;
 mod paint;
 
-pub use catalog::caret::caret_byte_at;
-pub use layout::layout;
+pub use catalog::caret::{caret_byte_at, textarea_vertical_caret};
+pub use catalog::osk::{attach_osk, osk_edit};
+pub use layout::{layout, layout_scrolled};
 pub use node::*;

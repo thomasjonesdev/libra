@@ -35,6 +35,7 @@ pub const LAYOUT: &[(&str, &str)] = &[
     ("split", "Split"),
     ("card", "Card"),
     ("panel", "Panel"),
+    ("safe_area", "SafeArea"),
 ];
 pub const DISPLAY: &[(&str, &str)] = &[
     ("text", "Text"),
@@ -69,7 +70,82 @@ pub const CONTROLS: &[(&str, &str)] = &[
     ("dialog", "Dialog"),
     ("drawer", "Drawer"),
 ];
-pub const DATA: &[(&str, &str)] = &[("chart", "Chart"), ("sparkline", "Sparkline")];
+pub const DATA: &[(&str, &str)] = &[
+    ("chart", "Chart"),
+    ("sparkline", "Sparkline"),
+    ("virtual_list", "VirtualList"),
+    ("log_view", "LogView"),
+    ("table", "Table"),
+];
+
+/// One `<VirtualList>` row. `title` is the label; Display is the press arg.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LibraReflect)]
+pub struct SampleRow {
+    pub id: String,
+    pub title: String,
+}
+
+impl fmt::Display for SampleRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
+/// One `<Table>` row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LibraReflect)]
+pub struct Person {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+}
+
+impl fmt::Display for Person {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
+/// `<Table columns>` — width is an integer so its Display parses as px.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LibraReflect)]
+pub struct TableCol {
+    pub key: String,
+    pub title: String,
+    pub width: i64,
+}
+
+impl fmt::Display for TableCol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.key)
+    }
+}
+
+pub fn sample_rows() -> Vec<SampleRow> {
+    (0..24)
+        .map(|i| SampleRow { id: format!("r{i}"), title: format!("Row {i:02}") })
+        .collect()
+}
+
+pub fn people() -> Vec<Person> {
+    ["Ada|math", "Grace|systems", "Barbara|compilers", "Katherine|orbit"]
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            let (name, role) = row.split_once('|').unwrap();
+            Person { id: format!("p{i}"), name: name.into(), role: role.into() }
+        })
+        .collect()
+}
+
+pub fn table_cols() -> Vec<TableCol> {
+    vec![
+        TableCol { key: "name".into(), title: "Name".into(), width: 140 },
+        TableCol { key: "role".into(), title: "Role".into(), width: 120 },
+    ]
+}
+
+pub fn log_lines() -> Vec<String> {
+    (0..18).map(|i| format!("log {i:02}")).chain(std::iter::once("tail marker".into())).collect()
+}
 
 /// The component selected on launch.
 pub const DEFAULT: &str = "button";

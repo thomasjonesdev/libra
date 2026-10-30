@@ -16,6 +16,20 @@ impl Gallery {
         self.selected = id;
     }
 
+    /// `<VirtualList onPress>` / `<Table onRow>` — the row's whole value.
+    pub fn pick_row(&mut self, id: String) {
+        self.picked = id;
+    }
+
+    /// `<Table onHeader>` — sort the rows by that column key.
+    pub fn sort_col(&mut self, key: String) {
+        match key.as_str() {
+            "role" => self.people.sort_by(|a, b| a.role.cmp(&b.role).then(a.name.cmp(&b.name))),
+            _ => self.people.sort_by(|a, b| a.name.cmp(&b.name)),
+        }
+        self.picked = key;
+    }
+
     pub fn label_changed(&mut self, s: String) {
         self.ctl_label = s;
     }
@@ -166,11 +180,15 @@ impl Gallery {
         self.is_list_item = s == "list_item";
         self.is_chart = s == "chart";
         self.is_sparkline = s == "sparkline";
+        self.is_virtual_list = s == "virtual_list";
+        self.is_log_view = s == "log_view";
+        self.is_table = s == "table";
         self.is_dialog = s == "dialog";
         self.is_split = s == "split";
         self.is_drawer = s == "drawer";
         self.is_card = s == "card";
         self.is_panel = s == "panel";
+        self.is_safe_area = s == "safe_area";
         self.is_alert = s == "alert";
         self.is_skeleton = s == "skeleton";
         self.is_avatar = s == "avatar";

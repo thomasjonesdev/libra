@@ -26,6 +26,7 @@ pub(crate) fn build(
     placeholder: &str,
     on_change: &str,
     on_submit: &Option<String>,
+    keyboard: Keyboard,
     test_id: &str,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
@@ -45,6 +46,7 @@ pub(crate) fn build(
             placeholder: placeholder.to_string(),
             px,
             on_submit: on_submit.clone(),
+            keyboard,
         },
         Semantics {
             role: Role::TextInput,

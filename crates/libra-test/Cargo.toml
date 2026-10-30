@@ -17,3 +17,6 @@ libra-data.workspace = true
 libra-text.workspace = true
 libra-draw.workspace = true
 tiny-skia.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true

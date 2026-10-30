@@ -85,7 +85,11 @@ impl LaidTree {
                 match &item.kind {
                     // Containers, scroll viewports, mounted sources, and inline
                     // link hit targets paint nothing.
-                    ItemKind::Box | ItemKind::Scroll | ItemKind::Source(_) | ItemKind::LinkTarget => {}
+                    ItemKind::Box
+                    | ItemKind::Scroll
+                    | ItemKind::VirtualViewport { .. }
+                    | ItemKind::Source(_)
+                    | ItemKind::LinkTarget => {}
                     ItemKind::Separator => catalog::separator::paint(&mut cx, item),
                     ItemKind::ListItem { title, subtitle, meta, selected, px_md, px_sm, inset, .. } => {
                         catalog::list_item::paint(
@@ -206,6 +210,7 @@ impl LaidTree {
                         catalog::split::paint_divider(&mut cx, item.rect);
                     }
                     ItemKind::DialogPanel => catalog::dialog::paint_panel(&mut cx, item.rect),
+                    ItemKind::OskKey { label } => catalog::osk::paint(&mut cx, item, label),
                 }
                 if item.clip.is_some() {
                     cx.cmds.push(DrawCmd::PopClip);
@@ -364,6 +369,7 @@ mod tests {
                     on_submit: None,
                     variant: InputVariant::Field,
                     bold: false,
+                    keyboard: Keyboard::Text,
                 },
                 Rect::new(0.0, 60.0, 100.0, 20.0),
                 Role::TextInput,

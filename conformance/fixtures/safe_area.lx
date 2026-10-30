@@ -1,0 +1,8 @@
+<Column>
+  <SafeArea testId="all">
+    <Text>All</Text>
+  </SafeArea>
+  <SafeArea edges="top,bottom" testId="vertical">
+    <Text>Vertical</Text>
+  </SafeArea>
+</Column>

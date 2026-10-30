@@ -5,8 +5,10 @@
 //! (`src/**/*.rs`, `build.rs`, `Cargo.toml`, `Cargo.lock`) kill that
 //! process and start `cargo run` again — an incremental rebuild of the
 //! app crate (§18.2). When `libra.toml` declares `[package].icon`, the
-//! path is forwarded via `libra_platform::ICON_PATH_ENV`. Inspector,
-//! automation server, and `libra eject` are still open (§16, §18.4).
+//! path is forwarded via `libra_platform::ICON_PATH_ENV`. Debug runs set
+//! `LIBRA_AUTOMATION=1` so the app listens on a local socket (§16) and
+//! `LIBRA_INSPECTOR=1` so a second window shows the action log and
+//! state (§18.4). `libra eject` is still open.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
@@ -230,6 +232,8 @@ fn spawn_cargo(
     if let Some(icon) = icon {
         cmd.env("LIBRA_ICON_PATH", icon);
     }
+    cmd.env("LIBRA_AUTOMATION", "1");
+    cmd.env("LIBRA_INSPECTOR", "1");
     // Own process group so a restart signal hits `cargo` and the app
     // binary together, and Ctrl-C stays with this supervisor.
     #[cfg(unix)]

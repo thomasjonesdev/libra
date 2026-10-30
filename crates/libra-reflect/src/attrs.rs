@@ -73,8 +73,8 @@ pub fn state(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Attribute macros replace the whole item, unlike derive macros —
     // rustc never sees the original tokens, so any inert helper
-    // attribute we read here (`#[libra(skip)]`, consumed above by
-    // derive_model_impl's has_skip check) must be stripped before
+    // attribute we read here (`#[libra(skip)]`, `#[libra(redact)]`,
+    // consumed above by derive_model_impl) must be stripped before
     // re-emitting, or rustc rejects it as an attribute no macro
     // registered.
     if let syn::Fields::Named(named) = &mut item_struct.fields {

@@ -76,6 +76,9 @@ pub struct TestPlan {
     pub trace_matrix: Option<Option<PathBuf>>,
     /// Everything after a literal `--` — forwarded to the inner runner.
     pub passthrough: Vec<String>,
+    /// `--replay file.lreplay` (§15.6). The runner sets `LIBRA_REPLAY`
+    /// and selects tests named `lreplay`.
+    pub replay: Option<PathBuf>,
 }
 
 impl Default for TestPlan {
@@ -91,6 +94,7 @@ impl Default for TestPlan {
             validate: false,
             trace_matrix: None,
             passthrough: Vec::new(),
+            replay: None,
         }
     }
 }
@@ -125,6 +129,13 @@ impl TestPlan {
                 "--no-coverage" => plan.coverage = Coverage::Off,
                 "--watch" => plan.watch = true,
                 "--validate" => plan.validate = true,
+                "--replay" => {
+                    let v = it.next().ok_or("--replay needs a .lreplay file")?;
+                    plan.replay = Some(PathBuf::from(v));
+                    if !plan.filters.iter().any(|f| f == "lreplay") {
+                        plan.filters.push("lreplay".into());
+                    }
+                }
                 other => {
                     if let Some(rest) = other.strip_prefix("--package=") {
                         plan.packages.push(rest.to_string());
@@ -237,6 +248,13 @@ mod tests {
         let p = parse(&[app.to_str().unwrap(), "increment"]);
         assert_eq!(p.scope.as_deref(), Some(app.as_path()));
         assert_eq!(p.filters, vec!["increment"]);
+    }
+
+    #[test]
+    fn replay_sets_the_file_and_selects_lreplay_tests() {
+        let p = parse(&["--replay", "bug.lreplay"]);
+        assert_eq!(p.replay.as_deref(), Some(std::path::Path::new("bug.lreplay")));
+        assert_eq!(p.filters, vec!["lreplay"]);
     }
 
     #[test]

@@ -11,7 +11,7 @@ type: plan
 
 # Native system integrations
 
-**Status: N3, the WindowOp subset, N7 (started), and N8 shipped.** N1, N2, N4, N5, and title/fullscreen/resize remain open. Maps Vercel json-render RN **standard actions** and
+**Status: N1–N8 shipped.** Maps Vercel json-render RN **standard actions** and
 Libra [[19-platform-integration|§19]] OS concerns onto Libra's
 **effects-as-data** model ([[12.1-effect-vocabulary|§12.1]]).
 Umbrella: [[PLAN-UI-SURFACE]].
@@ -31,9 +31,9 @@ Source: `@json-render/react-native` `standardActionDefinitions`.
 |---|---|---|---|
 | `navigate` / `goBack` | `NavStack` + actions | partial | Already app-level; not an Effect |
 | `setState` / `pushState` / `removeState` | pure `Action` / `reduce` | **n/a as Effect** | State changes are never effects in Libra |
-| `showAlert` | `Effect::Dialog` | planned in §12.1 | Prefer `rfd` / platform alert — [[19-platform-integration|§19]] |
-| `share` | `Effect::Share` (add) | planned | Desktop: share sheet / “copy link” fallback per OS |
-| `openURL` | `Effect::OpenUrl` | planned in §12.1 | `open` / `xdg-open` / ShellExecute |
+| `showAlert` | `Effect::Dialog` | **shipped** (N2) | `rfd` alert and confirm. In-tree `<Dialog>` stays the snapshotable overlay |
+| `share` | `Effect::Share` | **shipped** (N4) | Clipboard payload. No OS share sheet |
+| `openURL` | `Effect::OpenUrl` | **shipped** (N1) | `/usr/bin/open` / `xdg-open` / `rundll32 url.dll`. `http` `https` `mailto` |
 | `refresh` | Http / `libra-query` invalidate | partial | App actions, not a generic effect |
 
 ## §12.1 platform effects — staging
@@ -44,12 +44,12 @@ intercept:
 | Effect | Crate / approach | Harness |
 |---|---|---|
 | `Clipboard` | `arboard` (text) | **shipped** — editing-core copy/paste (shell) **and** `Effect::ClipboardSet` with typed `ClipboardResult` ack + `fx::clipboard_set()`/`resolve_clipboard` harness parity (2026-07-19) |
-| `Dialog` | `rfd` / OS alert | `expect_effect` + `resolve_dialog` |
+| `Dialog` | `rfd` OS alert / confirm — **shipped** (N2). Linux needs zenity | `fx::dialog()` + `resolve_dialog` |
 | `Notify` | `notify-rust` — **staged in [[PLAN-NOTIFY]]** (tag/replace, activation routing, bundle identity) | `fx::notify()` + `resolve_notify` / `activate_notification` |
-| `OpenUrl` | OS open | `expect_effect(fx::open_url(…))` |
+| `OpenUrl` | host opener — **shipped** (N1) | `fx::open_url()` / `fx::open_url_to` + `resolve_open_url` |
 | `SetTheme` | theme table | **shipped** (shell/harness) |
 | `WindowOp` | winit | title/fullscreen/resize |
-| `Share` *(new)* | platform share / clipboard fallback | intercept like OpenUrl |
+| `Share` | clipboard payload — **shipped** (N4). Same arboard path as `ClipboardSet`. No share sheet | `fx::share()` + `resolve_share` |
 
 ## Component-adjacent shell capabilities
 
@@ -57,24 +57,24 @@ Not always Effects — sometimes layout/input plumbing:
 
 | Capability | json-render cue | Libra plan |
 |---|---|---|
-| Safe area / notches | `SafeArea` | Shell publishes insets → `SafeArea` layout ([[PLAN-CATALOG]] wave 6) |
+| Safe area / notches | `SafeArea` | **Shipped** (N5). Insets are a layout input, zero in the canonical frame. A frameless macOS window publishes a 28px title-bar inset; fullscreen clears it |
 | Keyboard type / secure entry | `TextInput.keyboardType`, `secureTextEntry` | Input/Textarea attrs → IME hints ([[PLAN-TEXTAREA]]) |
 | Modal presentation | `Modal` | In-tree overlay (deterministic) **vs** OS dialog (effect) — both allowed; document when to use which |
 | Long-press | `Pressable.longPress` | Pointer + [[19.1-touch|§19.1]] |
 | Menus / tray / hotkeys | — | §19 table (`muda`, `tray-icon`, `global-hotkey`) — separate small plans when needed. Tray + window policy + launch-at-login: **[[PLAN-RESIDENCY]]**; global hotkeys still unclaimed |
-| File pickers | — | **`Effect::PickFolder` shipped** (2026-08-25, Gloss Browse). `PickFile` still folds into a later Dialog/file variant |
+| File pickers | — | **`Effect::PickFolder` shipped** (2026-08-25, Gloss Browse). **`Effect::PickFile` and `Effect::SaveFile` shipped** — `rfd` open and save sheets, harness `resolve_file_pick` |
 
 ## Stages
 
 | Stage | Deliverable |
 |---|---|
-| **N1** | `OpenUrl` end-to-end (effect → shell → harness) |
-| **N2** | `Dialog` (alert + confirm) with `DialogResult` continuation |
+| **N1** | **Shipped.** `OpenUrl` end-to-end (effect → shell → harness). `http` / `https` / `mailto` |
+| **N2** | **Shipped.** `Dialog` (alert + confirm) with `DialogResult` continuation |
 | **N3** | `Notify` — split out to [[PLAN-NOTIFY]] (NT1–NT4) |
-| **N4** | `Share` + document clipboard relationship |
-| **N5** | Safe-area insets plumbing + `<SafeArea>` |
-| **N6** | `WindowOp` Show/Hide/Raise/Quit shipped with [[PLAN-RESIDENCY]] R3. Title, fullscreen, and resize are still this stage |
-| **N7** | **Started.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. macOS + Windows attach only. See [[19.3-native-menus|§19.3]] |
+| **N4** | **Shipped.** `Share` writes the clipboard (text, or text plus url). A native share sheet is not attached |
+| **N5** | **Shipped.** `<SafeArea edges?>` pads by shell insets. Harness `set_insets`. Canonical frame is zero, so existing snapshots stay put |
+| **N6** | **Shipped.** `WindowOp` Show/Hide/Raise/Quit ([[PLAN-RESIDENCY]] R3) plus `Title`, `Fullscreen`, and `Resize`. A refused title or size is not applied. The harness records chrome; the shell mirrors it onto winit. Fullscreen does not enter the display list |
+| **N7** | **Shipped.** `MenuDecl` + `App::menu` / `context_menu` + `app!` fields + harness `click_menu`. Shell builds a `muda` menubar (diff per dispatch) and a native popup after `onMenu` when `context_menu()` is `Some`. Painted `<ContextMenu>` stays for apps that return `None`. macOS and Windows attach. Linux is the N8 typed refusal. A context decl that is empty or has more than one menu is logged and not shown. See [[19.3-native-menus|§19.3]] |
 | **N8** | **Shipped.** Linux menus log a typed refusal (winit has no GTK window; GTK is not linked and discarded). Linux clipboard enables `wayland-data-control`. `Options.frameless` calls `with_decorations(false)` on Windows and Linux. macOS keeps the transparent titlebar |
 
 ## Design rules

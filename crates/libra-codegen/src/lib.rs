@@ -267,6 +267,39 @@ fn gen_node(
             ))
         }
 
+        // §7.1 / N5, matching libra-interp's "SafeArea" arm.
+        "SafeArea" => {
+            let mut edges = "libra_components::SafeEdges::ALL".to_string();
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("edges", AttrValue::Str(s)) => {
+                        let spec = safe_edges_expr(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!(
+                                    "unknown edges \"{s}\" — expected a comma-separated list of top, right, bottom, left"
+                                ),
+                            )
+                        })?;
+                        edges = spec;
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = gen_children(children, cfg, d + 2, bound, registry, slot_children, name, *span, binding_ctx)?;
+            Ok(format!(
+                "{i}libra_components::ViewNode::SafeArea {{ {at}\n\
+                 {i}    edges: {edges},\n\
+                 {i}    children: {kids},\n\
+                 {i}    test_id: {tid},\n\
+                 {i}}}",
+                at = at(cfg, *span),
+                tid = opt_str(&test_id),
+            ))
+        }
+
         // §7.1 Layout (PLAN-CATALOG wave 1), matching libra-interp's
         // "Spacer" arm exactly: size xor grow; bare = spring.
         "Spacer" => {
@@ -1800,6 +1833,7 @@ fn gen_node(
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
             let mut test_id: Option<String> = None;
+            let mut keyboard = "libra_components::Keyboard::Text".to_string();
             let mut markdown = false;
             let mut on_wikilink: Option<(String, Span)> = None;
             for a in attrs {
@@ -1807,6 +1841,7 @@ fn gen_node(
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = keyboard_expr(s, a.span)?,
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     ("markdown", AttrValue::Flag) => markdown = true,
                     ("onWikilink", AttrValue::Ident(m)) => on_wikilink = Some((m.clone(), a.span)),
@@ -1837,6 +1872,7 @@ fn gen_node(
                  {i}    placeholder: {ph}.to_string(),\n\
                  {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
                  {i}    test_id: {tid}.to_string(),\n\
+                 {i}    keyboard: {kb},\n\
                  {i}    markdown: {md},\n\
                  {i}    on_wikilink: {wik},\n\
                  {i}}}",
@@ -1848,6 +1884,7 @@ fn gen_node(
                 mat = at(cfg, mspan),
                 tid = str_lit(&test_id),
                 md = markdown,
+                kb = keyboard,
                 wik = on_wikilink_expr,
             ))
         }
@@ -1899,12 +1936,14 @@ fn gen_node(
             let mut variant = "Field";
             let mut size = "Md";
             let mut bold = false;
+            let mut keyboard = "libra_components::Keyboard::Text".to_string();
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = keyboard_expr(s, a.span)?,
                     ("onSubmit", AttrValue::Ident(m)) => on_submit = Some((m.clone(), a.span)),
                     ("variant", AttrValue::Str(s)) => {
                         variant = match s.as_str() {
@@ -1974,6 +2013,7 @@ fn gen_node(
                  {i}    variant: libra_components::InputVariant::{variant},\n\
                  {i}    size: libra_components::TextSize::{size},\n\
                  {i}    bold: {bold},\n\
+                 {i}    keyboard: {kb},\n\
                  {i}    test_id: {tid}.to_string(),\n\
                  {i}}}",
                 at = at(cfg, *span),
@@ -1984,6 +2024,7 @@ fn gen_node(
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = str_lit(&test_id),
+                kb = keyboard,
             ))
         }
 
@@ -1995,12 +2036,14 @@ fn gen_node(
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
             let mut on_submit: Option<(String, Span)> = None;
+            let mut keyboard = "libra_components::Keyboard::Text".to_string();
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = keyboard_expr(s, a.span)?,
                     ("onSubmit", AttrValue::Ident(m)) => {
                         require_camel_case(m, a.span)?;
                         on_submit = Some((m.clone(), a.span));
@@ -2035,6 +2078,7 @@ fn gen_node(
                  {i}    placeholder: {ph}.to_string(),\n\
                  {i}    on_change: {{ let _: fn(::std::string::String) -> {msg_ty} = {msg_ty}::{variant_ref}; {name_lit}.to_string() }}, {mat}\n\
                  {i}    on_submit: {submit_expr}, {submit_at}\n\
+                 {i}    keyboard: {kb},\n\
                  {i}    test_id: {tid}.to_string(),\n\
                  {i}}}",
                 at = at(cfg, *span),
@@ -2045,6 +2089,7 @@ fn gen_node(
                 name_lit = str_lit(&msg),
                 mat = at(cfg, mspan),
                 tid = str_lit(&test_id),
+                kb = keyboard,
             ))
         }
 
@@ -2203,6 +2248,10 @@ fn gen_node(
             ))
         }
 
+        "VirtualList" => gen_virtual_list(cfg, *span, attrs, children, d),
+        "LogView" => gen_log_view(cfg, *span, attrs, children, binding_ctx, d),
+        "Table" => gen_table(cfg, *span, attrs, children, d),
+
         "for" => Err(err(
             *span,
             "<for> is only allowed as a direct child of <Column>/<Row>",
@@ -2216,10 +2265,179 @@ fn gen_node(
         other => Err(err(
             *span,
             format!(
-                "unknown element <{other}> — available: Column, Row, Scroll, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Frames, Interval, Stream, for, if"
+                "unknown element <{other}> — available: Column, Row, Scroll, SafeArea, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, VirtualList, LogView, Table, Frames, Interval, Stream, for, if"
             ),
         )),
     }
+}
+
+fn keyboard_expr(s: &str, span: Span) -> Result<String, CodegenError> {
+    let v = match s {
+        "text" => "Text",
+        "numeric" => "Numeric",
+        "hex" => "Hex",
+        "none" => "None",
+        other => {
+            return Err(err(
+                span,
+                format!(
+                    "unknown keyboard \"{other}\" — expected \"text\", \"numeric\", \"hex\" or \"none\""
+                ),
+            ))
+        }
+    };
+    Ok(format!("libra_components::Keyboard::{v}"))
+}
+
+fn str_handler_expr(cfg: &Config, name: &str, span: Span) -> Result<String, CodegenError> {
+    require_camel_case(name, span)?;
+    Ok(format!(
+        "::core::option::Option::Some({{ let _: fn(::std::string::String) -> {msg} = {msg}::{var}; {lit}.to_string() }})",
+        msg = cfg.action,
+        var = pascalize(name),
+        lit = str_lit(name),
+    ))
+}
+
+/// `<VirtualList items label? height onPress? testId>` (§7.1).
+fn gen_virtual_list(
+    cfg: &Config,
+    span: Span,
+    attrs: &[Attr],
+    children: &[Node],
+    d: usize,
+) -> Result<String, CodegenError> {
+    let mut items: Option<String> = None;
+    let mut label = "::core::option::Option::None".to_string();
+    let mut height: Option<f32> = None;
+    let mut on_press = "::core::option::Option::None".to_string();
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("items", AttrValue::Ident(p)) => items = Some(p.clone()),
+            ("label", AttrValue::Str(s)) => label = format!("::core::option::Option::Some({})", str_lit(s)),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("onPress", AttrValue::Ident(m)) => on_press = str_handler_expr(cfg, m, a.span)?,
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("VirtualList", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(span, "<VirtualList> takes no children"));
+    }
+    let path = items.ok_or_else(|| err(span, "<VirtualList> requires items={someCollection}"))?;
+    let height = height.ok_or_else(|| err(span, "<VirtualList> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(span, "<VirtualList> requires testId=\"…\""))?;
+    let i = indent(d);
+    Ok(format!(
+        "{{ {at}\n\
+         {i}let __rows = libra_core::ReflectState::collection_rows(state, {path}).expect(\"collection\");\n\
+         {i}let (__labels, __args) = libra_core::virtual_rows(&__rows, {label});\n\
+         {i}libra_components::ViewNode::VirtualList {{ rows: __labels, args: __args, height: {height}, on_press: {on_press}, test_id: {tid}.to_string() }}\n\
+         {i}}}",
+        at = at(cfg, span),
+        path = str_lit(&path),
+        height = f32_lit(height),
+        tid = str_lit(&test_id),
+    ))
+}
+
+/// `<LogView lines height follow? testId>` (§7.1).
+fn gen_log_view(
+    cfg: &Config,
+    span: Span,
+    attrs: &[Attr],
+    children: &[Node],
+    binding_ctx: &str,
+    d: usize,
+) -> Result<String, CodegenError> {
+    let mut lines: Option<String> = None;
+    let mut height: Option<f32> = None;
+    let mut follow = "false".to_string();
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("lines", AttrValue::Ident(p)) => lines = Some(p.clone()),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("follow", AttrValue::Flag) => follow = "true".to_string(),
+            ("follow", AttrValue::Ident(p)) => {
+                follow = if_condition_expr(p, binding_ctx).map_err(|m| err(a.span, m))?;
+            }
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("LogView", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(span, "<LogView> takes no children"));
+    }
+    let path = lines.ok_or_else(|| err(span, "<LogView> requires lines={someCollection}"))?;
+    let height = height.ok_or_else(|| err(span, "<LogView> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(span, "<LogView> requires testId=\"…\""))?;
+    let i = indent(d);
+    Ok(format!(
+        "{{ {at}\n\
+         {i}let __rows = libra_core::ReflectState::collection_rows(state, {path}).expect(\"collection\");\n\
+         {i}let (__labels, _) = libra_core::virtual_rows(&__rows, ::core::option::Option::None);\n\
+         {i}libra_components::ViewNode::LogView {{ lines: __labels, height: {height}, follow: {follow}, test_id: {tid}.to_string() }}\n\
+         {i}}}",
+        at = at(cfg, span),
+        path = str_lit(&path),
+        height = f32_lit(height),
+        tid = str_lit(&test_id),
+    ))
+}
+
+/// `<Table rows columns height onRow? onHeader? testId>` (§7.1).
+fn gen_table(
+    cfg: &Config,
+    span: Span,
+    attrs: &[Attr],
+    children: &[Node],
+    d: usize,
+) -> Result<String, CodegenError> {
+    let mut rows: Option<String> = None;
+    let mut columns: Option<String> = None;
+    let mut height: Option<f32> = None;
+    let mut on_row = "::core::option::Option::None".to_string();
+    let mut on_header = "::core::option::Option::None".to_string();
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("rows", AttrValue::Ident(p)) => rows = Some(p.clone()),
+            ("columns", AttrValue::Ident(p)) => columns = Some(p.clone()),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("onRow", AttrValue::Ident(m)) => on_row = str_handler_expr(cfg, m, a.span)?,
+            ("onHeader", AttrValue::Ident(m)) => on_header = str_handler_expr(cfg, m, a.span)?,
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("Table", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(span, "<Table> takes no children"));
+    }
+    let rows = rows.ok_or_else(|| err(span, "<Table> requires rows={someCollection}"))?;
+    let columns = columns.ok_or_else(|| err(span, "<Table> requires columns={someCollection}"))?;
+    let height = height.ok_or_else(|| err(span, "<Table> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(span, "<Table> requires testId=\"…\""))?;
+    let i = indent(d);
+    Ok(format!(
+        "{{ {at}\n\
+         {i}let __cols = libra_core::ReflectState::collection_rows(state, {cols}).expect(\"columns\");\n\
+         {i}let __columns: ::std::vec::Vec<libra_components::TableColumn> = __cols.iter().map(|__r| {{\n\
+         {i}    let (__k, __t, __w) = libra_core::table_column(__r);\n\
+         {i}    libra_components::TableColumn {{ key: __k, title: __t, width: __w }}\n\
+         {i}}}).collect();\n\
+         {i}let __specs: ::std::vec::Vec<(::std::string::String, ::std::string::String, f32)> = __columns.iter().map(|__c| (__c.key.clone(), __c.title.clone(), __c.width)).collect();\n\
+         {i}let __body = libra_core::ReflectState::collection_rows(state, {rows}).expect(\"rows\");\n\
+         {i}let (__cells, __args) = libra_core::table_matrix(&__body, &__specs);\n\
+         {i}libra_components::ViewNode::Table {{ columns: __columns, rows: __cells, args: __args, height: {height}, on_row: {on_row}, on_header: {on_header}, test_id: {tid}.to_string() }}\n\
+         {i}}}",
+        at = at(cfg, span),
+        cols = str_lit(&columns),
+        rows = str_lit(&rows),
+        height = f32_lit(height),
+        tid = str_lit(&test_id),
+    ))
 }
 
 /// Mirrors interp's `text_content` exactly: parts joined with a single
@@ -2794,6 +3012,29 @@ fn icon_variant(s: &str) -> Option<&'static str> {
 
 fn str_lit(s: &str) -> String {
     format!("{s:?}")
+}
+
+/// `edges="top,left"` → a `SafeEdges` literal. `None` when a token is unknown.
+fn safe_edges_expr(spec: &str) -> Option<String> {
+    let mut top = false;
+    let mut right = false;
+    let mut bottom = false;
+    let mut left = false;
+    if spec.is_empty() {
+        return None;
+    }
+    for part in spec.split(',') {
+        match part.trim() {
+            "top" => top = true,
+            "right" => right = true,
+            "bottom" => bottom = true,
+            "left" => left = true,
+            _ => return None,
+        }
+    }
+    Some(format!(
+        "libra_components::SafeEdges {{ top: {top}, right: {right}, bottom: {bottom}, left: {left} }}"
+    ))
 }
 
 fn opt_str(s: &Option<String>) -> String {

@@ -106,6 +106,9 @@ fn run_once(plan: &TestPlan, target: &TestTarget, detected: &Detected) -> ExitCo
     if plan.validate {
         command.env("LIBRA_VALIDATE", "1");
     }
+    if let Some(path) = &plan.replay {
+        command.env("LIBRA_REPLAY", path);
+    }
 
     let status = match command.status() {
         Ok(s) => s,

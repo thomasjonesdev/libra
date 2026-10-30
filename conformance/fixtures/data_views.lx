@@ -1,0 +1,6 @@
+<Column>
+  <VirtualList items={items} label="label" height={80} onPress={packet} testId="list" />
+  <LogView lines={log} height={40} follow testId="log" />
+  <Table rows={items} columns={cols} height={80} onRow={packet} onHeader={packet} testId="table" />
+  <Input value={name} onChange={nameChanged} testId="hex" keyboard="hex" />
+</Column>

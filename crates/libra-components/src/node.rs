@@ -181,6 +181,53 @@ pub enum TooltipPosition {
     Left,
 }
 
+/// Logical insets the shell publishes and `<SafeArea>` applies
+/// (PLAN-NATIVE-INTEGRATIONS N5). Zero is the canonical frame, the
+/// same way scroll offset 0 is. The values are an input to layout,
+/// not a read of the host during paint.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Insets {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+}
+
+impl Insets {
+    pub const ZERO: Self = Self { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 };
+}
+
+/// Which edges of [`Insets`] a `<SafeArea>` consumes. Missing `edges`
+/// means all four.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SafeEdges {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl SafeEdges {
+    pub const ALL: Self = Self { top: true, right: true, bottom: true, left: true };
+
+    /// `edges="top,bottom"`. Unknown tokens are `None`.
+    pub fn parse(spec: &str) -> Option<Self> {
+        let mut edges = Self { top: false, right: false, bottom: false, left: false };
+        let mut any = false;
+        for part in spec.split(',') {
+            any = true;
+            match part.trim() {
+                "top" => edges.top = true,
+                "right" => edges.right = true,
+                "bottom" => edges.bottom = true,
+                "left" => edges.left = true,
+                _ => return None,
+            }
+        }
+        any.then_some(edges)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BoxStyle {
     pub gap: f32,
@@ -204,6 +251,13 @@ pub struct BoxStyle {
 pub enum ViewNode {
     Column { style: BoxStyle, children: Vec<ViewNode> },
     Row { style: BoxStyle, children: Vec<ViewNode> },
+    /// `<SafeArea edges?="top,right,bottom,left" testId?>` (N5). Pads
+    /// the named edges by the layout insets. Paints nothing.
+    SafeArea {
+        edges: SafeEdges,
+        children: Vec<ViewNode>,
+        test_id: Option<String>,
+    },
     Text { content: String, size: TextSize, bold: bool, muted: bool, grow: bool, wrap: bool, test_id: Option<String> },
     /// `on_press` is the handler action name; `on_press_arg`, when
     /// `Some`, is the resolved `String` payload for an item-scoped
@@ -310,6 +364,7 @@ pub enum ViewNode {
         variant: InputVariant,
         size: TextSize,
         bold: bool,
+        keyboard: Keyboard,
         test_id: String,
     },
     /// `<Search>` (§7.1, PLAN-CATALOG wave 3): Input chrome + submit.
@@ -321,6 +376,7 @@ pub enum ViewNode {
         placeholder: String,
         on_change: String,
         on_submit: Option<String>,
+        keyboard: Keyboard,
         test_id: String,
     },
     /// `<ListItem>` (§7.1, PLAN-CATALOG): a pressable list row —
@@ -353,6 +409,7 @@ pub enum ViewNode {
         placeholder: String,
         on_change: String,
         test_id: String,
+        keyboard: Keyboard,
         /// When true, inactive hard lines paint styled markdown preview.
         markdown: bool,
         /// String-payload action for `[[wikilink]]` presses in markdown mode.
@@ -545,6 +602,52 @@ pub enum ViewNode {
     /// event body as text once delivery (Ws/Spawn, §12.1) lands. Same
     /// zero-layout, test-query-only treatment as the other sources.
     SourceStream { id: String, on_event: String },
+    /// `<VirtualList items label? height onPress? testId>` (§7.1).
+    /// `rows` are the visible labels; `args` are the press payloads
+    /// (the row's whole value). Layout windows these by the scroll
+    /// offset — the vecs are the full collection, the tree is a window.
+    VirtualList {
+        rows: Vec<String>,
+        args: Vec<String>,
+        height: f32,
+        on_press: Option<String>,
+        test_id: String,
+    },
+    /// `<LogView lines height follow? testId>` (§7.1). Opaque lines.
+    /// `follow` keeps the tail in view (the offset is the content end).
+    LogView { lines: Vec<String>, height: f32, follow: bool, test_id: String },
+    /// `<Table rows columns height onRow? onHeader? testId>` (§7.1).
+    /// Columns are `{ key, title, width }`. Cells are the matching row
+    /// field. Sorting stays in the app — a header press dispatches the
+    /// column key.
+    Table {
+        columns: Vec<TableColumn>,
+        rows: Vec<Vec<String>>,
+        args: Vec<String>,
+        height: f32,
+        on_row: Option<String>,
+        on_header: Option<String>,
+        test_id: String,
+    },
+}
+
+/// One `<Table>` column (§7.1). Width is logical pixels.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableColumn {
+    pub key: String,
+    pub title: String,
+    pub width: f32,
+}
+
+/// Touch on-screen keyboard layout (§19.1). `None` suppresses it.
+/// Desktop pointer focus never summons one, whatever the value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Keyboard {
+    #[default]
+    Text,
+    Numeric,
+    Hex,
+    None,
 }
 
 // ---------------------------------------------------------------------------
@@ -683,14 +786,28 @@ pub enum ItemKind {
         on_submit: Option<String>,
         variant: InputVariant,
         bold: bool,
+        keyboard: Keyboard,
     },
     /// `<Search>` — Input chrome plus a leading glyph; `on_submit` is
     /// the optional Enter handler (unit action). Focus/edit reuse
     /// `Role::TextInput`.
-    Search { value: String, placeholder: String, px: f32, on_submit: Option<String> },
+    Search {
+        value: String,
+        placeholder: String,
+        px: f32,
+        on_submit: Option<String>,
+        keyboard: Keyboard,
+    },
     /// Multi-line sibling of Input (§10.1 stage 1) — same focus
     /// machinery, line-aware paint.
-    Textarea { value: String, placeholder: String, px: f32, markdown: bool, on_wikilink: Option<String> },
+    Textarea {
+        value: String,
+        placeholder: String,
+        px: f32,
+        markdown: bool,
+        on_wikilink: Option<String>,
+        keyboard: Keyboard,
+    },
     /// Pressable list row; `selected`/hover paint a `surface_raised`
     /// wash behind the text lines.
     ListItem {
@@ -790,6 +907,13 @@ pub enum ItemKind {
     /// kind mounted (see `SourceDecl`) so the shell/harness can
     /// dispatch/query by kind without re-deriving it from `ViewNode`.
     Source(SourceDecl),
+    /// Viewport of `<VirtualList>` / `<LogView>` / `<Table>` (§7.1).
+    /// Clips and offsets like `Scroll`. `follow` keeps the tail in view
+    /// and ignores the stored scroll offset.
+    VirtualViewport { follow: bool },
+    /// One key of the framework on-screen keyboard (§19.1). The shell
+    /// and harness apply an `EditOp` instead of dispatching.
+    OskKey { label: String },
 }
 
 /// What a mounted §12.5 source element declares — one variant per
@@ -876,7 +1000,14 @@ impl LaidTree {
             let Some(vp) = self
                 .items
                 .iter()
-                .find(|i| matches!(i.kind, ItemKind::Scroll) && i.semantics.test_id.as_deref() == Some(id))
+                .find(|i| {
+                    let scrollable = match &i.kind {
+                        ItemKind::Scroll => true,
+                        ItemKind::VirtualViewport { follow } => !follow,
+                        _ => false,
+                    };
+                    scrollable && i.semantics.test_id.as_deref() == Some(id)
+                })
                 .map(|i| i.rect)
             else {
                 continue;
@@ -893,6 +1024,37 @@ impl LaidTree {
             }
             for item in self.items.iter_mut().filter(|i| i.scroll.as_deref() == Some(id)) {
                 item.rect.y -= offset;
+            }
+        }
+        // Follow-tail logs ignore the stored offset and pin to the end.
+        let follow_ids: Vec<String> = self
+            .items
+            .iter()
+            .filter_map(|i| match &i.kind {
+                ItemKind::VirtualViewport { follow: true } => i.semantics.test_id.clone(),
+                _ => None,
+            })
+            .collect();
+        for id in follow_ids {
+            let Some(vp) = self
+                .items
+                .iter()
+                .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+                .map(|i| i.rect)
+            else {
+                continue;
+            };
+            let content_bottom = self
+                .items
+                .iter()
+                .filter(|i| i.scroll.as_deref() == Some(id.as_str()))
+                .fold(vp.y, |acc, i| acc.max(i.rect.y + i.rect.h));
+            let overflow = (content_bottom - (vp.y + vp.h)).max(0.0);
+            if overflow <= 0.0 {
+                continue;
+            }
+            for item in self.items.iter_mut().filter(|i| i.scroll.as_deref() == Some(id.as_str())) {
+                item.rect.y -= overflow;
             }
         }
     }
@@ -918,6 +1080,15 @@ pub const TEXTAREA_LEADING: f32 = 4.0;
 #[derive(Debug, Clone, PartialEq)]
 pub struct InputFocus {
     pub test_id: String,
+    /// Byte offset into the displayed string (committed text with any
+    /// preedit spliced in).
     pub caret: usize,
     pub selection: std::ops::Range<usize>,
+    /// Uncommitted IME composition, painted underlined (§10.1).
+    pub preedit: Option<libra_text::Preedit>,
+    /// Draw selection grips. Set by a long-press; pointer selection leaves
+    /// this false so existing snapshots stay unchanged.
+    pub handles: bool,
+    /// `false` while an IME asks for the caret to be hidden.
+    pub show_caret: bool,
 }

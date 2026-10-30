@@ -133,6 +133,24 @@ fn frame_info_payload_variants_construct_for_source_element_ticks() {
 }
 
 #[test]
+fn redacted_fields_stay_bindable_and_are_named() {
+    #[derive(LibraReflect)]
+    struct Secret {
+        count: i64,
+        #[libra(redact)]
+        token: String,
+    }
+    let s = Secret {
+        count: 1,
+        token: "sekrit".into(),
+    };
+    assert_eq!(s.field("token").as_deref(), Some("sekrit"));
+    assert_eq!(Secret::redacted_fields(), &["token"]);
+    assert!(Secret::field_names().contains(&"token"));
+    assert!(Secret::field_names().contains(&"count"));
+}
+
+#[test]
 fn instant_payload_variants_construct_for_interval_source_element_ticks() {
     let instant = Instant::at(4200.0);
     assert_eq!(

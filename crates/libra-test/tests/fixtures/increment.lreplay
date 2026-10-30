@@ -1,0 +1,13 @@
+{
+  "preludeDiscard": 0,
+  "steps": [
+    {
+      "action": "increment"
+    },
+    {
+      "action": "increment"
+    }
+  ],
+  "stateHash": "d51b96564af9c573ed7c5e2e0c43cac95e2daa997e8c37e01794edddb906635e",
+  "frame": "d1c42f13e529d9f487d268e5926e887386ac9c1417de17e340bc0c83144670b6"
+}

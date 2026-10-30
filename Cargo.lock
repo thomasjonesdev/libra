@@ -560,7 +560,7 @@ dependencies = [
 
 [[package]]
 name = "aws-login"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "conformance"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-codegen",
  "libra-components",
@@ -916,7 +916,7 @@ dependencies = [
 
 [[package]]
 name = "counter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -1027,7 +1027,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "dashboard"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -1357,7 +1357,7 @@ dependencies = [
 
 [[package]]
 name = "fetcher"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "gallery"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -1766,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "gloss"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "gloss-cli",
  "gloss-core",
@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "gloss-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "gloss-core",
  "gloss-index",
@@ -1801,7 +1801,7 @@ dependencies = [
 
 [[package]]
 name = "gloss-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "blake3",
  "proptest",
@@ -1813,7 +1813,7 @@ dependencies = [
 
 [[package]]
 name = "gloss-index"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "gloss-core",
  "rusqlite",
@@ -2348,7 +2348,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libra-build"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-codegen",
  "libra-markup",
@@ -2356,25 +2356,26 @@ dependencies = [
 
 [[package]]
 name = "libra-codegen"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-markup",
 ]
 
 [[package]]
 name = "libra-components"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-data",
  "libra-draw",
  "libra-markdown",
+ "libra-text",
  "libra-ui-core",
  "taffy",
 ]
 
 [[package]]
 name = "libra-data"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-ui-core",
  "tempfile",
@@ -2382,11 +2383,11 @@ dependencies = [
 
 [[package]]
 name = "libra-draw"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "libra-effects"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "getrandom 0.2.17",
  "libra-data",
@@ -2398,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "libra-interp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-components",
  "libra-markup",
@@ -2407,7 +2408,7 @@ dependencies = [
 
 [[package]]
 name = "libra-kv"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "directories",
  "redb",
@@ -2416,18 +2417,18 @@ dependencies = [
 
 [[package]]
 name = "libra-markdown"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pulldown-cmark",
 ]
 
 [[package]]
 name = "libra-markup"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "libra-platform"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2461,14 +2462,14 @@ dependencies = [
 
 [[package]]
 name = "libra-query"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-ui-core",
 ]
 
 [[package]]
 name = "libra-raster"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "fontdue",
  "libra-components",
@@ -2478,7 +2479,7 @@ dependencies = [
 
 [[package]]
 name = "libra-reflect"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-ui",
  "libra-ui-core",
@@ -2491,8 +2492,9 @@ dependencies = [
 
 [[package]]
 name = "libra-test"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
+ "blake3",
  "libra-components",
  "libra-data",
  "libra-draw",
@@ -2501,16 +2503,21 @@ dependencies = [
  "libra-raster",
  "libra-text",
  "libra-ui-core",
+ "serde",
+ "serde_json",
  "tiny-skia",
 ]
 
 [[package]]
 name = "libra-text"
-version = "0.1.1"
+version = "0.1.2"
+dependencies = [
+ "ropey",
+]
 
 [[package]]
 name = "libra-ui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-components",
  "libra-platform",
@@ -2522,12 +2529,13 @@ dependencies = [
 
 [[package]]
 name = "libra-ui-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "icns",
  "ico",
  "image",
  "libc",
+ "libra-interp",
  "libra-markup",
  "minisign",
  "serde",
@@ -2538,7 +2546,7 @@ dependencies = [
 
 [[package]]
 name = "libra-ui-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-reflect",
  "serde",
@@ -2851,7 +2859,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "notes"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",
@@ -4024,6 +4032,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ropey"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
+dependencies = [
+ "smallvec",
+ "str_indices",
+]
+
+[[package]]
 name = "rpassword"
 version = "7.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4444,6 +4462,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "str_indices"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
+
+[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4682,7 +4706,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "todos"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "libra-build",
  "libra-components",

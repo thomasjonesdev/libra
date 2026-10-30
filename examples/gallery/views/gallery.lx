@@ -99,6 +99,11 @@
       <if test={is_panel}>
         <PanelDemo />
       </if>
+      <if test={is_safe_area}>
+        <SafeArea testId="safe">
+          <Text testId="safe-label">Inset</Text>
+        </SafeArea>
+      </if>
       <if test={is_skeleton}>
         <SkeletonDemo />
       </if>
@@ -152,6 +157,17 @@
           <Sparkline series={wave} width={180} height={44} testId="pg-spark" />
           <Text size="sm" muted>inline mini-chart</Text>
         </Row>
+      </if>
+      <if test={is_virtual_list}>
+        <Text size="sm" muted testId="picked">{picked}</Text>
+        <VirtualList items={list_rows} label="title" height={160} onPress={pickRow} testId="vlist" />
+      </if>
+      <if test={is_log_view}>
+        <LogView lines={log_lines} height={120} follow testId="log" />
+      </if>
+      <if test={is_table}>
+        <Text size="sm" muted testId="picked">{picked}</Text>
+        <Table rows={people} columns={table_cols} height={160} onRow={pickRow} onHeader={sortCol} testId="people" />
       </if>
       <if test={is_dialog}>
         <DialogDemo openDialog={openDialog} />

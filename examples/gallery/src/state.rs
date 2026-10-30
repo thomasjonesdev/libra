@@ -7,7 +7,7 @@
 
 use libra_core::{Effect, SeriesHandle, SeriesId, SourceSpec};
 
-use crate::model::{ComponentRow, DEFAULT};
+use crate::model::{log_lines, people, sample_rows, table_cols, ComponentRow, Person, SampleRow, TableCol, DEFAULT};
 use crate::Action;
 
 pub const WAVE: SeriesId = SeriesId(0);
@@ -44,6 +44,7 @@ pub struct Gallery {
     pub is_drawer: bool,
     pub is_card: bool,
     pub is_panel: bool,
+    pub is_safe_area: bool,
     pub is_alert: bool,
     pub is_skeleton: bool,
     pub is_avatar: bool,
@@ -64,6 +65,9 @@ pub struct Gallery {
     pub is_split: bool,
     pub is_chart: bool,
     pub is_sparkline: bool,
+    pub is_virtual_list: bool,
+    pub is_log_view: bool,
+    pub is_table: bool,
     /// The selected component exposes a text control (label playground).
     pub has_text_control: bool,
 
@@ -109,6 +113,12 @@ pub struct Gallery {
 
     // --- data plane: the live series Chart/Sparkline read at paint time ---
     pub wave: SeriesHandle,
+    pub list_rows: Vec<SampleRow>,
+    pub log_lines: Vec<String>,
+    pub people: Vec<Person>,
+    pub table_cols: Vec<TableCol>,
+    pub picked: String,
+    pub follow_log: bool,
 }
 
 impl Gallery {
@@ -139,6 +149,7 @@ impl Gallery {
             is_drawer: false,
             is_card: false,
             is_panel: false,
+            is_safe_area: false,
             is_alert: false,
             is_skeleton: false,
             is_avatar: false,
@@ -159,6 +170,9 @@ impl Gallery {
             is_split: false,
             is_chart: false,
             is_sparkline: false,
+            is_virtual_list: false,
+            is_log_view: false,
+            is_table: false,
             has_text_control: false,
             ctl_label: "Click me".into(),
             ctl_input: "editable".into(),
@@ -185,6 +199,12 @@ impl Gallery {
             tab_dismissed: false,
             toast_dismissed: false,
             wave: SeriesHandle::new(WAVE, 2000.0),
+            list_rows: sample_rows(),
+            log_lines: log_lines(),
+            people: people(),
+            table_cols: table_cols(),
+            picked: String::new(),
+            follow_log: true,
         };
         // Fill the §6.3 projections for frame zero (custom `init:` skips the
         // macro's default project).

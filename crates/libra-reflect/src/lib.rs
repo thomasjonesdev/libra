@@ -76,21 +76,28 @@ pub fn verifies(attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-fn has_skip(attrs: &[syn::Attribute]) -> bool {
+fn has_libra_flag(attrs: &[syn::Attribute], flag: &str) -> bool {
     attrs.iter().any(|a| {
         if !a.path().is_ident("libra") {
             return false;
         }
-        let mut skip = false;
-        // #[libra(skip)] — anything else under #[libra(...)] is reserved.
+        let mut hit = false;
         let _ = a.parse_nested_meta(|meta| {
-            if meta.path.is_ident("skip") {
-                skip = true;
+            if meta.path.is_ident(flag) {
+                hit = true;
             }
             Ok(())
         });
-        skip
+        hit
     })
+}
+
+fn has_skip(attrs: &[syn::Attribute]) -> bool {
+    has_libra_flag(attrs, "skip")
+}
+
+fn has_redact(attrs: &[syn::Attribute]) -> bool {
+    has_libra_flag(attrs, "redact")
 }
 
 fn derive_model(input: &DeriveInput, data: &syn::DataStruct) -> TokenStream {
@@ -139,6 +146,13 @@ pub(crate) fn derive_model_impl(
     });
     let names = scalar_fields
         .iter()
+        .map(|f| f.ident.as_ref().expect("named field").to_string());
+    // `#[libra(redact)]` stays bindable (unlike skip) but its value is
+    // withheld from the automation server (§16).
+    let redacted = named
+        .named
+        .iter()
+        .filter(|f| has_redact(&f.attrs))
         .map(|f| f.ident.as_ref().expect("named field").to_string());
 
     // PLAN-ACCESSORS: `{user.name}` — non-leaf scalar fields are assumed
@@ -232,6 +246,9 @@ pub(crate) fn derive_model_impl(
             }
             fn field_names() -> &'static [&'static str] {
                 &[#(#names),*]
+            }
+            fn redacted_fields() -> &'static [&'static str] {
+                &[#(#redacted),*]
             }
             fn collection(&self, path: &str) -> ::core::option::Option<::std::vec::Vec<::std::string::String>> {
                 match path {

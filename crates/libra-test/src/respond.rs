@@ -14,7 +14,8 @@
 //! test exclusively.
 
 use libra_core::{
-    ClipboardResult, Effect, FolderPick, HttpResult, KvResult, NotifyResult, ProcessResult,
+    ClipboardResult, DialogResult, Effect, FolderPick, HttpResult, KvResult, NotifyResult,
+    FilePick, OpenResult, ProcessResult, ShareResult,
 };
 
 /// A test's answer for one intercepted effect.
@@ -40,6 +41,10 @@ pub enum Reply {
     Clipboard(ClipboardResult),
     FolderPick(FolderPick),
     Notify(NotifyResult),
+    OpenUrl(OpenResult),
+    Dialog(DialogResult),
+    Share(ShareResult),
+    FilePick(FilePick),
     /// Fire a timer's action now — tests own the clock (§15.4).
     Timer,
 }
@@ -106,6 +111,11 @@ pub(crate) fn label<M>(effect: &Effect<M>) -> String {
         Effect::WindowOp { op } => format!("WindowOp({op:?})"),
         Effect::LoginItem { enabled, .. } => format!("LoginItem({enabled})"),
         Effect::LoginItemQuery { .. } => "LoginItemQuery".into(),
+        Effect::OpenUrl { url, .. } => format!("OpenUrl({url})"),
+        Effect::Dialog { spec, .. } => format!("Dialog({:?} {})", spec.kind, spec.title),
+        Effect::Share { .. } => "Share".into(),
+        Effect::PickFile { title, .. } => format!("PickFile({title})"),
+        Effect::SaveFile { name, .. } => format!("SaveFile({name:?})"),
         Effect::Process { command, .. } => {
             format!("Process({} {})", command.program, command.args.join(" "))
         }

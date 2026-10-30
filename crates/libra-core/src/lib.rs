@@ -474,16 +474,189 @@ pub enum Effect<M> {
     LoginItemQuery {
         on_done: ActionCtor<LoginItemResult, M>,
     },
+
+    /// Open `url` in the host handler (PLAN-NATIVE-INTEGRATIONS N1).
+    /// Shell-handled. `http`, `https`, and `mailto` only — other schemes
+    /// fail before any process starts. Headless acks
+    /// [`OpenResult::Unsupported`].
+    OpenUrl {
+        url: String,
+        on_done: Option<ActionCtor<OpenResult, M>>,
+    },
+
+    /// OS alert or confirm (PLAN-NATIVE-INTEGRATIONS N2). Shell-handled
+    /// on the UI thread via `rfd`. The in-tree `<Dialog>` overlay is a
+    /// different thing: it is markup and it snapshots. This effect is
+    /// the OS sheet.
+    Dialog {
+        spec: DialogSpec,
+        on_done: ActionCtor<DialogResult, M>,
+    },
+
+    /// Put text (and an optional url) on the clipboard (PLAN-NATIVE-
+    /// INTEGRATIONS N4). Desktop Libra has no share sheet; the clipboard
+    /// is the share target, through the same arboard path as
+    /// [`Effect::ClipboardSet`]. The result says `Copied`, never that a
+    /// sheet was shown.
+    Share {
+        text: String,
+        url: Option<String>,
+        on_done: Option<ActionCtor<ShareResult, M>>,
+    },
+
+    /// Native open-file sheet (PLAN-NATIVE-INTEGRATIONS). Shell-handled
+    /// on the UI thread via `rfd`, same intercept as [`Effect::PickFolder`].
+    PickFile {
+        title: String,
+        on_done: ActionCtor<FilePick, M>,
+    },
+
+    /// Native save-file sheet. `name`, when set, is a file name, not a path.
+    SaveFile {
+        title: String,
+        name: Option<String>,
+        on_done: ActionCtor<FilePick, M>,
+    },
 }
 
-/// What [`Effect::WindowOp`] asks the shell to do. One enum so later
-/// title / fullscreen / resize ops extend it instead of adding a second.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What [`Effect::WindowOp`] asks the shell to do (PLAN-RESIDENCY R3 and
+/// PLAN-NATIVE-INTEGRATIONS N6). Title, fullscreen, and resize are chrome:
+/// they do not enter the display list. A refused op is printed and not
+/// applied; there is no result action.
+#[derive(Debug, Clone, PartialEq)]
 pub enum WindowOp {
     Show,
     Hide,
     Raise,
     Quit,
+    /// OS window title. Empty, control characters, and titles over 256
+    /// characters are refused.
+    Title(String),
+    /// Borderless fullscreen on the current monitor, or back to a window.
+    /// The logical frame the app paints is unchanged until the host
+    /// reports a new size.
+    Fullscreen(bool),
+    /// Logical inner size in pixels. Non-finite, below 1, or above 16384
+    /// on either axis is refused.
+    Resize { width: f32, height: f32 },
+}
+
+/// The window chrome a [`WindowOp`] can change. The shell mirrors this
+/// onto winit. The harness records it so a test can assert the op
+/// without a window.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowChrome {
+    pub title: String,
+    pub fullscreen: bool,
+    pub width: f32,
+    pub height: f32,
+    pub visible: bool,
+    pub quit: bool,
+}
+
+impl WindowChrome {
+    pub fn at(title: impl Into<String>, width: f32, height: f32) -> Self {
+        WindowChrome {
+            title: title.into(),
+            fullscreen: false,
+            width,
+            height,
+            visible: true,
+            quit: false,
+        }
+    }
+}
+
+/// Outcome of applying one [`WindowOp`] to [`WindowChrome`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChromeChange {
+    Applied,
+    Refused(String),
+}
+
+/// Trimmed title, or why it cannot be shown in the title bar.
+pub fn window_title(raw: &str) -> Result<String, String> {
+    let title = raw.trim();
+    if title.is_empty() {
+        return Err("empty title".into());
+    }
+    if title.chars().any(|c| c.is_control()) {
+        return Err("title contains control characters".into());
+    }
+    if title.chars().count() > 256 {
+        return Err("title is too long".into());
+    }
+    Ok(title.to_string())
+}
+
+/// A dialog title, or `fallback` when [`window_title`] refuses `raw`.
+pub fn file_dialog_title(raw: &str, fallback: &str) -> String {
+    window_title(raw).unwrap_or_else(|_| fallback.to_string())
+}
+
+/// A suggested save name. A path is refused so the sheet cannot be
+/// pointed at a directory by the effect.
+pub fn file_name(raw: &str) -> Result<String, String> {
+    let name = raw.trim();
+    if name.is_empty() || name == "." || name == ".." {
+        return Err("empty file name".into());
+    }
+    if name.contains('/') || name.contains('\\') || name.chars().any(|c| c.is_control()) {
+        return Err("file name must not be a path".into());
+    }
+    Ok(name.to_string())
+}
+
+/// Logical size both axes can accept.
+pub fn window_size(width: f32, height: f32) -> Result<(f32, f32), String> {
+    if !width.is_finite()
+        || !height.is_finite()
+        || width < 1.0
+        || height < 1.0
+        || width > 16_384.0
+        || height > 16_384.0
+    {
+        return Err("size is out of range".into());
+    }
+    Ok((width, height))
+}
+
+/// Apply `op` to `chrome`. The shell calls this before touching winit,
+/// and the harness calls it when the effect is intercepted.
+pub fn apply_window_chrome(chrome: &mut WindowChrome, op: &WindowOp) -> ChromeChange {
+    match op {
+        WindowOp::Show | WindowOp::Raise => {
+            chrome.visible = true;
+            ChromeChange::Applied
+        }
+        WindowOp::Hide => {
+            chrome.visible = false;
+            ChromeChange::Applied
+        }
+        WindowOp::Quit => {
+            chrome.quit = true;
+            ChromeChange::Applied
+        }
+        WindowOp::Title(title) => match window_title(title) {
+            Ok(title) => {
+                chrome.title = title;
+                ChromeChange::Applied
+            }
+            Err(reason) => ChromeChange::Refused(reason),
+        },
+        WindowOp::Fullscreen(on) => {
+            chrome.fullscreen = *on;
+            ChromeChange::Applied
+        }
+        WindowOp::Resize { width, height } => match window_size(*width, *height) {
+            Ok((width, height)) => {
+                chrome.width = width;
+                chrome.height = height;
+                ChromeChange::Applied
+            }
+            Err(reason) => ChromeChange::Refused(reason),
+        },
+    }
 }
 
 /// How the window treats the close button (PLAN-RESIDENCY R3).
@@ -573,6 +746,152 @@ pub enum ClipboardResult {
 pub enum FolderPick {
     Picked(String),
     Cancelled,
+}
+
+/// Outcome of [`Effect::PickFile`] and [`Effect::SaveFile`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilePick {
+    Picked(String),
+    Cancelled,
+    /// No sheet on this host (the headless runtime).
+    Unsupported(String),
+    /// The request itself was refused (a path passed as a file name).
+    Failed(String),
+}
+
+/// Outcome of [`Effect::OpenUrl`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpenResult {
+    Opened,
+    /// No opener on this host (`xdg-open` missing, or the headless runtime).
+    Unsupported(String),
+    Failed(String),
+}
+
+/// Alert (one button) or confirm (accept / dismiss). PLAN-NATIVE-INTEGRATIONS N2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogKind {
+    Alert,
+    Confirm,
+}
+
+/// What [`Effect::Dialog`] asks the OS to show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogSpec {
+    pub title: String,
+    pub message: String,
+    pub kind: DialogKind,
+}
+
+impl DialogSpec {
+    pub fn alert(title: impl Into<String>, message: impl Into<String>) -> Self {
+        DialogSpec {
+            title: title.into(),
+            message: message.into(),
+            kind: DialogKind::Alert,
+        }
+    }
+
+    pub fn confirm(title: impl Into<String>, message: impl Into<String>) -> Self {
+        DialogSpec {
+            title: title.into(),
+            message: message.into(),
+            kind: DialogKind::Confirm,
+        }
+    }
+}
+
+/// Which OS button closed the sheet. The shell maps `rfd`'s result into
+/// this before [`interpret_dialog`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogButton {
+    Ok,
+    Yes,
+    No,
+    Cancel,
+    Other,
+}
+
+/// Outcome of [`Effect::Dialog`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DialogResult {
+    /// Alert's OK, or confirm's accept.
+    Accepted,
+    /// Confirm dismissed, or an alert closed without its OK button.
+    Cancelled,
+    /// No mechanism (headless, or Linux without zenity).
+    Unsupported(String),
+    Failed(String),
+}
+
+/// Outcome of [`Effect::Share`]. `Copied` means the clipboard holds the
+/// payload. There is no `Shared` variant: no OS share sheet is attached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShareResult {
+    Copied,
+    Unsupported(String),
+    Failed(String),
+}
+
+/// `http`, `https`, and `mailto` only. Rejects empty input, whitespace,
+/// and control characters so the shell can pass the string as one
+/// process argument.
+pub fn open_url_target(raw: &str) -> Result<String, OpenResult> {
+    let url = raw.trim();
+    if url.is_empty() {
+        return Err(OpenResult::Failed("empty url".into()));
+    }
+    if url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return Err(OpenResult::Failed(
+            "url contains whitespace or control characters".into(),
+        ));
+    }
+    let scheme = url.split_once(':').map(|(s, _)| s).unwrap_or("");
+    if !matches!(scheme, "http" | "https" | "mailto") {
+        return Err(OpenResult::Failed(format!(
+            "scheme '{scheme}' is not openable"
+        )));
+    }
+    if matches!(scheme, "http" | "https") && !url[scheme.len()..].starts_with("://") {
+        return Err(OpenResult::Failed("url is missing '://'".into()));
+    }
+    if scheme == "mailto" && url.len() == "mailto:".len() {
+        return Err(OpenResult::Failed("empty mailto".into()));
+    }
+    Ok(url.to_string())
+}
+
+/// Clipboard text for [`Effect::Share`]. A url is checked with
+/// [`open_url_target`]. Text and url together are joined with a newline.
+pub fn share_payload(text: &str, url: Option<&str>) -> Result<String, ShareResult> {
+    let text = text.trim();
+    let url = url.map(str::trim).filter(|s| !s.is_empty());
+    if let Some(url) = url {
+        open_url_target(url).map_err(|e| match e {
+            OpenResult::Unsupported(s) => ShareResult::Unsupported(s),
+            OpenResult::Failed(s) => ShareResult::Failed(s),
+            OpenResult::Opened => ShareResult::Failed("internal".into()),
+        })?;
+    }
+    match (text.is_empty(), url) {
+        (true, None) => Err(ShareResult::Failed("empty share".into())),
+        (false, None) => Ok(text.to_string()),
+        (true, Some(url)) => Ok(url.to_string()),
+        (false, Some(url)) => Ok(format!("{text}\n{url}")),
+    }
+}
+
+/// Map the button the OS returned. An alert's OK and a confirm's accept
+/// are [`DialogResult::Accepted`]. A confirm's other buttons are
+/// [`DialogResult::Cancelled`]. An alert closed from the window chrome
+/// is also `Cancelled` — the sheet was shown, and the app decides
+/// whether that counts.
+pub fn interpret_dialog(kind: DialogKind, button: DialogButton) -> DialogResult {
+    match (kind, button) {
+        (DialogKind::Alert, DialogButton::Ok | DialogButton::Yes) => DialogResult::Accepted,
+        (DialogKind::Confirm, DialogButton::Ok | DialogButton::Yes) => DialogResult::Accepted,
+        _ => DialogResult::Cancelled,
+    }
 }
 
 /// Equality over the effect's *data*. Ctor fields compare by presence
@@ -688,6 +1007,42 @@ impl<M: PartialEq> PartialEq for Effect<M> {
             (Effect::WindowOp { op: a }, Effect::WindowOp { op: b }) => a == b,
             (Effect::LoginItem { enabled: a, .. }, Effect::LoginItem { enabled: b, .. }) => a == b,
             (Effect::LoginItemQuery { .. }, Effect::LoginItemQuery { .. }) => true,
+            (
+                Effect::OpenUrl {
+                    url: ua,
+                    on_done: da,
+                },
+                Effect::OpenUrl {
+                    url: ub,
+                    on_done: db,
+                },
+            ) => ua == ub && da.is_some() == db.is_some(),
+            (Effect::Dialog { spec: a, .. }, Effect::Dialog { spec: b, .. }) => a == b,
+            (
+                Effect::Share {
+                    text: ta,
+                    url: ua,
+                    on_done: da,
+                },
+                Effect::Share {
+                    text: tb,
+                    url: ub,
+                    on_done: db,
+                },
+            ) => ta == tb && ua == ub && da.is_some() == db.is_some(),
+            (Effect::PickFile { title: a, .. }, Effect::PickFile { title: b, .. }) => a == b,
+            (
+                Effect::SaveFile {
+                    title: ta,
+                    name: na,
+                    ..
+                },
+                Effect::SaveFile {
+                    title: tb,
+                    name: nb,
+                    ..
+                },
+            ) => ta == tb && na == nb,
             _ => false,
         }
     }
@@ -820,6 +1175,75 @@ impl<M> Effect<M> {
     }
     pub fn login_item_query(on_done: ActionCtor<LoginItemResult, M>) -> Self {
         Effect::LoginItemQuery { on_done }
+    }
+    pub fn open_url(url: impl Into<String>) -> Self {
+        Effect::OpenUrl {
+            url: url.into(),
+            on_done: None,
+        }
+    }
+    pub fn open_url_acked(url: impl Into<String>, on_done: ActionCtor<OpenResult, M>) -> Self {
+        Effect::OpenUrl {
+            url: url.into(),
+            on_done: Some(on_done),
+        }
+    }
+    pub fn dialog(spec: DialogSpec, on_done: ActionCtor<DialogResult, M>) -> Self {
+        Effect::Dialog { spec, on_done }
+    }
+    pub fn share(text: impl Into<String>) -> Self {
+        Effect::Share {
+            text: text.into(),
+            url: None,
+            on_done: None,
+        }
+    }
+    pub fn share_url(text: impl Into<String>, url: impl Into<String>) -> Self {
+        Effect::Share {
+            text: text.into(),
+            url: Some(url.into()),
+            on_done: None,
+        }
+    }
+    pub fn share_acked(
+        text: impl Into<String>,
+        url: Option<String>,
+        on_done: ActionCtor<ShareResult, M>,
+    ) -> Self {
+        Effect::Share {
+            text: text.into(),
+            url,
+            on_done: Some(on_done),
+        }
+    }
+    pub fn pick_file(on_done: ActionCtor<FilePick, M>) -> Self {
+        Effect::PickFile {
+            title: "Open".into(),
+            on_done,
+        }
+    }
+    pub fn pick_file_titled(title: impl Into<String>, on_done: ActionCtor<FilePick, M>) -> Self {
+        Effect::PickFile {
+            title: title.into(),
+            on_done,
+        }
+    }
+    pub fn save_file(on_done: ActionCtor<FilePick, M>) -> Self {
+        Effect::SaveFile {
+            title: "Save".into(),
+            name: None,
+            on_done,
+        }
+    }
+    pub fn save_file_as(
+        name: impl Into<String>,
+        on_done: ActionCtor<FilePick, M>,
+    ) -> Self {
+        Effect::SaveFile {
+            title: "Save".into(),
+            name: Some(name.into()),
+            on_done,
+        }
     }
 }
 
@@ -1030,6 +1454,58 @@ pub fn collection_row_opaque(item: &impl std::fmt::Display) -> CollectionRow {
     CollectionRow::opaque(item.to_string())
 }
 
+/// One cell of a row: the named field when present, otherwise the row's
+/// whole Display value. Shared by both view engines (§6.4) so a
+/// `<VirtualList label>` and a `<Table>` cell resolve the same way.
+pub fn row_field(row: &CollectionRow, field: Option<&str>) -> String {
+    match field {
+        Some(name) => row
+            .fields
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| row.whole.clone()),
+        None => row.whole.clone(),
+    }
+}
+
+/// Labels and press args for `<VirtualList>` / `<LogView>` (§7.1).
+/// `label` names a row field; `None` uses the whole value.
+pub fn virtual_rows(rows: &[CollectionRow], label: Option<&str>) -> (Vec<String>, Vec<String>) {
+    let labels = rows.iter().map(|r| row_field(r, label)).collect();
+    let args = rows.iter().map(|r| r.whole.clone()).collect();
+    (labels, args)
+}
+
+/// One `<Table>` column, resolved from a state collection of
+/// `{ key, title, width }` rows (§7.1). Width is the field's Display
+/// text parsed as a number; a missing or non-numeric width is 120.
+pub fn table_column(row: &CollectionRow) -> (String, String, f32) {
+    let key = row_field(row, Some("key"));
+    let title = row_field(row, Some("title"));
+    let width = row_field(row, Some("width")).parse::<f32>().unwrap_or(120.0);
+    (key, title, width)
+}
+
+/// Table body: one cell string per column, in column order, plus the
+/// row's whole value as the press arg (§7.1).
+pub fn table_matrix(
+    rows: &[CollectionRow],
+    columns: &[(String, String, f32)],
+) -> (Vec<Vec<String>>, Vec<String>) {
+    let cells = rows
+        .iter()
+        .map(|row| {
+            columns
+                .iter()
+                .map(|(key, _, _)| row_field(row, Some(key)))
+                .collect()
+        })
+        .collect();
+    let args = rows.iter().map(|r| r.whole.clone()).collect();
+    (cells, args)
+}
+
 /// State reflection: how markup bindings resolve against the state.
 /// Implemented by `#[derive(LibraReflect)]` on the State struct
 /// (Display fields become bindable; `#[libra(skip)]` excludes one), or
@@ -1046,6 +1522,13 @@ pub trait ReflectState {
 
     /// Every bindable field name (diagnostics, automation schema).
     fn field_names() -> &'static [&'static str];
+
+    /// Bindable fields whose values must not leave the process on the
+    /// automation server (§16). `#[libra(redact)]` fills this. The
+    /// default is empty, so existing `ReflectState` impls stay valid.
+    fn redacted_fields() -> &'static [&'static str] {
+        &[]
+    }
 
     /// Resolve an iterable binding path (`<for each={path}>`, §6.2) to
     /// each element's display text, in order. `None` means the path
@@ -1795,5 +2278,172 @@ mod rehydrate_tests {
     fn snapshot_object_rejects_non_objects() {
         assert!(snapshot_object("[]").is_err());
         assert!(snapshot_object("not json").is_err());
+    }
+}
+
+#[cfg(test)]
+mod platform_effect_tests {
+    use super::{
+        apply_window_chrome, file_name, interpret_dialog, open_url_target, share_payload,
+        window_size, window_title, ChromeChange, DialogButton, DialogKind, DialogResult,
+        DialogSpec, Effect, FilePick, OpenResult, ShareResult, WindowChrome, WindowOp,
+    };
+
+    fn opened(_: OpenResult) -> () {}
+    fn answered(_: DialogResult) -> () {}
+    fn shared(_: ShareResult) -> () {}
+
+    #[test]
+    fn open_url_allows_http_https_and_mailto() {
+        assert_eq!(
+            open_url_target("  https://example.com/a?b=1&c=2  ").unwrap(),
+            "https://example.com/a?b=1&c=2"
+        );
+        assert_eq!(open_url_target("mailto:a@b.test").unwrap(), "mailto:a@b.test");
+        assert!(matches!(
+            open_url_target("file:///etc/passwd"),
+            Err(OpenResult::Failed(_))
+        ));
+        assert!(matches!(open_url_target(""), Err(OpenResult::Failed(_))));
+        assert!(matches!(
+            open_url_target("https://example.com/a b"),
+            Err(OpenResult::Failed(_))
+        ));
+        assert!(matches!(
+            open_url_target("javascript:alert(1)"),
+            Err(OpenResult::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn share_payload_joins_text_and_url_and_rejects_a_bad_url() {
+        assert_eq!(share_payload("see this", None).unwrap(), "see this");
+        assert_eq!(
+            share_payload("see this", Some("https://example.com")).unwrap(),
+            "see this\nhttps://example.com"
+        );
+        assert_eq!(
+            share_payload("  ", Some("https://example.com")).unwrap(),
+            "https://example.com"
+        );
+        assert!(matches!(
+            share_payload("", None),
+            Err(ShareResult::Failed(_))
+        ));
+        assert!(matches!(
+            share_payload("note", Some("file:///tmp/x")),
+            Err(ShareResult::Failed(_))
+        ));
+    }
+
+    #[test]
+    fn dialog_buttons_map_to_accepted_or_cancelled() {
+        assert_eq!(
+            interpret_dialog(DialogKind::Alert, DialogButton::Ok),
+            DialogResult::Accepted
+        );
+        assert_eq!(
+            interpret_dialog(DialogKind::Alert, DialogButton::Cancel),
+            DialogResult::Cancelled
+        );
+        assert_eq!(
+            interpret_dialog(DialogKind::Confirm, DialogButton::Yes),
+            DialogResult::Accepted
+        );
+        assert_eq!(
+            interpret_dialog(DialogKind::Confirm, DialogButton::No),
+            DialogResult::Cancelled
+        );
+    }
+
+    #[test]
+    fn effect_equality_ignores_ctor_identity() {
+        let a = Effect::<()>::open_url_acked("https://example.com", opened);
+        let b = Effect::open_url("https://example.com");
+        assert_ne!(a, b, "an ack ctor is part of the description");
+        assert_eq!(
+            Effect::open_url_acked("https://example.com", opened),
+            Effect::open_url_acked("https://example.com", opened)
+        );
+        assert_eq!(
+            Effect::dialog(DialogSpec::confirm("Quit", "Leave?"), answered),
+            Effect::dialog(DialogSpec::confirm("Quit", "Leave?"), answered)
+        );
+        assert_ne!(
+            Effect::dialog(DialogSpec::alert("Hi", "There"), answered),
+            Effect::dialog(DialogSpec::confirm("Hi", "There"), answered)
+        );
+        assert_eq!(
+            Effect::share_acked("note", Some("https://example.com".into()), shared),
+            Effect::share_acked("note", Some("https://example.com".into()), shared)
+        );
+        assert_ne!(
+            Effect::share("note"),
+            Effect::share_acked("note", None, shared)
+        );
+    }
+
+    fn picked(_: FilePick) -> () {}
+
+    #[test]
+    fn file_names_are_not_paths_and_titles_are_one_line() {
+        assert_eq!(file_name(" notes.md ").unwrap(), "notes.md");
+        assert!(file_name("../secret").is_err());
+        assert!(file_name("a/b").is_err());
+        assert!(file_name("").is_err());
+        assert_eq!(window_title("  Libra  ").unwrap(), "Libra");
+        assert!(window_title("line\nbreak").is_err());
+        assert!(window_title("").is_err());
+        assert_eq!(window_size(800.0, 600.0).unwrap(), (800.0, 600.0));
+        assert!(window_size(0.0, 10.0).is_err());
+        assert!(window_size(f32::NAN, 10.0).is_err());
+    }
+
+    #[test]
+    fn window_chrome_applies_title_fullscreen_and_resize() {
+        let mut chrome = WindowChrome::at("Libra", 800.0, 600.0);
+        assert_eq!(
+            apply_window_chrome(&mut chrome, &WindowOp::Title("  Notes  ".into())),
+            ChromeChange::Applied
+        );
+        assert_eq!(chrome.title, "Notes");
+        assert_eq!(
+            apply_window_chrome(&mut chrome, &WindowOp::Title("\n".into())),
+            ChromeChange::Refused("empty title".into())
+        );
+        assert_eq!(chrome.title, "Notes");
+        apply_window_chrome(&mut chrome, &WindowOp::Fullscreen(true));
+        assert!(chrome.fullscreen);
+        apply_window_chrome(
+            &mut chrome,
+            &WindowOp::Resize {
+                width: 1024.0,
+                height: 768.0,
+            },
+        );
+        assert_eq!((chrome.width, chrome.height), (1024.0, 768.0));
+        assert!(matches!(
+            apply_window_chrome(
+                &mut chrome,
+                &WindowOp::Resize {
+                    width: -1.0,
+                    height: 10.0,
+                }
+            ),
+            ChromeChange::Refused(_)
+        ));
+        assert_eq!((chrome.width, chrome.height), (1024.0, 768.0));
+        apply_window_chrome(&mut chrome, &WindowOp::Hide);
+        assert!(!chrome.visible);
+        apply_window_chrome(&mut chrome, &WindowOp::Quit);
+        assert!(chrome.quit);
+        assert_eq!(
+            Effect::pick_file_titled("Open note", picked),
+            Effect::pick_file_titled("Open note", picked)
+        );
+        assert_ne!(
+            Effect::save_file(picked),
+            Effect::save_file_as("note.md", picked)
+        );
     }
 }

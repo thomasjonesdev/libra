@@ -1,9 +1,40 @@
 //! libra-text — the text-entry editing core: a pure state machine
 //! (`EditState × EditOp → EditState`) with per-field undo/redo grouped at word
 //! boundaries. No clocks, platform, or fonts — components, the harness, and
-//! (later) IME all drive this same machine.
+//! IME all drive this same machine. A buffer at or above [`ROPE_THRESHOLD`]
+//! keeps a `ropey` rope so undo clones stay cheap (§10.1).
 //!
 //! Architecture: ARCHITECTURE.md §10.1 (text entry).
+
+/// Bytes at which the live buffer also keeps a rope. Below this, the
+/// buffer is a `String` and undo stores strings, which is the right cost
+/// for ordinary fields.
+pub const ROPE_THRESHOLD: usize = 64 * 1024;
+
+/// Uncommitted IME composition. It is not part of [`EditState::text`]
+/// until [`EditOp::Commit`]. `at` is a byte offset in the committed text;
+/// `replaces` is how many committed bytes (a selection) the composition
+/// covers. `cursor` is a byte range inside `text` (`None` hides the caret).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Preedit {
+    pub text: String,
+    pub at: usize,
+    pub replaces: usize,
+    pub cursor: Option<(usize, usize)>,
+}
+
+impl Preedit {
+    /// Committed text with this composition spliced in at `at`.
+    pub fn splice(&self, committed: &str) -> String {
+        let at = self.at.min(committed.len());
+        let end = (self.at + self.replaces).min(committed.len());
+        let mut out = String::with_capacity(committed.len() - (end - at) + self.text.len());
+        out.push_str(&committed[..at]);
+        out.push_str(&self.text);
+        out.push_str(&committed[end..]);
+        out
+    }
+}
 
 /// Caret + selection over a single-line string. `caret` and `anchor`
 /// are byte indices on char boundaries; `caret == anchor` means no
@@ -13,10 +44,23 @@ pub struct EditState {
     text: String,
     caret: usize,
     anchor: usize,
-    undo: Vec<(String, usize, usize)>,
-    redo: Vec<(String, usize, usize)>,
+    undo: Vec<Snap>,
+    redo: Vec<Snap>,
     /// Last op class, for undo grouping (word-boundary snapshots).
     last_kind: OpKind,
+    /// Char column remembered across Up/Down so a short line does not
+    /// forget the column the caret came from (§10.1 sticky column).
+    preferred_col: Option<usize>,
+    preedit: Option<Preedit>,
+    /// Present once `text` reaches [`ROPE_THRESHOLD`]. Undo clones this
+    /// instead of the string.
+    rope: Option<ropey::Rope>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Snap {
+    Small(String, usize, usize),
+    Rope(ropey::Rope, usize, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,10 +89,11 @@ pub enum EditOp {
     Home(bool),
     End(bool),
     /// Multi-line caret navigation (§10.1, Textarea): previous/next
-    /// line at the same column (char offset from line start), clamped
-    /// to the target line's length. First line Up → text start; last
-    /// line Down → text end. Sticky column is a later refinement —
-    /// the column is recomputed from the caret each move.
+    /// line at the remembered column (char offset from line start),
+    /// clamped to the target line's length. First line Up → text start;
+    /// last line Down → text end. The column sticks until a non-vertical
+    /// edit. Visual-line movement is the shell's job: this core has no
+    /// font metrics.
     Up(bool),
     Down(bool),
     SelectAll,
@@ -60,6 +105,12 @@ pub enum EditOp {
     SetCaret { byte: usize, select: bool },
     Undo,
     Redo,
+    /// Show or replace the uncommitted composition. An empty `text`
+    /// clears it and leaves the buffer alone.
+    Preedit { text: String, cursor: Option<(usize, usize)> },
+    /// Insert `text` in place of the composition (or the selection) as
+    /// one undo step.
+    Commit(String),
 }
 
 impl EditState {
@@ -83,9 +134,39 @@ impl EditState {
         &self.text[self.selection()]
     }
 
+    pub fn preedit(&self) -> Option<&Preedit> {
+        self.preedit.as_ref()
+    }
+
+    /// Caret in the spliced display string. Equals [`Self::caret`] when
+    /// nothing is composing.
+    pub fn display_caret(&self) -> usize {
+        match &self.preedit {
+            Some(p) => {
+                let within = p
+                    .cursor
+                    .map(|(_, end)| clamp_boundary(&p.text, end))
+                    .unwrap_or(p.text.len());
+                p.at + within
+            }
+            None => self.caret,
+        }
+    }
+
+    /// An IME may ask for the caret to stay hidden during composition.
+    pub fn show_caret(&self) -> bool {
+        self.preedit.as_ref().map(|p| p.cursor.is_some()).unwrap_or(true)
+    }
+
     /// The state machine. Every editing affordance — keyboard, harness
-    /// verbs, later IME commit — reduces to these transitions.
+    /// verbs, IME commit — reduces to these transitions.
     pub fn apply(&mut self, op: EditOp) {
+        if !matches!(op, EditOp::Up(_) | EditOp::Down(_)) {
+            self.preferred_col = None;
+        }
+        if !matches!(op, EditOp::Preedit { .. } | EditOp::Commit(_)) {
+            self.commit_preedit_for_edit();
+        }
         match op {
             EditOp::Insert(ch) => {
                 self.snapshot_if(!(self.last_kind == OpKind::InsertWord && !boundary_char(ch)));
@@ -161,27 +242,29 @@ impl EditState {
             EditOp::Up(select) => {
                 self.last_kind = OpKind::Other;
                 let start = line_start(&self.text, self.caret);
+                let col = self.column_from(start);
                 let to = if start == 0 {
                     0 // first line: platform convention is caret to start
                 } else {
-                    let col = self.text[start..self.caret].chars().count();
                     let prev_start = line_start(&self.text, start - 1);
                     advance_columns(&self.text, prev_start, start - 1, col)
                 };
+                self.preferred_col = Some(col);
                 self.move_caret(to, select);
             }
             EditOp::Down(select) => {
                 self.last_kind = OpKind::Other;
                 let end = line_end(&self.text, self.caret);
+                let start = line_start(&self.text, self.caret);
+                let col = self.column_from(start);
                 let to = if end == self.text.len() {
                     self.text.len() // last line: caret to end
                 } else {
-                    let start = line_start(&self.text, self.caret);
-                    let col = self.text[start..self.caret].chars().count();
                     let next_start = end + 1;
                     let next_end = line_end(&self.text, next_start);
                     advance_columns(&self.text, next_start, next_end, col)
                 };
+                self.preferred_col = Some(col);
                 self.move_caret(to, select);
             }
             EditOp::SelectAll => {
@@ -207,37 +290,123 @@ impl EditState {
             }
             EditOp::Undo => {
                 self.last_kind = OpKind::Other;
-                if let Some((text, caret, anchor)) = self.undo.pop() {
-                    self.redo.push((self.text.clone(), self.caret, self.anchor));
-                    self.text = text;
-                    self.caret = caret;
-                    self.anchor = anchor;
+                self.preedit = None;
+                if let Some(snap) = self.undo.pop() {
+                    self.redo.push(self.capture());
+                    self.restore(snap);
                 }
             }
             EditOp::Redo => {
                 self.last_kind = OpKind::Other;
-                if let Some((text, caret, anchor)) = self.redo.pop() {
-                    self.undo.push((self.text.clone(), self.caret, self.anchor));
-                    self.text = text;
-                    self.caret = caret;
-                    self.anchor = anchor;
+                self.preedit = None;
+                if let Some(snap) = self.redo.pop() {
+                    self.undo.push(self.capture());
+                    self.restore(snap);
                 }
+            }
+            EditOp::Preedit { text, cursor } => {
+                self.last_kind = OpKind::Other;
+                if text.is_empty() {
+                    self.preedit = None;
+                    return;
+                }
+                let cursor = cursor.map(|(a, b)| {
+                    (clamp_boundary(&text, a), clamp_boundary(&text, b))
+                });
+                if let Some(existing) = &mut self.preedit {
+                    existing.text = text;
+                    existing.cursor = cursor;
+                } else {
+                    let at = self.selection().start;
+                    let replaces = self.selection().end - at;
+                    self.preedit = Some(Preedit { text, at, replaces, cursor });
+                }
+            }
+            EditOp::Commit(text) => {
+                if let Some(p) = self.preedit.take() {
+                    self.caret = p.at;
+                    self.anchor = p.at + p.replaces;
+                }
+                self.last_kind = OpKind::Other;
+                self.snapshot_if(true);
+                self.replace_selection(&text);
+            }
+        }
+    }
+
+    /// A real edit during composition commits the preedit first, as its
+    /// own undo step, then the edit proceeds.
+    fn commit_preedit_for_edit(&mut self) {
+        let Some(p) = self.preedit.take() else {
+            return;
+        };
+        if p.text.is_empty() {
+            return;
+        }
+        self.caret = p.at;
+        self.anchor = p.at + p.replaces;
+        self.snapshot_if(true);
+        self.last_kind = OpKind::Other;
+        self.replace_selection(&p.text);
+    }
+
+    fn column_from(&self, line_start: usize) -> usize {
+        self.preferred_col
+            .unwrap_or_else(|| self.text[line_start..self.caret].chars().count())
+    }
+
+    fn capture(&self) -> Snap {
+        if let Some(rope) = &self.rope {
+            Snap::Rope(rope.clone(), self.caret, self.anchor)
+        } else {
+            Snap::Small(self.text.clone(), self.caret, self.anchor)
+        }
+    }
+
+    fn restore(&mut self, snap: Snap) {
+        match snap {
+            Snap::Small(text, caret, anchor) => {
+                self.text = text;
+                self.rope = None;
+                self.caret = caret;
+                self.anchor = anchor;
+            }
+            Snap::Rope(rope, caret, anchor) => {
+                self.text = rope.to_string();
+                self.caret = caret.min(self.text.len());
+                self.anchor = anchor.min(self.text.len());
+                self.rope = Some(rope);
             }
         }
     }
 
     fn snapshot_if(&mut self, cond: bool) {
         if cond {
-            self.undo.push((self.text.clone(), self.caret, self.anchor));
+            self.undo.push(self.capture());
             self.redo.clear();
         }
     }
 
     fn replace_selection(&mut self, insert: &str) {
         let sel = self.selection();
+        if let Some(rope) = &mut self.rope {
+            let start = rope.byte_to_char(sel.start);
+            let end = rope.byte_to_char(sel.end);
+            rope.remove(start..end);
+            if !insert.is_empty() {
+                rope.insert(start, insert);
+            }
+        }
         self.text.replace_range(sel.clone(), insert);
         self.caret = sel.start + insert.len();
         self.anchor = self.caret;
+        if self.text.len() >= ROPE_THRESHOLD {
+            if self.rope.is_none() {
+                self.rope = Some(ropey::Rope::from_str(&self.text));
+            }
+        } else {
+            self.rope = None;
+        }
     }
 
     fn move_caret(&mut self, to: usize, select: bool) {
@@ -530,7 +699,11 @@ mod tests {
         e.apply(EditOp::Down(false));
         assert_eq!(e.caret(), 18, "line 2 has 2 chars: clamps to its end ('ab|')");
         e.apply(EditOp::Down(false));
-        assert_eq!(e.caret(), 21, "column re-derived from caret (col 2), not sticky");
+        assert_eq!(e.caret(), 29, "sticky column 10 lands on the long third line");
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), 18, "the short line clamps again");
+        e.apply(EditOp::Up(false));
+        assert_eq!(e.caret(), 10, "the remembered column is restored");
     }
 
     #[test]
@@ -587,6 +760,68 @@ mod tests {
         e.apply(EditOp::SetCaret { byte: 8, select: false });
         e.apply(EditOp::SelectWord);
         assert_eq!(e.selected_text(), "world");
+    }
+
+    #[test]
+    fn preedit_stays_out_of_the_buffer_until_commit() {
+        let mut e = typed("go");
+        e.apply(EditOp::Preedit { text: "あ".into(), cursor: Some((3, 3)) });
+        assert_eq!(e.text(), "go");
+        assert_eq!(e.preedit().map(|p| p.text.as_str()), Some("あ"));
+        assert_eq!(e.display_caret(), 2 + 3);
+        e.apply(EditOp::Commit("あ".into()));
+        assert!(e.preedit().is_none());
+        assert_eq!(e.text(), "goあ");
+        e.apply(EditOp::Undo);
+        assert_eq!(e.text(), "go");
+    }
+
+    #[test]
+    fn an_edit_during_composition_commits_first() {
+        let mut e = typed("");
+        e.apply(EditOp::Preedit { text: "ab".into(), cursor: Some((2, 2)) });
+        e.apply(EditOp::Insert('!'));
+        assert_eq!(e.text(), "ab!");
+        e.apply(EditOp::Undo);
+        assert_eq!(e.text(), "ab");
+        e.apply(EditOp::Undo);
+        assert_eq!(e.text(), "");
+    }
+
+    #[test]
+    fn empty_preedit_clears_without_touching_text() {
+        let mut e = typed("hi");
+        e.apply(EditOp::Preedit { text: "x".into(), cursor: None });
+        assert!(!e.show_caret());
+        e.apply(EditOp::Preedit { text: String::new(), cursor: None });
+        assert!(e.preedit().is_none());
+        assert_eq!(e.text(), "hi");
+        assert!(e.show_caret());
+    }
+
+    #[test]
+    fn commit_replaces_a_selection() {
+        let mut e = typed("hello");
+        e.apply(EditOp::SelectAll);
+        e.apply(EditOp::Preedit { text: "よ".into(), cursor: Some((3, 3)) });
+        let shown = e.preedit().unwrap().splice(e.text());
+        assert_eq!(shown, "よ");
+        e.apply(EditOp::Commit("よ".into()));
+        assert_eq!(e.text(), "よ");
+    }
+
+    #[test]
+    fn a_large_paste_undos_without_keeping_the_rope_below_the_threshold() {
+        let mut e = EditState::default();
+        let big = "x".repeat(ROPE_THRESHOLD);
+        e.apply(EditOp::InsertStr(big.clone()));
+        assert_eq!(e.text().len(), ROPE_THRESHOLD);
+        e.apply(EditOp::Insert('!'));
+        assert_eq!(e.text().len(), ROPE_THRESHOLD + 1);
+        e.apply(EditOp::Undo);
+        assert_eq!(e.text(), big);
+        e.apply(EditOp::Undo);
+        assert_eq!(e.text(), "");
     }
 
     #[test]

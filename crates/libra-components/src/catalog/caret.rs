@@ -53,6 +53,33 @@ pub fn caret_byte_at(
     }
 }
 
+/// Move `dir` visual rows (−1 / +1) inside a textarea. `None` when
+/// `item` is not a textarea. The returned x is the sticky column.
+pub fn textarea_vertical_caret(
+    item: &Item,
+    caret: usize,
+    dir: i32,
+    sticky_x: Option<f32>,
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+) -> Option<(usize, Option<f32>)> {
+    match &item.kind {
+        ItemKind::Textarea { value, px, markdown, .. } => {
+            let max_w = (item.rect.w - 2.0 * theme.btn_pad_x).max(0.0);
+            if *markdown {
+                Some(super::markdown_textarea::vertical_caret(
+                    value, max_w, *px, caret, dir, sticky_x, measurer, theme,
+                ))
+            } else {
+                Some(textarea::vertical_caret(
+                    value, max_w, *px, caret, dir, sticky_x, measurer,
+                ))
+            }
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +124,7 @@ mod tests {
                 px: 14.0,
                 markdown: false,
                 on_wikilink: None,
+                keyboard: Keyboard::Text,
             },
             Rect::new(0.0, 0.0, 200.0, 80.0),
         );
@@ -115,6 +143,7 @@ mod tests {
                 px: 14.0,
                 markdown: false,
                 on_wikilink: None,
+                keyboard: Keyboard::Text,
             },
             Rect::new(0.0, 0.0, 200.0, 80.0),
         );
@@ -136,6 +165,7 @@ mod tests {
                 on_submit: None,
                 variant: InputVariant::Field,
                 bold: false,
+                keyboard: Keyboard::Text,
             },
             Rect::new(0.0, 0.0, 200.0, 32.0),
         );

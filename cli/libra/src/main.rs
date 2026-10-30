@@ -7,8 +7,8 @@
 //!   `#[libra::actions]`) — wiring that into `libra check` itself is
 //!   still open.
 //! - `libra dev` — run a Libra app crate in debug mode (§18.2's
-//!   interpreter + view hot reload). Inspector, automation server, and
-//!   managed `libra.toml` manifests are still open (§16, §18.4).
+//!   interpreter + view hot reload), set `LIBRA_AUTOMATION=1` for the
+//!   §16 socket, and open the inspector window (§18.4).
 //! - `libra build` — release binary with codegen views + LTO (PLAN-PACKAGE P1).
 //! - `libra package` — platform bundles via cargo-packager (PLAN-PACKAGE P3–P6).
 //!   This stays the local backup: it never calls GitHub.
@@ -18,7 +18,9 @@
 mod app;
 mod build;
 mod dev;
+mod docs;
 mod icon;
+mod lsp;
 mod manifest;
 mod new;
 mod package;
@@ -39,6 +41,8 @@ fn main() -> ExitCode {
         Some((cmd, rest)) if cmd == "icon" => icon::icon(rest),
         Some((cmd, rest)) if cmd == "publish" => publish::publish(rest),
         Some((cmd, rest)) if cmd == "test" => test::test(rest),
+        Some((cmd, rest)) if cmd == "lsp" => lsp::lsp(),
+        Some((cmd, rest)) if cmd == "docs" => docs::docs(rest),
         _ => {
             eprintln!("usage:");
             eprintln!("  libra new <path> [--name crate] [--path checkout | --git url]");
@@ -49,6 +53,9 @@ fn main() -> ExitCode {
             eprintln!("  libra package [-p crate] [--target macos|windows|linux] [--format …]  platform bundle (local backup)");
             eprintln!("  libra publish [-p crate] [--ci | --no-upload | --from-dist | --keygen]");
             eprintln!("  libra test [path] [filter…]   run tests (no path = workspace)");
+            eprintln!("  libra test --replay <file.lreplay>   replay one session (§15.6)");
+            eprintln!("  libra lsp                     diagnostics language server (stdio)");
+            eprintln!("  libra docs [out]              static gallery site");
             ExitCode::from(2)
         }
     }

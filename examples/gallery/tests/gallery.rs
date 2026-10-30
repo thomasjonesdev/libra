@@ -408,6 +408,22 @@ fn snapshot_workbench_card_and_panel_dark() {
 }
 
 #[test]
+fn snapshot_workbench_safe_area() {
+    select("libra-dark", "safe_area").assert_snapshot("workbench_safe_area_dark");
+    select("libra-light", "safe_area").assert_snapshot("workbench_safe_area_light");
+}
+
+#[test]
+fn safe_area_pads_the_edges_the_shell_publishes() {
+    let mut h = select("libra-dark", "safe_area");
+    let before = h.rect(by::test_id("safe-label"));
+    h.set_insets(libra_components::Insets { top: 28.0, right: 0.0, bottom: 0.0, left: 12.0 });
+    let after = h.rect(by::test_id("safe-label"));
+    assert!((after.1 - before.1 - 28.0).abs() < 0.5, "top {before:?} -> {after:?}");
+    assert!((after.0 - before.0 - 12.0).abs() < 0.5, "left {before:?} -> {after:?}");
+}
+
+#[test]
 fn snapshot_workbench_card_and_panel_light() {
     let mut h = select("libra-light", "card");
     h.assert_snapshot("workbench_card_light");
@@ -571,4 +587,51 @@ fn snapshot_workbench_timeline_dark() {
 #[test]
 fn snapshot_workbench_timeline_light() {
     select("libra-light", "timeline").assert_snapshot("workbench_timeline_light");
+}
+
+#[test]
+fn snapshot_workbench_virtual_list() {
+    select("libra-dark", "virtual_list").assert_snapshot("workbench_virtual_list_dark");
+    select("libra-light", "virtual_list").assert_snapshot("workbench_virtual_list_light");
+}
+
+#[test]
+fn snapshot_workbench_log_view() {
+    select("libra-dark", "log_view").assert_snapshot("workbench_log_view_dark");
+    select("libra-light", "log_view").assert_snapshot("workbench_log_view_light");
+}
+
+#[test]
+fn snapshot_workbench_table() {
+    select("libra-dark", "table").assert_snapshot("workbench_table_dark");
+    select("libra-light", "table").assert_snapshot("workbench_table_light");
+}
+
+#[test]
+fn virtual_list_scrolls_a_window_and_dispatches_the_row() {
+    let mut h = select("libra-dark", "virtual_list");
+    assert!(h.laid().items.iter().any(|i| i.semantics.text == "Row 00"));
+    assert!(!h.laid().items.iter().any(|i| i.semantics.text == "Row 20"));
+    h.click(by::text("Row 00"));
+    assert_eq!(h.state().picked, "r0");
+    h.scroll("vlist", 800.0);
+    assert!(h.laid().items.iter().any(|i| i.semantics.text == "Row 20"));
+    assert!(!h.laid().items.iter().any(|i| i.semantics.text == "Row 00"));
+}
+
+#[test]
+fn log_view_follows_the_tail() {
+    let h = select("libra-dark", "log_view");
+    assert!(h.laid().items.iter().any(|i| i.semantics.text == "tail marker"));
+    assert!(!h.laid().items.iter().any(|i| i.semantics.text == "log 00"));
+}
+
+#[test]
+fn table_header_sorts_and_row_press_dispatches() {
+    let mut h = select("libra-dark", "table");
+    h.click(by::text("Ada"));
+    assert_eq!(h.state().picked, "p0");
+    h.click(by::text("Role"));
+    assert_eq!(h.state().picked, "role");
+    assert_eq!(h.state().people[0].name, "Barbara");
 }

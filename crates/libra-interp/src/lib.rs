@@ -7,8 +7,8 @@
 //! Architecture: ARCHITECTURE.md §6.4 (one grammar, two engines).
 
 use libra_components::{
-    BoxStyle, DrawerSide, IconName, InputVariant, TextSize, Tone, TooltipPosition, Variant,
-    ViewNode,
+    BoxStyle, DrawerSide, IconName, InputVariant, Keyboard, SafeEdges, TextSize, Tone,
+    TooltipPosition, Variant, ViewNode,
 };
 use libra_core::CollectionRow;
 use libra_markup::{
@@ -1876,12 +1876,14 @@ fn element(
             let mut variant = InputVariant::Field;
             let mut size = TextSize::Md;
             let mut bold = false;
+            let mut keyboard = Keyboard::Text;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = parse_keyboard(s, a.span)?,
                     ("onSubmit", AttrValue::Ident(m)) => {
                         require_camel_case(m, a.span)?;
                         if !(scope.has_action)(m) {
@@ -1947,6 +1949,7 @@ fn element(
                 variant,
                 size,
                 bold,
+                keyboard,
                 test_id,
             })
         }
@@ -1959,12 +1962,14 @@ fn element(
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
             let mut on_submit: Option<String> = None;
+            let mut keyboard = Keyboard::Text;
             let mut test_id: Option<String> = None;
             for a in attrs {
                 match (a.name.as_str(), &a.value) {
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = parse_keyboard(s, a.span)?,
                     ("onSubmit", AttrValue::Ident(m)) => {
                         require_camel_case(m, a.span)?;
                         if !(scope.has_action)(m) {
@@ -1999,6 +2004,7 @@ fn element(
                 placeholder,
                 on_change: msg,
                 on_submit,
+                keyboard,
                 test_id,
             })
         }
@@ -2129,6 +2135,7 @@ fn element(
             let mut placeholder = String::new();
             let mut on_change: Option<(String, Span)> = None;
             let mut test_id: Option<String> = None;
+            let mut keyboard = Keyboard::Text;
             let mut markdown = false;
             let mut on_wikilink = None;
             for a in attrs {
@@ -2136,6 +2143,7 @@ fn element(
                     ("value", AttrValue::Ident(path)) => value = Some((path.clone(), a.span)),
                     ("placeholder", AttrValue::Str(s)) => placeholder = s.clone(),
                     ("onChange", AttrValue::Ident(m)) => on_change = Some((m.clone(), a.span)),
+                    ("keyboard", AttrValue::Str(s)) => keyboard = parse_keyboard(s, a.span)?,
                     ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
                     ("markdown", AttrValue::Flag) => markdown = true,
                     ("onWikilink", AttrValue::Ident(m)) => {
@@ -2166,7 +2174,39 @@ fn element(
             }
             let test_id = test_id
                 .ok_or_else(|| err(*span, "<Textarea> requires testId=\"…\" (focus identity)"))?;
-            Ok(ViewNode::Textarea { value, placeholder, on_change: msg, test_id, markdown, on_wikilink })
+            Ok(ViewNode::Textarea {
+                value,
+                placeholder,
+                on_change: msg,
+                test_id,
+                keyboard,
+                markdown,
+                on_wikilink,
+            })
+        }
+
+        // §7.1 / N5: pad by the shell insets on the named edges.
+        "SafeArea" => {
+            let mut edges = SafeEdges::ALL;
+            let mut test_id = None;
+            for a in attrs {
+                match (a.name.as_str(), &a.value) {
+                    ("edges", AttrValue::Str(s)) => {
+                        edges = SafeEdges::parse(s).ok_or_else(|| {
+                            err(
+                                a.span,
+                                format!(
+                                    "unknown edges \"{s}\" — expected a comma-separated list of top, right, bottom, left"
+                                ),
+                            )
+                        })?;
+                    }
+                    ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+                    _ => return Err(unknown_attr(name, a)),
+                }
+            }
+            let kids = resolve_children(children, scope, registry, slot_children, call_site, name, *span)?;
+            Ok(ViewNode::SafeArea { edges, children: kids, test_id })
         }
 
         // §7.1 Layout (PLAN-CATALOG wave 1): pure layout — fixed room
@@ -2326,15 +2366,176 @@ fn element(
             Ok(ViewNode::Markdown { source, skip_title, test_id, on_wikilink })
         }
 
+        "VirtualList" => virtual_list(span, attrs, children, scope),
+        "LogView" => log_view(span, attrs, children, scope),
+        "Table" => table_view(span, attrs, children, scope),
+
         "for" => Err(err(*span, "<for> is only allowed as a direct child of <Column>/<Row>")),
         "if" => Err(err(*span, "<if> is only allowed as a direct child of <Column>/<Row>")),
         "else" => Err(err(*span, "<else> is only allowed as a direct child of <if>")),
 
         other => Err(err(
             *span,
-            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
+            format!("unknown element <{other}> — available: Column, Row, Card, Panel, Scroll, SafeArea, Split, Dialog, Drawer, ContextMenu, Alert, Skeleton, Avatar, Switch, Checkbox, Radio, Slider, Tooltip, Breadcrumb, BreadcrumbItem, Pagination, Stepper, StepperItem, Timeline, TimelineItem, Text, Button, Icon, Badge, Chip, Tabs, Tab, Toast, Toolbar, StatusBar, Heading, Progress, Chart, Sparkline, Input, Search, Textarea, ListItem, Markdown, VirtualList, LogView, Table, Spacer, Separator, Frames, Interval, Stream, for, if, slot, or a registered component (§7.2)"),
         )),
     }
+}
+
+fn rows_of(scope: &Scope, path: &str, span: Span) -> Result<Vec<CollectionRow>, InterpError> {
+    (scope.collection_rows)(path).ok_or_else(|| err(span, format!("'{path}' is not a collection")))
+}
+
+fn require_str_handler(scope: &Scope, name: &str, span: Span) -> Result<(), InterpError> {
+    require_camel_case(name, span)?;
+    if !(scope.has_str_action)(name) {
+        return Err(err(
+            span,
+            format!("'{name}' is not a String-payload Action variant (need `{name}(String)`)"),
+        ));
+    }
+    Ok(())
+}
+
+/// `<VirtualList items label? height onPress? testId>` (§7.1).
+fn virtual_list(
+    span: &Span,
+    attrs: &[Attr],
+    children: &[Node],
+    scope: &Scope,
+) -> Result<ViewNode, InterpError> {
+    let mut items: Option<(String, Span)> = None;
+    let mut label: Option<String> = None;
+    let mut height: Option<f32> = None;
+    let mut on_press: Option<String> = None;
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("items", AttrValue::Ident(p)) => items = Some((p.clone(), a.span)),
+            ("label", AttrValue::Str(s)) => label = Some(s.clone()),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("onPress", AttrValue::Ident(m)) => {
+                require_str_handler(scope, m, a.span)?;
+                on_press = Some(m.clone());
+            }
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("VirtualList", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(*span, "<VirtualList> takes no children"));
+    }
+    let (path, pspan) = items.ok_or_else(|| err(*span, "<VirtualList> requires items={someCollection}"))?;
+    let rows = rows_of(scope, &path, pspan)?;
+    let (labels, args) = libra_core::virtual_rows(&rows, label.as_deref());
+    let height = height.ok_or_else(|| err(*span, "<VirtualList> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(*span, "<VirtualList> requires testId=\"…\""))?;
+    Ok(ViewNode::VirtualList { rows: labels, args, height, on_press, test_id })
+}
+
+/// `<LogView lines height follow? testId>` (§7.1).
+fn log_view(
+    span: &Span,
+    attrs: &[Attr],
+    children: &[Node],
+    scope: &Scope,
+) -> Result<ViewNode, InterpError> {
+    let mut lines: Option<(String, Span)> = None;
+    let mut height: Option<f32> = None;
+    let mut follow = false;
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("lines", AttrValue::Ident(p)) => lines = Some((p.clone(), a.span)),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("follow", AttrValue::Flag) => follow = true,
+            ("follow", AttrValue::Ident(p)) => {
+                follow = (scope.field)(p)
+                    .ok_or_else(|| err(a.span, format!("no binding '{p}' in scope")))?
+                    == "true";
+            }
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("LogView", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(*span, "<LogView> takes no children"));
+    }
+    let (path, pspan) = lines.ok_or_else(|| err(*span, "<LogView> requires lines={someCollection}"))?;
+    let rows = rows_of(scope, &path, pspan)?;
+    let (labels, _) = libra_core::virtual_rows(&rows, None);
+    let height = height.ok_or_else(|| err(*span, "<LogView> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(*span, "<LogView> requires testId=\"…\""))?;
+    Ok(ViewNode::LogView { lines: labels, height, follow, test_id })
+}
+
+/// `<Table rows columns height onRow? onHeader? testId>` (§7.1).
+fn table_view(
+    span: &Span,
+    attrs: &[Attr],
+    children: &[Node],
+    scope: &Scope,
+) -> Result<ViewNode, InterpError> {
+    let mut rows_path: Option<(String, Span)> = None;
+    let mut cols_path: Option<(String, Span)> = None;
+    let mut height: Option<f32> = None;
+    let mut on_row: Option<String> = None;
+    let mut on_header: Option<String> = None;
+    let mut test_id: Option<String> = None;
+    for a in attrs {
+        match (a.name.as_str(), &a.value) {
+            ("rows", AttrValue::Ident(p)) => rows_path = Some((p.clone(), a.span)),
+            ("columns", AttrValue::Ident(p)) => cols_path = Some((p.clone(), a.span)),
+            ("height", AttrValue::Num(v)) => height = Some(*v),
+            ("onRow", AttrValue::Ident(m)) => {
+                require_str_handler(scope, m, a.span)?;
+                on_row = Some(m.clone());
+            }
+            ("onHeader", AttrValue::Ident(m)) => {
+                require_str_handler(scope, m, a.span)?;
+                on_header = Some(m.clone());
+            }
+            ("testId", AttrValue::Str(s)) => test_id = Some(s.clone()),
+            _ => return Err(unknown_attr("Table", a)),
+        }
+    }
+    if !children.is_empty() {
+        return Err(err(*span, "<Table> takes no children"));
+    }
+    let (cpath, cspan) = cols_path.ok_or_else(|| err(*span, "<Table> requires columns={someCollection}"))?;
+    let (rpath, rspan) = rows_path.ok_or_else(|| err(*span, "<Table> requires rows={someCollection}"))?;
+    let col_rows = rows_of(scope, &cpath, cspan)?;
+    let columns: Vec<libra_components::TableColumn> = col_rows
+        .iter()
+        .map(|row| {
+            let (key, title, width) = libra_core::table_column(row);
+            libra_components::TableColumn { key, title, width }
+        })
+        .collect();
+    let specs: Vec<(String, String, f32)> =
+        columns.iter().map(|c| (c.key.clone(), c.title.clone(), c.width)).collect();
+    let body = rows_of(scope, &rpath, rspan)?;
+    let (cells, args) = libra_core::table_matrix(&body, &specs);
+    let height = height.ok_or_else(|| err(*span, "<Table> requires height={px}"))?;
+    let test_id = test_id.ok_or_else(|| err(*span, "<Table> requires testId=\"…\""))?;
+    Ok(ViewNode::Table { columns, rows: cells, args, height, on_row, on_header, test_id })
+}
+
+/// `keyboard="text|numeric|hex|none"` (§19.1). Default is text.
+fn parse_keyboard(s: &str, span: Span) -> Result<Keyboard, InterpError> {
+    Ok(match s {
+        "text" => Keyboard::Text,
+        "numeric" => Keyboard::Numeric,
+        "hex" => Keyboard::Hex,
+        "none" => Keyboard::None,
+        other => {
+            return Err(err(
+                span,
+                format!(
+                    "unknown keyboard \"{other}\" — expected \"text\", \"numeric\", \"hex\" or \"none\""
+                ),
+            ))
+        }
+    })
 }
 
 /// Badge/Alert `tone="…"` table (§7.1 status tones).
@@ -2396,6 +2597,62 @@ fn text_content(children: &[Node], scope: &Scope, span: Span) -> Result<String, 
     Ok(out.trim().to_string())
 }
 
+/// One markup or interp diagnostic. `line` and `col` are 1-based, the
+/// same numbers `libra check` prints (§18.6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceDiagnostic {
+    pub line: u32,
+    pub col: u32,
+    pub message: String,
+}
+
+/// Parse `src`, then resolve it against a scope that accepts every
+/// binding and every camelCase action. Structural errors (unknown
+/// elements, bad attributes, PascalCase handlers) still surface.
+/// Missing State fields do not — the language server has no app
+/// reflection yet.
+pub fn diagnose(src: &str) -> Vec<SourceDiagnostic> {
+    let file = match libra_markup::parse_file(src) {
+        Ok(file) => file,
+        Err(e) => {
+            return vec![SourceDiagnostic {
+                line: e.span.line,
+                col: e.span.col,
+                message: e.message,
+            }];
+        }
+    };
+    let nodes: Vec<&Node> = match &file {
+        libra_markup::LxFile::View(node) => vec![node],
+        libra_markup::LxFile::Component(component) => component.body.iter().collect(),
+    };
+    let field = |_path: &str| Some(String::new());
+    let yes = |_name: &str| true;
+    let rows = |_path: &str| Some(vec![CollectionRow::opaque("row")]);
+    let scope = Scope {
+        field: &field,
+        has_action: &yes,
+        has_str_action: &yes,
+        collection_rows: &rows,
+        has_frame_info_action: &yes,
+        has_instant_action: &yes,
+        has_stream_event_action: &yes,
+        binding_ctx: "State",
+    };
+    let registry = libra_markup::ComponentRegistry::default();
+    let mut out = Vec::new();
+    for node in nodes {
+        if let Err(e) = resolve(node, &scope, &registry) {
+            out.push(SourceDiagnostic {
+                line: e.span.line,
+                col: e.span.col,
+                message: e.message,
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2419,6 +2676,19 @@ mod tests {
 
     fn empty_registry() -> ComponentRegistry {
         ComponentRegistry::new()
+    }
+
+    #[test]
+    fn diagnose_reports_parse_and_unknown_elements() {
+        let broken = diagnose("<Column>");
+        assert_eq!(broken[0].line, 1);
+        assert!(broken[0].message.contains("expected") || !broken[0].message.is_empty());
+        let unknown = diagnose("<Column><Nope /></Column>");
+        assert!(unknown[0].message.contains("unknown"), "{unknown:?}");
+        let ok = diagnose(r#"<Column><Text>Hi</Text></Column>"#);
+        assert!(ok.is_empty(), "{ok:?}");
+        let pascal = diagnose(r#"<Button onPress={Reset}>A</Button>"#);
+        assert!(pascal[0].message.contains("camelCase"), "{pascal:?}");
     }
 
     #[test]

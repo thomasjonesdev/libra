@@ -10,7 +10,7 @@ type: plan
 
 # Component catalog — expanded inventory
 
-**Status: planned.** Supersedes the short “VirtualList → Table → LogView”
+**Status: VirtualList, Table, and LogView shipped. Tree remains. Image blocked on decode.** Supersedes the short “VirtualList → Table → LogView”
 stub. Full target list for [[07.1-builtin-catalog|§7.1]],
 aligned with Vercel json-render RN standards **plus** Libra's ops-dense
 components. Umbrella: [[PLAN-UI-SURFACE]].
@@ -33,7 +33,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | `Row` | `Row` | **shipped** | Extend align/justify/wrap as needed |
 | `Column` | `Column` | **shipped** | |
 | `ScrollContainer` | `Scroll` | **shipped** 2026-07-18 | Vertical viewport (`<Scroll testId height?>`); clips + wheel-scrolls via the [[09.1-display-list|§9.1]] clip primitive + scroll-as-input — [[PLAN-SCROLL]]. Horizontal later |
-| `SafeArea` | `SafeArea` | planned | Shell insets — [[PLAN-NATIVE-INTEGRATIONS]] |
+| ~~`SafeArea`~~ | `SafeArea` | **shipped** (N5) | Shell insets — [[PLAN-NATIVE-INTEGRATIONS]] |
 | `Spacer` | `Spacer` | **shipped** 2026-07-16 | `<Spacer/>` spring or `size={px}`; pure layout, paints nothing |
 | `Pressable` | (Button / pressable slot) | partial | Prefer real controls; generic Pressable only if composition needs it |
 | `Divider` | `Separator` | **shipped** 2026-07-16 | H default / `vertical`; 1px `theme.hairline` (first T1 token consumer) |
@@ -49,7 +49,7 @@ Source: `@json-render/react-native` `standardComponentDefinitions`.
 | — | `Toolbar` | **shipped** 2026-08-25 | Chrome strip; `vertical` is the Gloss left rail. Children are ordinary markup |
 | — | `StatusBar` | **shipped** 2026-08-25 | Footer row, hairline on top. Gloss status / counts / save label |
 | `Button` | `Button` | **shipped** | Expand variants/sizes via tokens |
-| `TextInput` | `Input` (+ `Textarea`) | **shipped** (Textarea 2026-07-17; IME/wrap remain — [[PLAN-TEXTAREA]]) | |
+| `TextInput` | `Input` (+ `Textarea`) | **shipped** ([[PLAN-TEXTAREA]] stages 1–4) | |
 | `Switch` | `Switch` | **shipped** 2026-07-19 | Model-owned `checked={bool}` + `onToggle` |
 | `Checkbox` | `Checkbox` | **shipped** 2026-07-19 | Model-owned; check glyph is a display-list Polyline |
 | `Slider` | `Slider` | **shipped** 2026-07-19/20 | Model-owned; the shell's Split-drag machinery generalized to a `DragTarget` enum |
@@ -95,7 +95,7 @@ From existing §7.1 mission-control set — still in scope, later waves:
 | `Grid`, ~~`Split`~~ (**shipped** 2026-07-19 — model-owned fractions, drag + harness `resize_split`), `Panel` | layout+ | Dense consoles |
 | `Status`, ~~`Icon`~~ (**shipped** 2026-08-25), ~~`Markdown`~~, ~~`Tooltip`~~ (**shipped** 2026-07-19/20 — hover-input floating label, hidden-at-rest second paint pass) | display | |
 | `ButtonGroup`, ~~`Radio`~~ (**shipped** 2026-07-19 — groups via `<for>` + item-scoped `onSelect`), `Select`, `Combobox`, ~~`Stepper`~~ (**shipped** 2026-07-20/21) | controls | |
-| `Table`, `VirtualList`, `Tree`, `Chart`, `Sparkline`, `Gauge`, `LogView` | data | Charts/sparklines **shipped** |
+| ~~`Table`~~, ~~`VirtualList`~~, `Tree`, ~~`Chart`~~, ~~`Sparkline`~~, `Gauge`, ~~`LogView`~~ | data | Charts/sparklines **shipped**. VirtualList, LogView, and Table **shipped** (windowed; follow-tail; columns from state). Tree remains |
 | `Tabs`, `StatusBar`, `Toolbar`, `CommandPalette`, `Toast`, ~~`ContextMenu`~~ (**shipped** 2026-07-19 — anchored overlay + ListItem `onMenu`; the anchored placement `Dropdown Menu`/`Select` will reuse), ~~`Breadcrumb`~~, ~~`Pagination`~~, ~~`Timeline`~~ (all **shipped** 2026-07-20/21) | chrome | |
 | `Video` | late | §9.5 |
 | `Frames`, `Interval`, `Stream` | sources | **shipped** (Stream delivery thin) |
@@ -112,11 +112,11 @@ never invents colors.
 | **1** | `Spacer`, `Separator`, `Scroll` | Layout completeness — **all done** (Scroll 2026-07-18) |
 | **2** | ✅ `Badge`, `Heading`, `Progress` shipped; `Label` folded into `Text`; `Spinner` blocked (§9.6 / arc cmd) | Visible “product” chrome, low interaction risk |
 | **3** | ✅ `Switch`, `Checkbox`, `Radio`, `Slider` shipped 2026-07-19/20; ✅ `Search` shipped 2026-08-25 | Control set parity |
-| **4** | `Textarea` ([[PLAN-TEXTAREA]]), Input keyboard hints | Text completeness |
+| **4** | ✅ `Textarea` stages 1–4 ([[PLAN-TEXTAREA]]). ✅ `keyboard` hint and the framework OSK ([[19.1-touch|§19.1]]). System OSK remains | Text completeness |
 | **5** | ✅ `Card`, `ListItem`, `Avatar` shipped 2026-07-19; ✅ `Chip` shipped 2026-08-25; `Image` blocked (decode path) | Composite / media |
-| **6** | `SafeArea`, ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19) + OS dialog effect | Needs [[PLAN-NATIVE-INTEGRATIONS]] |
+| **6** | ✅ `SafeArea` (N5). ~~in-view `Modal`/`Dialog`~~ (**Dialog done** 2026-07-19). OS dialog effect shipped (N2) | [[PLAN-NATIVE-INTEGRATIONS]] |
 | **7** | ✅ `Tabs` / ✅ `Toast` / ✅ `Toolbar` / ✅ `StatusBar` shipped 2026-08-25 | App chrome |
-| **8** | `VirtualList`, `Table`, `LogView`, `Tree` | Data-dense (original stub priority) |
+| **8** | ✅ `VirtualList`, `Table`, `LogView`. `Tree` remains | Data-dense (original stub priority) |
 | **9** | `Select`/`Combobox`/`CommandPalette` (`Radio`/`ContextMenu`/`Tooltip`/`Breadcrumb`/`Pagination`/`Timeline`/`Stepper`/`Markdown`/`Icon` shipped) | Long-tail |
 | **10** | `Grid`/`Split`/`Panel`/`Gauge`/`Video` | Advanced / late |
 

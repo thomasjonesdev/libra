@@ -49,7 +49,7 @@ deterministic paint ([[appendix-a-determinism-checklist|Appendix A]]).
 | Resizable panes (drag + keyboard), fractions in state | **`Split`** shipped 2026-07-19 (drag + model-owned fractions; keyboard resize deferred to a non-text focus model) | **yes (mostly)** |
 | Modal create/rename folder dialog, inline validation; confirm permanent delete | **`Dialog`** in-tree (deterministic, snapshot-able — [[PLAN-NATIVE-INTEGRATIONS]] design rule 3) | **yes** |
 | Keyboard shortcuts (Cmd+N, Cmd+1…7, Esc, …) declared app-level | `shortcuts:` in `app!` ([[19.2-keyboard-shortcuts-declarations-not-handlers|§19.2]]); shell + harness `press_shortcut` | **yes** |
-| Context menu on rows (menu item dispatches typed action with row id) | in-tree **`ContextMenu`** shipped 2026-07-19 (selection-follows-right-click adapts their id-carrying items); native `muda` later ([[PLAN-NATIVE-INTEGRATIONS]] N7) | **yes** |
+| Context menu on rows (menu item dispatches typed action with row id) | in-tree **`ContextMenu`** shipped 2026-07-19 (selection-follows-right-click adapts their id-carrying items); native `muda` menus shipped ([[PLAN-NATIVE-INTEGRATIONS]] N7). Notes keeps the painted menu (`context_menu()` returns `None`) | **yes** |
 | Copy note body to clipboard with typed outcome | `Effect::ClipboardSet` shipped 2026-07-19 (menu Copy + `cmd+shift+c`; `ClipboardResult` ack → status) | **yes** |
 | System light/dark auto-follow | **adapted**: keep explicit `Effect::SetTheme` toggle for v1; OS-scheme follow is shell work, deferred to [[PLAN-NATIVE-INTEGRATIONS]] | adapted |
 | Fixed capacity caps (6 folders / 48 notes / 4 KiB) | **adapted**: theirs are Zig allocation limits; we adopt soft caps only as store-size hygiene, enforced in actions | adapted |
@@ -103,7 +103,7 @@ camelCase for fields — not done here to stay in scope.
 ## Out of scope (v1)
 
 - Native NSMenu/`muda` context menus and OS scheme auto-follow — later stages of [[PLAN-NATIVE-INTEGRATIONS]]
-- IME/touch selection ([[PLAN-TEXTAREA]] stages 2–3) — Textarea lands first without them
+- IME, long-press selection, and the framework on-screen keyboard shipped ([[PLAN-TEXTAREA]], [[19.1-touch|§19.1]]). A pointer click does not summon it.
 - Markdown rendering, note linking, sync — not in the reference app either
 
 ---

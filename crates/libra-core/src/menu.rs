@@ -295,6 +295,16 @@ mod tests {
     }
 
     #[test]
+    fn disabled_items_are_not_clickable() {
+        let decl = MenuDecl::new(vec![Menu::new(
+            "file",
+            "File",
+            vec![MenuItem::action("n", "New", "newNote").enabled(false)],
+        )]);
+        assert!(find_menu_action(&decl, "newNote", None).is_none());
+    }
+
+    #[test]
     fn rejects_bad_accelerator() {
         let decl = MenuDecl::new(vec![Menu::new(
             "file",

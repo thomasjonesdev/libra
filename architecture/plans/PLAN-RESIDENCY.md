@@ -109,11 +109,10 @@ form is ever wanted it can compile *to* `TrayDecl`; nothing here forecloses it.
 
 ## Overlaps to resolve, not duplicate
 
-- **`WindowOp`** is [[PLAN-NATIVE-INTEGRATIONS]] **N6**. R3 needs only
-  `Show`/`Hide`/`Raise`/`Quit`; N6 adds title/fullscreen/resize. Build one
-  effect variant in whichever plan lands first and have the other consume it —
-  two `WindowOp`s would be a defect.
-- **Menubar / context menus** are **N7** (`muda` for in-window chrome). R1
+- **`WindowOp`** is [[PLAN-NATIVE-INTEGRATIONS]] **N6**, shipped.
+  R3 landed `Show`/`Hide`/`Raise`/`Quit`. N6 added `Title`, `Fullscreen`,
+  and `Resize` on the same enum.
+- **Menubar / context menus** are **N7** (shipped: `muda` for in-window chrome). R1
   already pulls `muda` in for the tray menu; N7 reuses that dependency and its
   action-name validation rather than re-deriving them.
 - **Notification activation** ([[PLAN-NOTIFY]] NT2) wants to raise the window.

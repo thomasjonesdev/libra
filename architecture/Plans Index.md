@@ -22,11 +22,11 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-SOURCES]] | complete | [[12.5-declarative-subscriptions|§12.5]], [[12.1-effect-vocabulary|§12.1]] |
 | [[PLAN-ACCESSORS]] | complete | [[06.2-closed-grammar|§6.2]], [[26-open-questions|§26]] |
 | [[PLAN-NOTES-APP]] | complete (M0–M9) | [[10.1-text-entry|§10.1]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
-| [[PLAN-TEXTAREA]] | in progress (stage 1 done) | [[10.1-text-entry|§10.1]] |
+| [[PLAN-TEXTAREA]] | stages 1–4 shipped; framework OSK shipped with the catalog | [[10.1-text-entry|§10.1]] |
 | [[PLAN-UI-SURFACE]] | planned | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[19-platform-integration|§19]] |
 | [[PLAN-TOKENS]] | in progress (T1–T4 done) | [[11-theming|§11]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-GEIST]] | complete (G1–G3) | [[11-theming|§11]], [[09-rendering|§9]], [[PLAN-TOKENS]] |
-| [[PLAN-CATALOG]] | planned | [[07-components|§7]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-CATALOG]] | VirtualList, Table, LogView shipped; Tree remains; Image blocked on decode | [[07-components|§7]], [[07.1-builtin-catalog|§7.1]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-COMPONENTS]] | in progress (C0–C3 done) | [[07.1-builtin-catalog|§7.1]], [[11-theming|§11]], [[PLAN-UI-SURFACE]], [[PLAN-TOKENS]] |
 | [[PLAN-GALLERY]] | in progress (G0–G3 + light matrix) | [[07.1-builtin-catalog|§7.1]], [[18-developer-experience|§18]], [[PLAN-CATALOG]], [[PLAN-COMPONENTS]] |
 | [[PLAN-SCROLL]] | shipped (S1–S4) | [[07.1-builtin-catalog|§7.1]], [[09.1-display-list|§9.1]], [[09.2-canonical-executor|§9.2]], [[PLAN-GALLERY]] |
@@ -34,11 +34,11 @@ Execution / staging plans that implement architecture decisions. Architecture no
 | [[PLAN-STREAM-DELIVERY]] | D1–D6 shipped | [[12.5-declarative-subscriptions\|§12.5]], [[12.6-the-process-effect\|§12.6]], [[12.3-execution-model\|§12.3]], [[PLAN-SOURCES]] |
 | [[PLAN-NOTIFY]] | NT1–NT4 shipped | [[12.1-effect-vocabulary\|§12.1]], [[19-platform-integration\|§19]], [[PLAN-NATIVE-INTEGRATIONS]] (N3), [[PLAN-PACKAGE]] |
 | [[PLAN-RESIDENCY]] | R1–R6 shipped | [[19-platform-integration\|§19]], [[19.2-keyboard-shortcuts-declarations-not-handlers\|§19.2]], [[20-packaging\|§20]], [[PLAN-PACKAGE]] |
-| [[PLAN-NATIVE-INTEGRATIONS]] | N7 started; N8 shipped. N1–N6 still open | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
+| [[PLAN-NATIVE-INTEGRATIONS]] | N1–N8 shipped | [[12.1-effect-vocabulary|§12.1]], [[19-platform-integration|§19]], [[19.4-desktop-os-matrix|§19.4]], [[PLAN-UI-SURFACE]] |
 | [[PLAN-PACKAGE]] | **done** (P0–P6) | [[23-roadmap|§23]], [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[PLAN-NOTIFY]], [[PLAN-RESIDENCY]] |
 | [[PLAN-RELEASE]] | shipped (icon, publish, signed feed) | [[20-packaging\|§20]], [[18.1-cli\|§18.1]], [[24-non-goals\|§24]], [[PLAN-PACKAGE]] |
-| [[PLAN-SDK]] | shipped (S1–S4, crates.io 0.1.1) | [[18.1-cli\|§18.1]], [[20-packaging\|§20]], [[21-crate-layout\|§21]], [[05.8-app-assembly\|§5.8]], [[26-open-questions\|§26]], [[PLAN-PACKAGE]], [[PLAN-PHASE4-DX]] |
-| [[PLAN-PHASE4-DX]] | planned | [[23-roadmap|§23]], [[16-automation-server|§16]] |
+| [[PLAN-SDK]] | shipped (S1–S4, crates.io 0.1.2) | [[18.1-cli\|§18.1]], [[20-packaging\|§20]], [[21-crate-layout\|§21]], [[05.8-app-assembly\|§5.8]], [[26-open-questions\|§26]], [[PLAN-PACKAGE]], [[PLAN-PHASE4-DX]] |
+| [[PLAN-PHASE4-DX]] | stages 1–5 shipped (automation, inspector, replay, lsp diagnostics, gallery docs) | [[23-roadmap|§23]], [[16-automation-server|§16]] |
 | [[PLAN-SLICE]] | planned | [[05.7-state-slices|§5.7]] |
 | [[PLAN-RECONCILER]] | planned | [[06.2-closed-grammar|§6.2]] |
 | [[PLAN-COMPOSE]] | done | [[07.2-composed-components|§7.2]], [[06.4-one-grammar-two-engines|§6.4]], [[06.5-compile-time-validation|§6.5]], [[26-open-questions|§26]] |

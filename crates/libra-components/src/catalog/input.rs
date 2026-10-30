@@ -33,6 +33,7 @@ pub(crate) fn build(
     variant: InputVariant,
     size: TextSize,
     bold: bool,
+    keyboard: Keyboard,
     test_id: &str,
 ) -> Result<NodeId, taffy::TaffyError> {
     let theme = cx.theme;
@@ -56,6 +57,7 @@ pub(crate) fn build(
             on_submit: on_submit.map(str::to_string),
             variant,
             bold,
+            keyboard,
         },
         Semantics {
             role: Role::TextInput,
@@ -273,12 +275,19 @@ fn paint_input(
     );
     cmds.push(DrawCmd::PushClip { rect: inner });
 
+    let shown;
+    let value = if let Some(p) = focus.and_then(|f| f.preedit.as_ref()) {
+        shown = p.splice(value);
+        shown.as_str()
+    } else {
+        value
+    };
     let scroll_x = input_scroll_x(m, value, px, style, inner.w, focus);
     let tx = rect.x + left - scroll_x;
 
     if let Some(f) = focus {
         let sel = &f.selection;
-        if !sel.is_empty() && sel.end <= value.len() {
+        if f.preedit.is_none() && !sel.is_empty() && sel.end <= value.len() {
             let x0 = tx + m.measure(&value[..sel.start], px, style).0;
             let x1 = tx + m.measure(&value[..sel.end], px, style).0;
             cmds.push(DrawCmd::Rect {
@@ -309,14 +318,57 @@ fn paint_input(
         });
     }
     if let Some(f) = focus {
-        let caret = f.caret.min(value.len());
-        let cx_pos = tx + m.measure(&value[..caret], px, style).0;
-        cmds.push(DrawCmd::Rect {
-            rect: Rect::new(cx_pos, ty, 1.0, th),
-            color: theme.text,
-        });
+        if let Some(p) = &f.preedit {
+            let end = (p.at + p.text.len()).min(value.len());
+            let x0 = tx + m.measure(&value[..p.at.min(value.len())], px, style).0;
+            let x1 = tx + m.measure(&value[..end], px, style).0;
+            paint_underline(cmds, x0, x1, ty + th, theme.accent);
+        }
+        if f.show_caret {
+            let caret = f.caret.min(value.len());
+            let cx_pos = tx + m.measure(&value[..caret], px, style).0;
+            cmds.push(DrawCmd::Rect {
+                rect: Rect::new(cx_pos, ty, 1.0, th),
+                color: theme.text,
+            });
+        }
+        if f.handles && !f.selection.is_empty() {
+            paint_grip(cmds, tx, ty, th, value, f.selection.start, px, style, m, theme);
+            paint_grip(cmds, tx, ty, th, value, f.selection.end, px, style, m, theme);
+        }
     }
     cmds.push(DrawCmd::PopClip);
+}
+
+fn paint_underline(cmds: &mut Vec<DrawCmd>, x0: f32, x1: f32, y: f32, color: libra_draw::Color) {
+    let y = y.floor();
+    let x0 = x0.floor();
+    cmds.push(DrawCmd::Rect {
+        rect: Rect::new(x0, y, (x1 - x0).max(1.0), 1.0),
+        color,
+    });
+}
+
+fn paint_grip(
+    cmds: &mut Vec<DrawCmd>,
+    tx: f32,
+    ty: f32,
+    th: f32,
+    value: &str,
+    byte: usize,
+    px: f32,
+    style: FontStyle,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+) {
+    let byte = byte.min(value.len());
+    let x = tx + m.measure(&value[..byte], px, style).0;
+    let size = 6.0;
+    cmds.push(DrawCmd::RRect {
+        rect: Rect::new(x - size / 2.0, ty + (th - size) / 2.0, size, size),
+        radius: size / 2.0,
+        color: theme.accent,
+    });
 }
 
 #[cfg(test)]
@@ -339,6 +391,9 @@ mod tests {
             test_id: "f".into(),
             caret: 4,
             selection: 4..4,
+            preedit: None,
+            handles: false,
+            show_caret: true,
         };
         assert_eq!(
             input_scroll_x(&m, "abcd", 14.0, FontStyle::Regular, 8.0, Some(&focus)),
@@ -353,6 +408,9 @@ mod tests {
             test_id: "f".into(),
             caret: 12,
             selection: 12..12,
+            preedit: None,
+            handles: false,
+            show_caret: true,
         };
         assert_eq!(
             input_scroll_x(&m, "abcdefghijkl", 14.0, FontStyle::Regular, 8.0, Some(&focus)),
@@ -367,6 +425,9 @@ mod tests {
             test_id: "f".into(),
             caret: 10,
             selection: 2..10,
+            preedit: None,
+            handles: false,
+            show_caret: true,
         };
         assert_eq!(
             input_scroll_x(&m, "abcdefghijkl", 14.0, FontStyle::Regular, 6.0, Some(&focus)),

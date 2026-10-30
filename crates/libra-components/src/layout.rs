@@ -27,6 +27,13 @@ pub(crate) struct BuildCx<'a> {
     /// parents, laid out at the full viewport after the main pass, and
     /// flattened last so they paint on top.
     pub overlays: &'a mut Vec<NodeId>,
+    /// Scroll offsets by test id (§7.1). VirtualList / LogView / Table
+    /// read it while building so only the visible window is laid out.
+    /// Empty for [`layout`]; the shell and harness pass the live map.
+    pub scroll: &'a ScrollState,
+    /// `<SafeArea>` padding (N5). [`Insets::ZERO`] unless the shell or
+    /// harness published a value.
+    pub insets: &'a Insets,
 }
 
 impl BuildCx<'_> {
@@ -101,20 +108,39 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
         ViewNode::Scroll { height, test_id, children } => {
             catalog::scroll::build(cx, *height, test_id, children)
         }
+        ViewNode::SafeArea { edges, children, test_id } => {
+            catalog::safe_area::build(cx, *edges, children, test_id)
+        }
         ViewNode::Chart { handle, height, test_id } => {
             catalog::chart::build_chart(cx, *handle, *height, test_id)
         }
         ViewNode::Sparkline { handle, width, height, test_id } => {
             catalog::chart::build_sparkline(cx, *handle, *width, *height, test_id)
         }
-        ViewNode::Input { value, placeholder, on_change, on_submit, variant, size, bold, test_id } => {
-            catalog::input::build(
-                cx, value, placeholder, on_change, on_submit.as_deref(), *variant, *size, *bold,
-                test_id,
-            )
-        }
-        ViewNode::Search { value, placeholder, on_change, on_submit, test_id } => {
-            catalog::search::build(cx, value, placeholder, on_change, on_submit, test_id)
+        ViewNode::Input {
+            value,
+            placeholder,
+            on_change,
+            on_submit,
+            variant,
+            size,
+            bold,
+            keyboard,
+            test_id,
+        } => catalog::input::build(
+            cx,
+            value,
+            placeholder,
+            on_change,
+            on_submit.as_deref(),
+            *variant,
+            *size,
+            *bold,
+            *keyboard,
+            test_id,
+        ),
+        ViewNode::Search { value, placeholder, on_change, on_submit, keyboard, test_id } => {
+            catalog::search::build(cx, value, placeholder, on_change, on_submit, *keyboard, test_id)
         }
         ViewNode::ListItem {
             title,
@@ -132,8 +158,19 @@ pub(crate) fn build(cx: &mut BuildCx, view: &ViewNode) -> Result<NodeId, taffy::
             cx, title, subtitle, meta, *selected, on_press, on_press_arg, on_menu, on_menu_arg,
             *inset, *grow, test_id,
         ),
-        ViewNode::Textarea { value, placeholder, on_change, test_id, markdown, on_wikilink } => {
-            catalog::textarea::build(cx, value, placeholder, on_change, test_id, *markdown, on_wikilink)
+        ViewNode::Textarea { value, placeholder, on_change, test_id, keyboard, markdown, on_wikilink } => {
+            catalog::textarea::build(
+                cx, value, placeholder, on_change, test_id, *keyboard, *markdown, on_wikilink,
+            )
+        }
+        ViewNode::VirtualList { rows, args, height, on_press, test_id } => {
+            catalog::windowed::build_list(cx, rows, args, *height, on_press, test_id)
+        }
+        ViewNode::LogView { lines, height, follow, test_id } => {
+            catalog::windowed::build_log(cx, lines, *height, *follow, test_id)
+        }
+        ViewNode::Table { columns, rows, args, height, on_row, on_header, test_id } => {
+            catalog::windowed::build_table(cx, columns, rows, args, *height, on_row, on_header, test_id)
         }
         ViewNode::Markdown { source, skip_title, test_id, on_wikilink } => {
             catalog::markdown::build(cx, source, skip_title, test_id, on_wikilink)
@@ -224,13 +261,42 @@ pub fn layout(
     measurer: &dyn TextMeasurer,
     theme: &Theme,
 ) -> Result<LaidTree, LayoutError> {
+    layout_scrolled(view, viewport, measurer, theme, &ScrollState::new(), &Insets::ZERO)
+}
+
+/// Layout with insets and no scroll. Used by `<SafeArea>` tests.
+pub fn layout_insets(
+    view: &ViewNode,
+    viewport: (f32, f32),
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+    insets: &Insets,
+) -> Result<LaidTree, LayoutError> {
+    layout_scrolled(view, viewport, measurer, theme, &ScrollState::new(), insets)
+}
+
+pub fn layout_scrolled(
+    view: &ViewNode,
+    viewport: (f32, f32),
+    measurer: &dyn TextMeasurer,
+    theme: &Theme,
+    scroll: &ScrollState,
+    insets: &Insets,
+) -> Result<LaidTree, LayoutError> {
     let mut tree: TaffyTree<()> = TaffyTree::new();
     let mut meta: Meta = Vec::new();
     let mut overlays: Vec<NodeId> = Vec::new();
 
     let root = {
-        let mut cx =
-            BuildCx { tree: &mut tree, meta: &mut meta, m: measurer, theme, overlays: &mut overlays };
+        let mut cx = BuildCx {
+            tree: &mut tree,
+            meta: &mut meta,
+            m: measurer,
+            theme,
+            overlays: &mut overlays,
+            scroll,
+            insets,
+        };
         build(&mut cx, view).map_err(|e| LayoutError(format!("{e:?}")))?
     };
 
@@ -486,7 +552,7 @@ fn flatten(
         });
         // A `<Scroll>` viewport becomes the scroll context for its descendants
         // (the viewport itself keeps the outer context — unclipped in v1).
-        if matches!(kind, ItemKind::Scroll) {
+        if matches!(kind, ItemKind::Scroll | ItemKind::VirtualViewport { .. }) {
             child_ctx = sem.test_id.clone().map(|tid| (tid, rect));
         }
         if matches!(kind, ItemKind::MenuPanel) {

@@ -35,6 +35,20 @@ impl std::fmt::Display for User {
     }
 }
 
+/// `<Table columns={cols}>` — `{ key, title, width }` (§7.1).
+#[derive(Debug, Clone, PartialEq, LibraReflect)]
+pub struct Col {
+    pub key: String,
+    pub title: String,
+    pub width: i64,
+}
+
+impl std::fmt::Display for Col {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.key)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, LibraReflect)]
 pub struct TestState {
     pub count: i64,
@@ -64,6 +78,10 @@ pub struct TestState {
     pub page: u32,
     /// Numeric binding — `<ListItem inset={inset}>`.
     pub inset: f32,
+    /// `<LogView lines={log}>` (§7.1).
+    pub log: Vec<String>,
+    /// `<Table columns={cols}>` (§7.1).
+    pub cols: Vec<Col>,
 }
 
 impl Default for TestState {
@@ -88,6 +106,11 @@ impl Default for TestState {
             ratio: 0.5,
             page: 0,
             inset: 16.0,
+            log: vec!["one".into(), "two".into()],
+            cols: vec![
+                Col { key: "label".into(), title: "Label".into(), width: 80 },
+                Col { key: "id".into(), title: "Id".into(), width: 40 },
+            ],
         }
     }
 }
@@ -147,4 +170,6 @@ pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/toolbar.rs"));
     include!(concat!(env!("OUT_DIR"), "/statusbar.rs"));
     include!(concat!(env!("OUT_DIR"), "/icon.rs"));
+    include!(concat!(env!("OUT_DIR"), "/data_views.rs"));
+    include!(concat!(env!("OUT_DIR"), "/safe_area.rs"));
 }

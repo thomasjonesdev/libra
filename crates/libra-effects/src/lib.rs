@@ -290,6 +290,26 @@ impl<M: Send + 'static> Effects<M> {
                     "headless".into(),
                 )));
             }
+            // Shell-handled. Reaching here means headless: no browser,
+            // no sheet, no clipboard. Ack so a waiting app is not left hanging.
+            Effect::OpenUrl { on_done, .. } => {
+                if let Some(ctor) = on_done {
+                    (self.sink)(ctor(libra_core::OpenResult::Unsupported("headless".into())));
+                }
+            }
+            Effect::Dialog { on_done, .. } => {
+                (self.sink)(on_done(libra_core::DialogResult::Unsupported(
+                    "headless".into(),
+                )));
+            }
+            Effect::Share { on_done, .. } => {
+                if let Some(ctor) = on_done {
+                    (self.sink)(ctor(libra_core::ShareResult::Unsupported("headless".into())));
+                }
+            }
+            Effect::PickFile { on_done, .. } | Effect::SaveFile { on_done, .. } => {
+                (self.sink)(on_done(libra_core::FilePick::Unsupported("headless".into())));
+            }
             // `Effect` is `non_exhaustive` (PLAN-SDK S4). A future variant
             // is a no-op here until this runtime learns it.
             _ => {}
@@ -668,7 +688,7 @@ fn read_response(resp: ureq::Response) -> HttpResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libra_core::CommandSpec;
+    use libra_core::{CommandSpec, DialogResult, DialogSpec, OpenResult, ShareResult};
     use std::sync::mpsc::channel;
 
     #[derive(Debug, Clone, PartialEq)]
@@ -679,6 +699,10 @@ mod tests {
         Entropy(Vec<u8>),
         Fetched(HttpResult),
         Ran(ProcessResult),
+        Opened(OpenResult),
+        Answered(DialogResult),
+        Shared(ShareResult),
+        Filed(libra_core::FilePick),
     }
 
     fn runtime() -> (Effects<Action>, mpsc::Receiver<Action>, tempfile::TempDir) {
@@ -861,6 +885,48 @@ mod tests {
                 status: 200,
                 body: b"Mind the gap.".to_vec()
             })
+        );
+    }
+
+    #[test]
+    fn shell_effects_ack_unsupported_when_they_reach_the_pool() {
+        let (fx, rx, _dir) = runtime();
+        fx.execute(Effect::open_url_acked("https://example.com", Action::Opened));
+        fx.execute(Effect::dialog(
+            DialogSpec::confirm("Quit", "Leave?"),
+            Action::Answered,
+        ));
+        fx.execute(Effect::share_acked(
+            "note",
+            Some("https://example.com".into()),
+            Action::Shared,
+        ));
+        assert_eq!(
+            recv(&rx),
+            Action::Opened(OpenResult::Unsupported("headless".into()))
+        );
+        assert_eq!(
+            recv(&rx),
+            Action::Answered(DialogResult::Unsupported("headless".into()))
+        );
+        assert_eq!(
+            recv(&rx),
+            Action::Shared(ShareResult::Unsupported("headless".into()))
+        );
+    }
+
+    #[test]
+    fn file_sheets_ack_unsupported_when_they_reach_the_pool() {
+        let (fx, rx, _dir) = runtime();
+        fx.execute(Effect::pick_file(Action::Filed));
+        fx.execute(Effect::save_file_as("note.md", Action::Filed));
+        assert_eq!(
+            recv(&rx),
+            Action::Filed(libra_core::FilePick::Unsupported("headless".into()))
+        );
+        assert_eq!(
+            recv(&rx),
+            Action::Filed(libra_core::FilePick::Unsupported("headless".into()))
         );
     }
 }

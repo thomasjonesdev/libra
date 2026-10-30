@@ -15,10 +15,30 @@ type: architecture
 
 Every [[15-testing|§15]] kind tests *inside* the process. The automation server drives the *real running app* from outside — the layer that makes Libra apps legible to external harnesses and AI agents.
 
-- Enabled by `libra dev` (and `--automation` on release builds when the manifest permits). Listens on a local unix socket / named pipe; JSON-line protocol.
-- **Verbs**: `snapshot` (the full semantics tree with geometry, as JSON), `query` (selector → node ids), `dispatch` (typed action by public camelCase name + payload — validated against the reflected `Action` schema, [[03.3-naming-conventions|§3.3]]), `input` (synthetic pointer/key at coordinates), `screenshot` (deterministic PNG of the live framebuffer), `state` (redacted-by-annotation state dump), `perf` (frame timings).
-- Because dispatch is *typed actions*, an agent doesn't scrape pixels to press a button — it can act at the semantic level, with the pixel level available for verification. `libra skills` emits an agent-skill bundle documenting the app's action schema, view ids, and protocol — the app self-describes.
-- Security: off in release unless manifested; local-only; peer-credential checked; `#[libra(redact)]` state fields never serialize over it.
+## In code
+
+- `crates/libra-platform/src/automate.rs` — JSON-line verbs, unix socket
+- `cli/libra/src/dev.rs` — sets `LIBRA_AUTOMATION=1` on the debug run
+
+## Implemented today
+
+`libra dev` turns the server on for debug builds. The shell listens on a unix socket (mode `0600`) under the temp dir and prints `[libra] automation <path>`. Release builds ignore the variable. One JSON object per line, answered with one line: `{id, ok, ...}`.
+
+| Verb | Body |
+|---|---|
+| `snapshot` | Semantics tree with geometry (`testId`, `role`, `text`, `x`, `y`, `w`, `h`) |
+| `query` | Same nodes, filtered by `testId`, `text`, and/or `role` |
+| `dispatch` | `action` (camelCase) plus optional `arg`. A name that does not resolve is `ok: false` |
+| `state` | Bindable fields as strings. `#[libra(redact)]` values are absent |
+| `schema` | `actions`, `fields` (not redacted), `redacted` (names only) |
+| `log` | Recent actions (`Debug` text). Identical neighbors collapse (`Ticked × N`). Recorded when the inspector or the socket is on |
+
+`input`, `screenshot`, `perf`, the release manifest gate, and `libra skills` are still open. Windows has no listener yet (the shell logs that it needs a unix socket).
+
+## Contract
+
+- Because dispatch is *typed actions*, an agent doesn't scrape pixels to press a button — it can act at the semantic level, with the pixel level available for verification once `screenshot` lands. `libra skills` will emit an agent-skill bundle documenting the app's action schema, view ids, and protocol — the app self-describes.
+- Security: off in release; local unix socket at mode `0600`; `#[libra(redact)]` state fields never serialize their values (`schema.redacted` lists the names).
 
 ---
 

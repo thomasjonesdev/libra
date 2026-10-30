@@ -2,7 +2,7 @@
 //! tree — folder/note selection, search filtering, trash flow, the
 //! editor's controlled `Textarea`.
 
-use libra_components::Cursor;
+use libra_components::{Cursor, ItemKind};
 use libra_core::{Effect, KvResult};
 use libra_test::{by, fx, Harness};
 use libra_text::EditOp;
@@ -67,6 +67,50 @@ fn editor_selects_words_lines_and_ranges() {
     h.edit(EditOp::SetCaret { byte: 5, select: true });
     assert_eq!(h.focused_edit().unwrap().selected_text(), "hello");
     settle_save(&mut h);
+}
+
+#[test]
+fn long_press_selects_the_word_under_the_caret() {
+    let mut h = harness();
+    add_note(&mut h, "");
+    h.type_text(by::test_id("editor-body"), "Hello world");
+    h.long_press(by::test_id("editor-body"));
+    let selected = h.focused_edit().expect("editor stays focused").selected_text();
+    assert!(
+        selected == "Hello" || selected == "world",
+        "long-press selects a word, got {selected:?}"
+    );
+}
+
+#[test]
+fn touch_focus_summons_the_keyboard_and_a_key_types() {
+    let mut h = harness();
+    add_note(&mut h, "");
+    h.click(by::test_id("editor-body"));
+    assert!(
+        h.laid().items.iter().all(|i| !matches!(i.kind, ItemKind::OskKey { .. })),
+        "a pointer click does not summon the keyboard"
+    );
+    h.touch_focus(by::test_id("editor-body"));
+    assert!(h.laid().items.iter().any(|i| matches!(&i.kind, ItemKind::OskKey { label } if label == "q")));
+    h.tap_key("q");
+    assert_eq!(h.state().editor_body, "q");
+    h.tap_key("space");
+    h.tap_key("a");
+    assert_eq!(h.state().editor_body, "q a");
+    h.tap_key("⌫");
+    assert_eq!(h.state().editor_body, "q ");
+}
+
+#[test]
+fn composition_commits_into_the_note() {
+    let mut h = harness();
+    add_note(&mut h, "");
+    h.type_text(by::test_id("editor-body"), "go");
+    h.compose("あ", Some((3, 3)));
+    assert_eq!(h.state().editor_body, "go", "preedit is not committed text");
+    h.commit_text("あ");
+    assert_eq!(h.state().editor_body, "goあ");
 }
 
 #[test]

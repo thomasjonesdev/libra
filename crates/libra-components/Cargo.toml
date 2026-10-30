@@ -9,6 +9,7 @@ authors.workspace = true
 
 [dependencies]
 libra-draw.workspace = true
+libra-text.workspace = true
 libra-ui-core.workspace = true
 libra-data.workspace = true
 libra-markdown.workspace = true

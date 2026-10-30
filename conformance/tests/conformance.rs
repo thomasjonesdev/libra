@@ -827,6 +827,8 @@ const TOAST: &str = include_str!("../fixtures/toast.lx");
 const TOOLBAR: &str = include_str!("../fixtures/toolbar.lx");
 const STATUSBAR: &str = include_str!("../fixtures/statusbar.lx");
 const ICON: &str = include_str!("../fixtures/icon.lx");
+const DATA_VIEWS: &str = include_str!("../fixtures/data_views.lx");
+const SAFE_AREA: &str = include_str!("../fixtures/safe_area.lx");
 const COMPOSED: &str = include_str!("../fixtures/composed.lx");
 const COMPOSED_INLINED: &str = include_str!("../fixtures/composed_inlined.lx");
 const SLOT_HOST: &str = include_str!("../fixtures/slot_host.lx");
@@ -1146,4 +1148,54 @@ fn slot_host_produces_identical_trees() {
     let interp = interp_tree_src(SLOT_HOST, &state, &fixture_registry());
     let compiled = generated::build_slot_host(&state);
     assert_eq!(interp, compiled, "slot fixture drift (§7.2 C6)");
+}
+
+/// §7.1 VirtualList, LogView, Table, and the keyboard hint (§19.1).
+#[test]
+fn data_views_produce_identical_trees() {
+    use libra_components::{Keyboard, ViewNode};
+
+    for (i, state) in state_variants().into_iter().enumerate() {
+        let interp = interp_tree_src(DATA_VIEWS, &state, &fixture_registry());
+        let compiled = generated::build_data_views(&state);
+        assert_eq!(interp, compiled, "engine drift on data views fixture (variant #{i})");
+    }
+
+    let state = TestState::default();
+    let interp = interp_tree_src(DATA_VIEWS, &state, &fixture_registry());
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::VirtualList { rows, args, test_id, .. } = &children[0] else {
+        panic!("{:?}", children[0])
+    };
+    assert_eq!(test_id, "list");
+    assert_eq!(rows, &vec!["Alpha".to_string(), "Beta".to_string()]);
+    assert_eq!(args, &vec!["1".to_string(), "2".to_string()]);
+    let ViewNode::LogView { lines, follow, test_id, .. } = &children[1] else {
+        panic!("{:?}", children[1])
+    };
+    assert_eq!((lines.as_slice(), *follow, test_id.as_str()), (&["one".to_string(), "two".to_string()][..], true, "log"));
+    let ViewNode::Table { columns, rows, args, .. } = &children[2] else { panic!("{:?}", children[2]) };
+    assert_eq!(columns.len(), 2);
+    assert_eq!(columns[0].key, "label");
+    assert_eq!(rows[0], vec!["Alpha".to_string(), "1".to_string()]);
+    assert_eq!(args[0], "1");
+    let ViewNode::Input { keyboard, test_id, .. } = &children[3] else { panic!("{:?}", children[3]) };
+    assert_eq!((*keyboard, test_id.as_str()), (Keyboard::Hex, "hex"));
+}
+
+/// §7.1 `<SafeArea>` edges (N5).
+#[test]
+fn safe_area_produces_identical_trees() {
+    use libra_components::{SafeEdges, ViewNode};
+
+    let state = TestState::default();
+    let interp = interp_tree_src(SAFE_AREA, &state, &fixture_registry());
+    let compiled = generated::build_safe_area(&state);
+    assert_eq!(interp, compiled, "engine drift on safe area fixture");
+    let ViewNode::Column { children, .. } = &interp else { panic!("{interp:?}") };
+    let ViewNode::SafeArea { edges, test_id, .. } = &children[0] else { panic!("{:?}", children[0]) };
+    assert_eq!((test_id.as_deref(), *edges), (Some("all"), SafeEdges::ALL));
+    let ViewNode::SafeArea { edges, test_id, .. } = &children[1] else { panic!("{:?}", children[1]) };
+    assert_eq!(test_id.as_deref(), Some("vertical"));
+    assert!(edges.top && edges.bottom && !edges.left && !edges.right);
 }

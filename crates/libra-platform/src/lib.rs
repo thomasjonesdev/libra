@@ -14,10 +14,17 @@
 
 pub mod a11y;
 pub mod icon;
+mod automate;
+mod dialog;
+mod inspector;
+mod files;
+mod insets;
 mod instance;
 mod login_item;
 mod menu;
 mod notify;
+mod open_url;
+mod share;
 mod tray;
 mod update;
 
@@ -27,10 +34,15 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use libra_components::{caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, Role, SourceDecl};
+use crate::automate::Drive;
+use libra_components::{
+    attach_osk, caret_byte_at, osk_edit, textarea_vertical_caret, Cursor, InputFocus, ItemKind,
+    Keyboard, LaidTree, Role, SourceDecl,
+};
 use libra_core::{
-    shortcut_fires_while_focused, App, Effect, FrameInfo, Instant as LxInstant, ReflectAction,
-    Rehydrate, RehydrateReport, Sub, WindowOp, WindowPolicy,
+    apply_window_chrome, file_dialog_title, file_name, shortcut_fires_while_focused, App,
+    ChromeChange, Effect, FilePick, FrameInfo, Instant as LxInstant, ReflectAction, Rehydrate,
+    RehydrateReport, Sub, WindowChrome, WindowOp, WindowPolicy,
 };
 use libra_draw::{Color, DrawCmd, FontStyle, Rect, Theme};
 use libra_effects::Effects;
@@ -41,13 +53,17 @@ use libra_raster::{Damage, Renderer};
 use libra_text::{EditOp, EditState};
 use tiny_skia::Pixmap;
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
+use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::event::{ElementState, Ime, KeyEvent, MouseButton, Touch, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{CursorIcon, Window, WindowId};
+use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
 
 const WATCH_INTERVAL: Duration = Duration::from_millis(250);
+/// Finger dwell before a touch selects the word under it (§10.1).
+const LONG_PRESS: Duration = Duration::from_millis(500);
+/// Movement inside this radius, in logical px, is still a long-press.
+const TOUCH_SLOP: f64 = 8.0;
 
 /// Dev-only frame pacing diagnostics (PLAN-DASHBOARD-PERF.md Stage 0).
 /// Gated by `LIBRA_FRAME_STATS`; a no-op otherwise (a bool check per
@@ -316,6 +332,11 @@ fn is_shell_effect<M>(effect: &Effect<M>) -> bool {
             | Effect::WindowOp { .. }
             | Effect::LoginItem { .. }
             | Effect::LoginItemQuery { .. }
+            | Effect::OpenUrl { .. }
+            | Effect::Dialog { .. }
+            | Effect::Share { .. }
+            | Effect::PickFile { .. }
+            | Effect::SaveFile { .. }
     )
 }
 
@@ -559,6 +580,7 @@ where
     effects.set_stream_wake(Arc::new(move || {
         let _ = wake_proxy.send_event(menu::ShellEvent::Streams);
     }));
+    let automation_socket = automate::start(update_proxy.clone());
     let (boot_effects, worker_cmds): (Vec<_>, Vec<_>) =
         init_cmds.into_iter().partition(is_shell_effect);
     effects.execute_all(worker_cmds);
@@ -591,6 +613,8 @@ where
     // chord or action name is a startup error, not a silent dead key.
     let shortcut_table = libra_core::build_shortcut_table::<A::Msg>(A::shortcuts())
         .unwrap_or_else(|e| panic!("[libra] invalid shortcuts: {e}"));
+    let window_chrome = WindowChrome::at(opts.title.clone(), opts.logical_size.0, opts.logical_size.1);
+    let insets = insets::desktop_insets(opts.frameless, false);
     let mut shell = Shell {
         opts,
         app,
@@ -611,6 +635,8 @@ where
         native_menus: menu::NativeMenus::new(),
         tray: tray::TrayHost::new(),
         window_hidden: false,
+        window_chrome,
+        insets,
         boot_effects,
         gfx: None,
         watch_mtime,
@@ -624,6 +650,12 @@ where
         markup_streams: Vec::new(),
         pumping_streams: false,
         focus: None,
+        sticky_x: None,
+        preserve_sticky: false,
+        touch: None,
+        touch_handles: false,
+        osk: None,
+        summon_osk: false,
         modifiers: ModifiersState::empty(),
         theme,
         theme_mtime,
@@ -637,6 +669,9 @@ where
         frame_stats: FrameStats::new(),
         update_proxy,
         update_started: false,
+        automation_socket,
+        action_log: inspector::ActionLog::default(),
+        inspector: None,
     };
     event_loop.run_app(&mut shell)?;
     Ok(())
@@ -688,6 +723,17 @@ fn cursor_icon(cursor: Cursor) -> CursorIcon {
     }
 }
 
+struct TouchGesture {
+    id: u64,
+    x: f64,
+    y: f64,
+    origin_x: f64,
+    origin_y: f64,
+    started: Instant,
+    fired: bool,
+    dragged: bool,
+}
+
 struct Shell<A: App>
 where
     A::Msg: 'static,
@@ -732,6 +778,11 @@ where
     tray: tray::TrayHost,
     /// Close-to-tray hides the window and stops painting. Sources stay mounted.
     window_hidden: bool,
+    /// N6 chrome. Applied before winit so a refused title or size never
+    /// reaches the window.
+    window_chrome: WindowChrome,
+    /// N5. Recomputed when fullscreen changes. Passed into every layout.
+    insets: libra_components::Insets,
     /// Shell-handled effects from `init`, applied once the window exists
     /// so a login-item query reads the real host instead of the headless ack.
     boot_effects: Vec<Effect<A::Msg>>,
@@ -768,6 +819,17 @@ where
     pumping_streams: bool,
     /// §10.1 focus: focused Input id + editing state + onChange name.
     focus: Option<(String, EditState, String)>,
+    /// Pixel column remembered across textarea Up/Down (§10.1).
+    sticky_x: Option<f32>,
+    preserve_sticky: bool,
+    /// Finger currently down on a text field, if any.
+    touch: Option<TouchGesture>,
+    /// Selection grips after a long-press.
+    touch_handles: bool,
+    /// Touch on-screen keyboard (§19.1). Pointer clicks leave this empty.
+    osk: Option<Keyboard>,
+    /// The click in progress came from a touch, so text focus summons `osk`.
+    summon_osk: bool,
     modifiers: ModifiersState,
     /// §11: current theme; Effect::SetTheme swaps it live.
     theme: Theme,
@@ -794,6 +856,85 @@ where
     /// PLAN-RELEASE: wakes the loop when a signed feed has a newer build.
     update_proxy: winit::event_loop::EventLoopProxy<menu::ShellEvent<A::Msg>>,
     update_started: bool,
+    /// Socket path to unlink when the window loop ends (§16).
+    automation_socket: Option<PathBuf>,
+    /// Recent actions for the inspector and the `log` verb (§18.4).
+    action_log: inspector::ActionLog,
+    /// Dev-only second window. `None` when `LIBRA_INSPECTOR` is unset.
+    inspector: Option<InspectorGfx>,
+}
+
+struct InspectorGfx {
+    window: Arc<Window>,
+    _context: softbuffer::Context<Arc<Window>>,
+    surface: softbuffer::Surface<Arc<Window>, Arc<Window>>,
+    renderer: Renderer,
+}
+
+impl<A: App> Drop for Shell<A>
+where
+    A::Msg: 'static,
+{
+    fn drop(&mut self) {
+        if let Some(path) = self.automation_socket.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+impl<A: App + 'static> automate::Drive for Shell<A>
+where
+    A::Msg: Send + 'static,
+{
+    fn nodes(&self) -> Vec<automate::NodeSnap> {
+        let Some(laid) = &self.laid else {
+            return Vec::new();
+        };
+        laid.items
+            .iter()
+            .map(|item| automate::NodeSnap {
+                test_id: item.semantics.test_id.clone(),
+                role: format!("{:?}", item.semantics.role),
+                text: item.semantics.text.clone(),
+                x: item.rect.x,
+                y: item.rect.y,
+                w: item.rect.w,
+                h: item.rect.h,
+            })
+            .collect()
+    }
+
+    fn dispatch_action(&mut self, action: &str, arg: Option<String>) -> Result<(), String> {
+        let msg = match arg {
+            Some(value) => A::Msg::action_with_str(action, value),
+            None => A::Msg::action_by_name(action),
+        };
+        match msg {
+            Some(msg) => {
+                self.dispatch(msg);
+                Ok(())
+            }
+            None => Err(format!("action '{action}' did not resolve")),
+        }
+    }
+
+    fn fields(&self) -> Vec<(String, String)> {
+        automate::visible_fields(A::field_names(), A::redacted_fields(), |name| {
+            self.app.field(name)
+        })
+    }
+
+    fn schema(&self) -> automate::SchemaSnap {
+        automate::schema_snap(
+            A::Msg::action_names(),
+            A::field_names(),
+            A::redacted_fields(),
+        )
+    }
+
+    fn log(&self) -> Vec<String> {
+        self.action_log.lines()
+    }
 }
 
 impl<A: App + 'static> Shell<A>
@@ -846,11 +987,13 @@ where
             )
         };
         match view_result {
-            Ok(view) => match libra_components::layout(
+            Ok(view) => match libra_components::layout_scrolled(
                 &view,
                 (logical.width, logical.height),
                 &self.renderer,
                 &self.theme,
+                &self.scroll_state,
+                &self.insets,
             ) {
                 Ok(laid) => {
                     // §12.5: collect every mounted source element's
@@ -896,6 +1039,9 @@ where
                     // M7: float mounted context menus to the last
                     // right-click point.
                     laid.apply_menu_anchor(self.menu_anchor);
+                    if let Some(keyboard) = self.osk {
+                        attach_osk(&mut laid, keyboard, &self.theme);
+                    }
                     self.laid = Some(laid);
                     self.overlay = None;
                     self.push_a11y();
@@ -908,6 +1054,7 @@ where
                     // row, or disables a control changes the affordance
                     // without any pointer motion to notice it.
                     self.sync_cursor();
+                    self.sync_ime();
                     self.pump_streams();
                 }
                 Err(e) => self.overlay = Some(e.to_string()),
@@ -932,6 +1079,13 @@ where
     }
 
     fn dispatch(&mut self, msg: A::Msg) {
+        #[cfg(debug_assertions)]
+        if inspector::enabled() || self.automation_socket.is_some() {
+            self.action_log.push(&inspector::brief_debug(&msg));
+            if let Some(gfx) = &self.inspector {
+                gfx.window.request_redraw();
+            }
+        }
         let effects = self.app.update(msg);
         self.handle_effects(effects);
     }
@@ -941,6 +1095,8 @@ where
         // ClipboardSet is a UI-thread OS call (arboard) acked inline;
         // PickFolder is the same for rfd's folder sheet;
         // Notify is the same for the OS banner (PLAN-NOTIFY NT1);
+        // OpenUrl, Dialog, and Share are the same (PLAN-NATIVE-INTEGRATIONS
+        // N1, N2, N4);
         // everything else goes to the effects runtime.
         let mut rest = Vec::with_capacity(effects.len());
         let mut acks: Vec<A::Msg> = Vec::new();
@@ -995,7 +1151,7 @@ where
                 continue;
             }
             if let Effect::WindowOp { op } = &effect {
-                self.apply_window(*op);
+                self.apply_window(op.clone());
                 continue;
             }
             if let Effect::LoginItem { enabled, on_done } = &effect {
@@ -1006,6 +1162,52 @@ where
             }
             if let Effect::LoginItemQuery { on_done } = &effect {
                 acks.push(on_done(login_item::query(self.opts.app_id.as_deref())));
+                continue;
+            }
+            if let Effect::OpenUrl { url, on_done } = &effect {
+                let result = open_url::launch(url);
+                if let Some(ctor) = on_done {
+                    acks.push(ctor(result));
+                }
+                continue;
+            }
+            if let Effect::Dialog { spec, on_done } = &effect {
+                acks.push(on_done(dialog::show(spec)));
+                continue;
+            }
+            if let Effect::Share { text, url, on_done } = &effect {
+                let result = match libra_core::share_payload(text, url.as_deref()) {
+                    Ok(payload) => share::copy(&payload),
+                    Err(result) => result,
+                };
+                if let Some(ctor) = on_done {
+                    acks.push(ctor(result));
+                }
+                continue;
+            }
+            if let Effect::PickFile { title, on_done } = &effect {
+                let title = file_dialog_title(title, "Open");
+                acks.push(on_done(files::pick(&title)));
+                continue;
+            }
+            if let Effect::SaveFile {
+                title,
+                name,
+                on_done,
+            } = &effect
+            {
+                let title = file_dialog_title(title, "Save");
+                let name = match name.as_deref() {
+                    Some(name) => match file_name(name) {
+                        Ok(name) => Some(name),
+                        Err(reason) => {
+                            acks.push(on_done(FilePick::Failed(reason)));
+                            continue;
+                        }
+                    },
+                    None => None,
+                };
+                acks.push(on_done(files::save(&title, name.as_deref())));
                 continue;
             }
             rest.push(effect);
@@ -1031,7 +1233,14 @@ where
     }
 
     fn apply_window(&mut self, op: WindowOp) {
-        match op {
+        match apply_window_chrome(&mut self.window_chrome, &op) {
+            ChromeChange::Refused(reason) => {
+                eprintln!("[libra] window op refused: {reason}");
+                return;
+            }
+            ChromeChange::Applied => {}
+        }
+        match &op {
             WindowOp::Quit => {
                 let _ = self
                     .update_proxy
@@ -1049,6 +1258,28 @@ where
                     gfx.window.set_visible(true);
                     gfx.window.focus_window();
                     gfx.window.request_redraw();
+                }
+            }
+            WindowOp::Title(_) => {
+                self.opts.title = self.window_chrome.title.clone();
+                if let Some(gfx) = &self.gfx {
+                    gfx.window.set_title(&self.window_chrome.title);
+                }
+            }
+            WindowOp::Fullscreen(on) => {
+                self.insets = insets::desktop_insets(self.opts.frameless, *on);
+                if let Some(gfx) = &self.gfx {
+                    gfx.window
+                        .set_fullscreen((*on).then_some(Fullscreen::Borderless(None)));
+                }
+            }
+            WindowOp::Resize { .. } => {
+                self.opts.logical_size = (self.window_chrome.width, self.window_chrome.height);
+                if let Some(gfx) = &self.gfx {
+                    let _ = gfx.window.request_inner_size(LogicalSize::new(
+                        self.window_chrome.width as f64,
+                        self.window_chrome.height as f64,
+                    ));
                 }
             }
         }
@@ -1275,7 +1506,14 @@ where
             laid.items
                 .iter()
                 .rev()
-                .find(|i| matches!(i.kind, ItemKind::Scroll) && i.rect.contains(lx, ly))
+                .find(|i| {
+                    let scrolls = match &i.kind {
+                        ItemKind::Scroll => true,
+                        ItemKind::VirtualViewport { follow: false } => true,
+                        _ => false,
+                    };
+                    scrolls && i.rect.contains(lx, ly)
+                })
                 .and_then(|i| i.semantics.test_id.clone())
         });
         let Some(id) = target else { return };
@@ -1286,6 +1524,7 @@ where
     }
 
     fn click(&mut self) {
+        self.touch_handles = false;
         let scale = self.scale();
         let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
         let Some(laid) = &self.laid else { return };
@@ -1315,9 +1554,15 @@ where
             // used here: the whole window is one softbuffer surface, so
             // it would steal Split and text drags.
             let chrome = self.opts.frameless && laid.chrome_drag_at(lx, ly);
-            if self.focus.is_some() {
-                self.dispatch_focused_submit();
-                self.focus = None;
+            let had_focus = self.focus.is_some();
+            if had_focus || self.osk.is_some() {
+                self.osk = None;
+                if had_focus {
+                    self.dispatch_focused_submit();
+                    self.focus = None;
+                } else {
+                    self.relayout();
+                }
                 self.request_redraw();
             }
             if chrome {
@@ -1326,6 +1571,22 @@ where
                 }
             }
             return;
+        };
+        let osk_label = match &hit.kind {
+            ItemKind::OskKey { label } => Some(label.clone()),
+            _ => None,
+        };
+        if let Some(label) = osk_label {
+            if let Some(op) = osk_edit(&label) {
+                self.apply_edit(op);
+            }
+            return;
+        }
+        let keyboard = match &hit.kind {
+            ItemKind::Input { keyboard, .. }
+            | ItemKind::Search { keyboard, .. }
+            | ItemKind::Textarea { keyboard, .. } => *keyboard,
+            _ => Keyboard::None,
         };
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
@@ -1350,6 +1611,11 @@ where
             if !already {
                 self.focus = Some((id.clone(), EditState::new(text), name));
             }
+            self.osk = if self.summon_osk && keyboard != Keyboard::None {
+                Some(keyboard)
+            } else {
+                None
+            };
             let count = self.bump_text_click(&id, lx, ly);
             let op = match count {
                 2 => EditOp::SelectWord,
@@ -1360,12 +1626,16 @@ where
                 },
             };
             self.apply_edit(op);
+            if self.summon_osk {
+                self.relayout();
+            }
             self.drag = Some(DragTarget::Text);
             return;
         }
         let on_press_arg = hit.on_press_arg.clone();
         self.dispatch_focused_submit();
         self.focus = None;
+        self.osk = None;
         // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch the
         // String-payload action with the resolved loop-binding value.
         let msg = match on_press_arg {
@@ -1660,9 +1930,13 @@ where
                 }
                 None
             }
-            Key::Named(NamedKey::ArrowUp) if self.focused_is_textarea() => Some(EditOp::Up(shift)),
+            Key::Named(NamedKey::ArrowUp) if self.focused_is_textarea() => {
+                self.visual_arrow(-1, shift);
+                return;
+            }
             Key::Named(NamedKey::ArrowDown) if self.focused_is_textarea() => {
-                Some(EditOp::Down(shift))
+                self.visual_arrow(1, shift);
+                return;
             }
             Key::Named(NamedKey::Escape) => {
                 self.focus = None;
@@ -1726,6 +2000,9 @@ where
     }
 
     fn apply_edit(&mut self, op: EditOp) {
+        if !self.preserve_sticky {
+            self.sticky_x = None;
+        }
         let Some((id, mut edit, on_change)) = self.focus.take() else {
             return;
         };
@@ -1739,15 +2016,184 @@ where
                 .unwrap_or_else(|| panic!("'{on_change}' is not a String-payload Action variant"));
             self.dispatch(msg); // relayout picks up state's new value
         }
+        self.sync_ime();
         self.request_redraw();
     }
 
     fn focus_paint(&self) -> Option<InputFocus> {
-        self.focus.as_ref().map(|(id, e, _)| InputFocus {
-            test_id: id.clone(),
-            caret: e.caret(),
-            selection: e.selection(),
+        self.focus.as_ref().map(|(id, e, _)| {
+            let preedit = e.preedit().cloned();
+            let caret = e.display_caret();
+            let selection = if preedit.is_some() { caret..caret } else { e.selection() };
+            InputFocus {
+                test_id: id.clone(),
+                caret,
+                selection,
+                preedit,
+                handles: self.touch_handles,
+                show_caret: e.show_caret(),
+            }
         })
+    }
+
+    /// Arrow Up/Down in a textarea follows soft-wrapped rows. The pure
+    /// core's `EditOp::Up` stays hard-line; it has no font metrics.
+    fn visual_arrow(&mut self, dir: i32, select: bool) {
+        if self.focus.as_ref().is_some_and(|(_, e, _)| e.preedit().is_some()) {
+            let text = self
+                .focus
+                .as_ref()
+                .and_then(|(_, e, _)| e.preedit().map(|p| p.text.clone()))
+                .unwrap_or_default();
+            if text.is_empty() {
+                self.apply_edit(EditOp::Preedit { text: String::new(), cursor: None });
+            } else {
+                self.apply_edit(EditOp::Commit(text));
+            }
+        }
+        let computed = {
+            let (id, caret) = match &self.focus {
+                Some((id, edit, _)) => (id.clone(), edit.caret()),
+                None => return,
+            };
+            let Some(laid) = &self.laid else { return };
+            let Some(item) = laid
+                .items
+                .iter()
+                .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+            else {
+                return;
+            };
+            textarea_vertical_caret(item, caret, dir, self.sticky_x, &self.renderer, &self.theme)
+        };
+        let Some((byte, x)) = computed else { return };
+        self.sticky_x = x;
+        self.preserve_sticky = true;
+        self.apply_edit(EditOp::SetCaret { byte, select });
+        self.preserve_sticky = false;
+    }
+
+    fn sync_ime(&self) {
+        let Some(gfx) = &self.gfx else { return };
+        let allowed = self.focus.is_some();
+        gfx.window.set_ime_allowed(allowed);
+        if !allowed {
+            return;
+        }
+        let Some((id, _, _)) = &self.focus else { return };
+        let Some(laid) = &self.laid else { return };
+        let Some(item) = laid
+            .items
+            .iter()
+            .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+        else {
+            return;
+        };
+        let rect = item.rect;
+        gfx.window.set_ime_cursor_area(
+            winit::dpi::LogicalPosition::new(rect.x as f64, rect.y as f64),
+            winit::dpi::LogicalSize::new(rect.w.max(1.0) as f64, rect.h.max(1.0) as f64),
+        );
+    }
+
+    fn ime(&mut self, ime: Ime) {
+        if self.focus.is_none() {
+            return;
+        }
+        match ime {
+            Ime::Enabled => self.sync_ime(),
+            Ime::Disabled => {
+                self.apply_edit(EditOp::Preedit { text: String::new(), cursor: None });
+            }
+            Ime::Preedit(text, cursor) => {
+                self.apply_edit(EditOp::Preedit { text, cursor });
+            }
+            Ime::Commit(text) => self.apply_edit(EditOp::Commit(text)),
+        }
+    }
+
+    fn on_touch(&mut self, touch: Touch) {
+        let scale = self.scale() as f64;
+        let x = touch.location.x / scale;
+        let y = touch.location.y / scale;
+        match touch.phase {
+            TouchPhase::Started => {
+                self.cursor = (touch.location.x, touch.location.y);
+                self.touch_handles = false;
+                self.summon_osk = true;
+                self.click();
+                self.summon_osk = false;
+                if self.focus.is_some() {
+                    self.touch = Some(TouchGesture {
+                        id: touch.id,
+                        x,
+                        y,
+                        origin_x: x,
+                        origin_y: y,
+                        started: Instant::now(),
+                        fired: false,
+                        dragged: false,
+                    });
+                }
+            }
+            TouchPhase::Moved => {
+                let Some(g) = &mut self.touch else { return };
+                if g.id != touch.id {
+                    return;
+                }
+                g.x = x;
+                g.y = y;
+                let dx = x - g.origin_x;
+                let dy = y - g.origin_y;
+                if dx * dx + dy * dy > TOUCH_SLOP * TOUCH_SLOP {
+                    g.dragged = true;
+                }
+                if g.dragged {
+                    self.cursor = (touch.location.x, touch.location.y);
+                    self.extend_selection_to_cursor();
+                }
+            }
+            TouchPhase::Ended | TouchPhase::Cancelled => {
+                if self.touch.as_ref().is_some_and(|g| g.id == touch.id) {
+                    self.touch = None;
+                    self.drag = None;
+                }
+            }
+        }
+    }
+
+    fn extend_selection_to_cursor(&mut self) {
+        let scale = self.scale();
+        let (lx, ly) = (self.cursor.0 as f32 / scale, self.cursor.1 as f32 / scale);
+        let byte = {
+            let Some((id, _, _)) = &self.focus else { return };
+            let id = id.clone();
+            let Some(laid) = &self.laid else { return };
+            let Some(item) = laid
+                .items
+                .iter()
+                .find(|i| i.semantics.test_id.as_deref() == Some(id.as_str()))
+            else {
+                return;
+            };
+            let focus = self.focus_paint();
+            caret_byte_at(item, lx, ly, &self.renderer, &self.theme, focus.as_ref()).unwrap_or(0)
+        };
+        self.apply_edit(EditOp::SetCaret { byte, select: true });
+    }
+
+    fn poll_long_press(&mut self) {
+        let ready = self.touch.as_ref().is_some_and(|g| {
+            !g.fired && !g.dragged && g.started.elapsed() >= LONG_PRESS
+        });
+        if !ready {
+            return;
+        }
+        if let Some(g) = &mut self.touch {
+            g.fired = true;
+        }
+        self.touch_handles = true;
+        self.apply_edit(EditOp::SelectWord);
     }
 
     /// Is the focused control a `Textarea`? Decides the multi-line key
@@ -1862,6 +2308,83 @@ where
             Err(e) => self.overlay = Some(format!("{}: {e}", path.display())),
         }
         self.request_redraw();
+    }
+
+    fn inspector_fields(&self) -> Vec<(String, String)> {
+        let mut rows = self.fields();
+        for name in A::redacted_fields() {
+            rows.push(((*name).to_string(), "(redacted)".into()));
+        }
+        rows
+    }
+
+    fn open_inspector(&mut self, event_loop: &ActiveEventLoop) {
+        if self.inspector.is_some() || !inspector::enabled() {
+            return;
+        }
+        let mut attrs = Window::default_attributes()
+            .with_title("Libra Inspector")
+            .with_inner_size(LogicalSize::new(320.0, 520.0));
+        if let Some(main) = &self.gfx {
+            if let Ok(pos) = main.window.outer_position() {
+                let size = main.window.outer_size();
+                attrs = attrs.with_position(PhysicalPosition::new(
+                    pos.x + size.width as i32 + 12,
+                    pos.y,
+                ));
+            }
+        }
+        let window = Arc::new(event_loop.create_window(attrs).expect("create inspector"));
+        let context = softbuffer::Context::new(window.clone()).expect("inspector context");
+        let surface =
+            softbuffer::Surface::new(&context, window.clone()).expect("inspector surface");
+        window.request_redraw();
+        self.inspector = Some(InspectorGfx {
+            window,
+            _context: context,
+            surface,
+            renderer: Renderer::new(),
+        });
+    }
+
+    fn present_inspector(&mut self) {
+        if self.inspector.is_none() {
+            return;
+        }
+        let fields = self.inspector_fields();
+        let actions = self.action_log.lines();
+        let theme = self.theme.clone();
+        let store = Arc::clone(self.effects.store());
+        let Some(gfx) = &mut self.inspector else { return };
+        let size = gfx.window.inner_size();
+        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
+            return;
+        };
+        let scale = gfx.window.scale_factor() as f32;
+        if scale <= 0.0 {
+            return;
+        }
+        let view = inspector::view(&fields, &actions);
+        let logical = (size.width as f32 / scale, size.height as f32 / scale);
+        let Ok(laid) = libra_components::layout(&view, logical, &gfx.renderer, &theme) else {
+            eprintln!("[libra] inspector layout failed");
+            return;
+        };
+        let mut cmds = laid.paint(&gfx.renderer, store.as_ref(), None, &theme);
+        scale_cmds_in_place(&mut cmds, scale);
+        let pixmap = gfx.renderer.render(&cmds, size.width, size.height);
+        gfx.surface.resize(w, h).expect("inspector resize");
+        let mut buffer = gfx.surface.buffer_mut().expect("inspector buffer");
+        blit_rows(
+            &mut buffer,
+            &pixmap,
+            0,
+            w.get() as usize,
+            0,
+            h.get() as usize,
+        );
+        gfx.window.pre_present_notify();
+        buffer.present().expect("inspector present");
     }
 
     fn present(&mut self) {
@@ -2203,6 +2726,7 @@ where
             self.handle_effects(boot);
         }
         self.start_update_check();
+        self.open_inspector(event_loop);
     }
 
     /// Effect results, a11y actions, and `<Interval>` ticks arrive here
@@ -2227,10 +2751,22 @@ where
                     self.dispatch(msg);
                 }
             }
+            menu::ShellEvent::Automate { line, reply } => {
+                let response = automate::handle_line(self, &line);
+                let _ = reply.send(response);
+            }
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if self.inspector.as_ref().is_some_and(|gfx| gfx.window.id() == id) {
+            match event {
+                WindowEvent::CloseRequested => self.inspector = None,
+                WindowEvent::RedrawRequested | WindowEvent::Resized(_) => self.present_inspector(),
+                _ => {}
+            }
+            return;
+        }
         if let Some(gfx) = &mut self.gfx {
             let window = Arc::clone(&gfx.window);
             gfx.a11y.process_event(&window, &event);
@@ -2287,6 +2823,8 @@ where
                 button: MouseButton::Right,
                 ..
             } => self.right_click(),
+            WindowEvent::Ime(ime) => self.ime(ime),
+            WindowEvent::Touch(touch) => self.on_touch(touch),
             WindowEvent::RedrawRequested => {
                 if self.pending_relayout {
                     self.pending_relayout = false;
@@ -2299,6 +2837,7 @@ where
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.poll_long_press();
         if persist_requested() {
             self.persist_and_exit(event_loop);
             return;
@@ -2335,10 +2874,20 @@ where
             return;
         }
 
-        if self.opts.watch.is_some() || self.opts.theme_file.is_some() {
-            event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_watch_check));
+        let mut wake = if self.opts.watch.is_some() || self.opts.theme_file.is_some() {
+            Some(self.next_watch_check)
         } else {
-            event_loop.set_control_flow(ControlFlow::Wait);
+            None
+        };
+        if let Some(g) = &self.touch {
+            if !g.fired && !g.dragged {
+                let at = g.started + LONG_PRESS;
+                wake = Some(wake.map_or(at, |w| w.min(at)));
+            }
+        }
+        match wake {
+            Some(at) => event_loop.set_control_flow(ControlFlow::WaitUntil(at)),
+            None => event_loop.set_control_flow(ControlFlow::Wait),
         }
     }
 }

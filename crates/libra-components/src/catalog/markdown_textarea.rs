@@ -450,9 +450,85 @@ fn paint_caret(
     });
 }
 
+/// Visual-row Up/Down for a markdown textarea. X is measured the same
+/// way [`paint_caret`] places the bar: source bytes, regular face.
+pub(crate) fn vertical_caret(
+    value: &str,
+    max_w: f32,
+    px: f32,
+    caret: usize,
+    dir: i32,
+    sticky_x: Option<f32>,
+    m: &dyn TextMeasurer,
+    theme: &Theme,
+) -> (usize, Option<f32>) {
+    if value.is_empty() || dir == 0 {
+        return (caret.min(value.len()), sticky_x);
+    }
+    let rows = visual_rows(value, max_w, px, m, theme, None);
+    if rows.is_empty() {
+        return (0, sticky_x);
+    }
+    let caret = caret.min(value.len());
+    let mut row_i = rows.len() - 1;
+    for (i, r) in rows.iter().enumerate() {
+        let soft = caret == r.source_end
+            && rows.get(i + 1).is_some_and(|n| n.source_start == r.source_end);
+        if soft {
+            continue;
+        }
+        if caret >= r.source_start && caret <= r.source_end {
+            row_i = i;
+            break;
+        }
+    }
+    let row = &rows[row_i];
+    let end = caret.clamp(row.source_start, row.source_end);
+    let x = sticky_x.unwrap_or_else(|| {
+        m.measure(&value[row.source_start..end], px, FontStyle::Regular).0
+    });
+    let next = row_i as i32 + dir;
+    if next < 0 {
+        return (rows[0].source_start, Some(x));
+    }
+    if next as usize >= rows.len() {
+        return (value.len(), Some(x));
+    }
+    let target = &rows[next as usize];
+    (byte_at_x(value, target.source_start, target.source_end, x, px, m), Some(x))
+}
+
+fn byte_at_x(
+    value: &str,
+    ls: usize,
+    le: usize,
+    rel: f32,
+    px: f32,
+    m: &dyn TextMeasurer,
+) -> usize {
+    if rel <= 0.0 {
+        return ls;
+    }
+    let mut prev_i = ls;
+    let mut prev_w = 0.0f32;
+    let mut i = ls;
+    while i < le {
+        let ch = value[i..].chars().next().unwrap();
+        i += ch.len_utf8();
+        let w = m.measure(&value[ls..i], px, FontStyle::Regular).0;
+        if w >= rel {
+            return if (rel - prev_w) <= (w - rel) { prev_i } else { i };
+        }
+        prev_i = i;
+        prev_w = w;
+    }
+    le
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::Keyboard;
     use libra_draw::FontStyle;
 
     struct Fixed;
@@ -499,6 +575,7 @@ mod tests {
                 px: 14.0,
                 markdown: true,
                 on_wikilink: Some("followWikilink".into()),
+                keyboard: Keyboard::Text,
             },
             rect: Rect::new(0.0, 0.0, 800.0, 600.0),
             semantics: Semantics {

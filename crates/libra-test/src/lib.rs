@@ -8,12 +8,14 @@
 
 // ReflectState/ReflectAction methods resolve through App's supertrait bounds.
 use libra_components::{
-    caret_byte_at, Cursor, InputFocus, ItemKind, LaidTree, ScrollState, SourceDecl,
+    attach_osk, caret_byte_at, osk_edit, Cursor, InputFocus, ItemKind, Keyboard, LaidTree,
+    ScrollState, SourceDecl,
 };
 use libra_core::{
-    App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult, ReflectAction, SeriesId,
-    StreamClose, StreamEvent,
+    apply_window_chrome, App, Effect, FrameInfo, HttpResult, Instant, KvResult, ProcessResult,
+    ReflectAction, SeriesId, StreamClose, StreamEvent, WindowChrome,
 };
+use libra_components::Insets;
 use libra_data::SeriesStore;
 use libra_draw::Theme;
 use libra_interp::Scope;
@@ -25,10 +27,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub mod autopilot;
+pub mod replay;
 pub mod respond;
 
 pub use autopilot::{Affordance, AffordanceKind, Autopilot, Budget, Run, Step};
 pub use libra_components::Role;
+pub use replay::{Replay, ReplayStep};
 pub use respond::Reply;
 
 /// Seed for the effect-drain shuffle and autopilot choices when a test does
@@ -46,12 +50,23 @@ pub struct Harness<A: App> {
     /// Intercepted, unexecuted effects in emission order (integration
     /// tests, §15.4).
     pending: VecDeque<Effect<A::Msg>>,
+    /// N6 window chrome recorded from intercepted `WindowOp`s. The
+    /// viewport is the starting size. A refused op leaves this unchanged.
+    chrome: WindowChrome,
+    /// N5 safe-area insets. Zero is the canonical frame.
+    insets: Insets,
     /// The data plane, fed synchronously (tapes) — never by threads.
     store: Arc<SeriesStore>,
     /// §10.1 focus: the focused Input's identity + editing state +
     /// its on_change handler (retained outside the tree until the
     /// reconciler brings structural IDs).
     focus: Option<(String, EditState, String)>,
+    /// Selection grips after [`Harness::long_press`].
+    touch_handles: bool,
+    /// Touch on-screen keyboard (§19.1). Set by [`Harness::touch_focus`].
+    osk: Option<Keyboard>,
+    /// The click in progress was a touch, so a text field summons `osk`.
+    summon_osk: bool,
     /// §11: the theme this harness renders under — part of snapshot
     /// identity (a snapshot's name should say which theme it is).
     theme: Theme,
@@ -127,6 +142,13 @@ pub mod fx {
         WindowOp,
         LoginItem,
         LoginItemQuery,
+        OpenUrl,
+        /// Exact url.
+        OpenUrlTo(String),
+        Dialog,
+        Share,
+        PickFile,
+        SaveFile,
         Process,
         /// Match when `CommandSpec.program` equals this string.
         ProcessProgram(Option<String>),
@@ -187,6 +209,24 @@ pub mod fx {
     pub fn login_item_query() -> Matcher {
         Matcher::LoginItemQuery
     }
+    pub fn open_url() -> Matcher {
+        Matcher::OpenUrl
+    }
+    pub fn open_url_to(url: &str) -> Matcher {
+        Matcher::OpenUrlTo(url.to_string())
+    }
+    pub fn dialog() -> Matcher {
+        Matcher::Dialog
+    }
+    pub fn share() -> Matcher {
+        Matcher::Share
+    }
+    pub fn pick_file() -> Matcher {
+        Matcher::PickFile
+    }
+    pub fn save_file() -> Matcher {
+        Matcher::SaveFile
+    }
     pub fn process() -> Matcher {
         Matcher::Process
     }
@@ -232,6 +272,12 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         (Matcher::WindowOp, Effect::WindowOp { .. }) => true,
         (Matcher::LoginItem, Effect::LoginItem { .. }) => true,
         (Matcher::LoginItemQuery, Effect::LoginItemQuery { .. }) => true,
+        (Matcher::OpenUrl, Effect::OpenUrl { .. }) => true,
+        (Matcher::OpenUrlTo(url), Effect::OpenUrl { url: got, .. }) => got == url,
+        (Matcher::Dialog, Effect::Dialog { .. }) => true,
+        (Matcher::Share, Effect::Share { .. }) => true,
+        (Matcher::PickFile, Effect::PickFile { .. }) => true,
+        (Matcher::SaveFile, Effect::SaveFile { .. }) => true,
         (Matcher::Process, Effect::Process { .. }) => true,
         (Matcher::ProcessProgram(want), Effect::Process { command, .. }) => {
             want.as_deref().map_or(true, |w| w == &command.program)
@@ -242,6 +288,20 @@ fn matches<M>(matcher: &fx::Matcher, c: &Effect<M>) -> bool {
         }
         (Matcher::CloseStream, Effect::CloseStream { .. }) => true,
         _ => false,
+    }
+}
+
+fn focus_view(id: &str, edit: &EditState, handles: bool) -> InputFocus {
+    let preedit = edit.preedit().cloned();
+    let caret = edit.display_caret();
+    let selection = if preedit.is_some() { caret..caret } else { edit.selection() };
+    InputFocus {
+        test_id: id.to_string(),
+        caret,
+        selection,
+        preedit,
+        handles,
+        show_caret: edit.show_caret(),
     }
 }
 
@@ -278,7 +338,24 @@ impl<A: App> Harness<A> {
         let (app, init_effects) = A::init();
         let renderer = Renderer::new();
         let theme = Theme::dark();
-        let laid = rebuild(&app, &ast, &registry, &renderer, (w, h), &theme);
+        let laid = rebuild(
+            &app,
+            &ast,
+            &registry,
+            &renderer,
+            (w, h),
+            &theme,
+            &ScrollState::new(),
+            &Insets::ZERO,
+            (0.0, 0.0),
+            None,
+        );
+        let mut chrome = WindowChrome::at("", w as f32, h as f32);
+        for effect in &init_effects {
+            if let Effect::WindowOp { op } = effect {
+                let _ = apply_window_chrome(&mut chrome, op);
+            }
+        }
         Harness {
             app,
             ast,
@@ -290,8 +367,13 @@ impl<A: App> Harness<A> {
                 std::env::var("LIBRA_SNAPSHOT_DIR").unwrap_or_else(|_| "tests/snapshots".into()),
             ),
             pending: init_effects.into(),
+            chrome,
+            insets: Insets::ZERO,
             store: Arc::new(SeriesStore::new()),
             focus: None,
+            touch_handles: false,
+            osk: None,
+            summon_osk: false,
             theme,
             hover: None,
             scroll_state: ScrollState::new(),
@@ -332,19 +414,17 @@ impl<A: App> Harness<A> {
     /// Scroll a `<Scroll testId=…>` viewport by `dy` logical px (down = +).
     /// Clamped at the top by 0 and at the bottom by content overflow — a
     /// deterministic input, so scroll snapshots stay byte-exact (PLAN-SCROLL).
+    /// Replace the safe-area insets and relayout (N5). Zero is the
+    /// canonical frame, so snapshots that never call this are unchanged.
+    pub fn set_insets(&mut self, insets: Insets) {
+        self.insets = insets;
+        self.laid = self.rebuild();
+    }
+
     pub fn scroll(&mut self, test_id: &str, dy: f32) {
         let pos = self.scroll_state.entry(test_id.to_string()).or_insert(0.0);
         *pos = (*pos + dy).max(0.0);
-        self.laid = rebuild(
-            &self.app,
-            &self.ast,
-            &self.registry,
-            &self.renderer,
-            self.viewport,
-            &self.theme,
-        );
-        self.laid.apply_scroll(&self.scroll_state);
-        self.laid.apply_menu_anchor(self.menu_anchor);
+        self.laid = self.rebuild();
     }
 
     /// Pin the hover point to the selected item's center (§7.1
@@ -498,14 +578,7 @@ impl<A: App> Harness<A> {
         self.theme = Theme::by_name(name).unwrap_or_else(|| {
             panic!("unknown theme '{name}' — built in: libra-dark, libra-light")
         });
-        self.laid = rebuild(
-            &self.app,
-            &self.ast,
-            &self.registry,
-            &self.renderer,
-            self.viewport,
-            &self.theme,
-        );
+        self.laid = self.rebuild();
         self
     }
 
@@ -519,14 +592,7 @@ impl<A: App> Harness<A> {
             .unwrap_or_else(|e| panic!("feed_tape: {e}"));
         // Data changed: rebuild so paint sees it (widgets read at paint,
         // but a rebuild keeps laid geometry current too).
-        self.laid = rebuild(
-            &self.app,
-            &self.ast,
-            &self.registry,
-            &self.renderer,
-            self.viewport,
-            &self.theme,
-        );
+        self.laid = self.rebuild();
         n
     }
 
@@ -538,6 +604,81 @@ impl<A: App> Harness<A> {
         &self.app
     }
 
+    /// Bindable fields, redacted ones omitted, in `field_names` order.
+    /// blake3 of `name=value` lines (§15.6).
+    pub fn state_hash(&self) -> String {
+        let redacted = A::redacted_fields();
+        let lines: Vec<String> = A::field_names()
+            .iter()
+            .filter(|name| !redacted.contains(name))
+            .map(|name| {
+                let value = self.app.field(name).unwrap_or_default();
+                format!("{name}={value}")
+            })
+            .collect();
+        blake3::hash(lines.join("\n").as_bytes()).to_hex().to_string()
+    }
+
+    /// blake3 of the canonical PNG. Same paint path as `assert_snapshot`.
+    pub fn frame_hash(&self) -> String {
+        let cmds = self.laid.paint_full(
+            &self.renderer,
+            &self.store,
+            self.focus_paint().as_ref(),
+            self.hover,
+            &self.theme,
+            1.0,
+        );
+        let png = self
+            .renderer
+            .render_png(&cmds, self.viewport.0, self.viewport.1);
+        blake3::hash(&png).to_hex().to_string()
+    }
+
+    /// Re-run a `.lreplay` from this harness's current state (normally a
+    /// fresh `render`) and check the final hashes (§15.6).
+    pub fn replay(&mut self, replay: &Replay) -> Result<(), String> {
+        for _ in 0..replay.prelude_discard {
+            self.pending.pop_front().ok_or_else(|| {
+                "preludeDiscard asked for a startup effect that was not queued".to_string()
+            })?;
+        }
+        if !self.pending.is_empty() {
+            return Err(format!(
+                "{} startup effect(s) still queued — set preludeDiscard",
+                self.pending.len()
+            ));
+        }
+        for (i, step) in replay.steps.iter().enumerate() {
+            let msg = match &step.arg {
+                Some(arg) => A::Msg::action_with_str(&step.action, arg.clone()),
+                None => A::Msg::action_by_name(&step.action),
+            }
+            .ok_or_else(|| format!("step {i}: action '{}' did not resolve", step.action))?;
+            self.dispatch(msg);
+            for _ in 0..step.discard {
+                self.pending.pop_front().ok_or_else(|| {
+                    format!("step {i}: discard asked for an effect that was not queued")
+                })?;
+            }
+            if !self.pending.is_empty() {
+                return Err(format!(
+                    "step {i}: {} effect(s) still queued — set discard",
+                    self.pending.len()
+                ));
+            }
+        }
+        let state = self.state_hash();
+        if state != replay.state_hash {
+            return Err(format!("state hash {state} != {}", replay.state_hash));
+        }
+        let frame = self.frame_hash();
+        if frame != replay.frame {
+            return Err(format!("frame hash {frame} != {}", replay.frame));
+        }
+        Ok(())
+    }
+
     /// Laid geometry for the current viewport. Overflow checks walk this.
     pub fn laid(&self) -> &LaidTree {
         &self.laid
@@ -545,16 +686,7 @@ impl<A: App> Harness<A> {
 
     pub fn set_viewport(&mut self, w: u32, h: u32) {
         self.viewport = (w, h);
-        self.laid = rebuild(
-            &self.app,
-            &self.ast,
-            &self.registry,
-            &self.renderer,
-            self.viewport,
-            &self.theme,
-        );
-        self.laid.apply_scroll(&self.scroll_state);
-        self.laid.apply_menu_anchor(self.menu_anchor);
+        self.laid = self.rebuild();
     }
 
     /// Dispatch an action directly through the real update, then
@@ -583,19 +715,12 @@ impl<A: App> Harness<A> {
                     v: *value,
                 });
             }
+            if let Effect::WindowOp { op } = effect {
+                let _ = apply_window_chrome(&mut self.chrome, op);
+            }
         }
         self.pending.extend(effects);
-        self.laid = rebuild(
-            &self.app,
-            &self.ast,
-            &self.registry,
-            &self.renderer,
-            self.viewport,
-            &self.theme,
-        );
-        // Deterministic layout inputs survive the rebuild (PLAN-SCROLL / M7).
-        self.laid.apply_scroll(&self.scroll_state);
-        self.laid.apply_menu_anchor(self.menu_anchor);
+        self.laid = self.rebuild();
     }
 
     /// Hit-test a synthetic click at the center of the selected item and
@@ -620,6 +745,21 @@ impl<A: App> Harness<A> {
             .laid
             .hit(cx, cy)
             .unwrap_or_else(|| panic!("click: {what} is not interactive at ({cx},{cy})"));
+        let osk_label = match &hit.kind {
+            ItemKind::OskKey { label } => Some(label.clone()),
+            _ => None,
+        };
+        if let Some(label) = osk_label {
+            let op = osk_edit(&label).unwrap_or_else(|| panic!("unknown key '{label}'"));
+            self.edit(op);
+            return;
+        }
+        let keyboard = match &hit.kind {
+            ItemKind::Input { keyboard, .. }
+            | ItemKind::Search { keyboard, .. }
+            | ItemKind::Textarea { keyboard, .. } => *keyboard,
+            _ => Keyboard::None,
+        };
         let name = hit.on_press.clone().expect("hit item has a handler");
         if hit.semantics.role == Role::TextInput {
             let id = hit
@@ -628,11 +768,7 @@ impl<A: App> Harness<A> {
                 .clone()
                 .expect("Input has a testId (load-enforced)");
             let text = hit.semantics.text.clone();
-            let focus = self.focus.as_ref().map(|(fid, e, _)| InputFocus {
-                test_id: fid.clone(),
-                caret: e.caret(),
-                selection: e.selection(),
-            });
+            let focus = self.focus.as_ref().map(|(fid, e, _)| focus_view(fid, e, self.touch_handles));
             let byte = caret_byte_at(hit, cx, cy, &self.renderer, &self.theme, focus.as_ref())
                 .unwrap_or(text.len());
             let already = self
@@ -646,6 +782,11 @@ impl<A: App> Harness<A> {
             if !already {
                 self.focus = Some((id, EditState::new(text), name));
             }
+            self.osk = if self.summon_osk && keyboard != Keyboard::None {
+                Some(keyboard)
+            } else {
+                None
+            };
             self.edit(EditOp::SetCaret {
                 byte,
                 select: false,
@@ -655,6 +796,7 @@ impl<A: App> Harness<A> {
         let on_press_arg = hit.on_press_arg.clone();
         self.dispatch_focused_submit();
         self.focus = None;
+        self.osk = None;
         // Item-scoped handler (`onPress={toggle(item)}`, §6.2): dispatch
         // the String-payload action with the resolved loop-binding value;
         // otherwise a plain unit action by name.
@@ -714,6 +856,40 @@ impl<A: App> Harness<A> {
         for ch in text.chars() {
             self.edit(EditOp::Insert(ch));
         }
+    }
+
+    /// Focus a text field the way a touch does (§19.1): the on-screen
+    /// keyboard for its `keyboard` hint appears. A pointer [`click`] does not.
+    pub fn touch_focus(&mut self, sel: Selector) {
+        self.summon_osk = true;
+        self.click(sel);
+        self.summon_osk = false;
+        // SetCaret does not rebuild; the keyboard has to land on this frame.
+        self.laid = self.rebuild();
+    }
+
+    /// Tap one on-screen key by its label (`"q"`, `"⌫"`, `"space"`).
+    pub fn tap_key(&mut self, label: &str) {
+        let op = osk_edit(label).unwrap_or_else(|| panic!("unknown key '{label}'"));
+        self.edit(op);
+    }
+
+    /// Long-press the selected text field: place the caret where a tap
+    /// would, then select the word (§10.1). Sets selection grips.
+    pub fn long_press(&mut self, sel: Selector) {
+        self.touch_handles = true;
+        self.click(sel);
+        self.edit(EditOp::SelectWord);
+    }
+
+    /// Drive an IME preedit without changing the committed text (§10.1).
+    pub fn compose(&mut self, text: &str, cursor: Option<(usize, usize)>) {
+        self.edit(EditOp::Preedit { text: text.to_string(), cursor });
+    }
+
+    /// Commit the current composition, or insert `text` at the caret.
+    pub fn commit_text(&mut self, text: &str) {
+        self.edit(EditOp::Commit(text.to_string()));
     }
 
     /// Apply one editing op to the focused Input (§10.1 harness verb):
@@ -832,11 +1008,7 @@ impl<A: App> Harness<A> {
     }
 
     fn focus_paint(&self) -> Option<InputFocus> {
-        self.focus.as_ref().map(|(id, e, _)| InputFocus {
-            test_id: id.clone(),
-            caret: e.caret(),
-            selection: e.selection(),
-        })
+        self.focus.as_ref().map(|(id, e, _)| focus_view(id, e, self.touch_handles))
     }
 
     // ------------------------------------------------------------------
@@ -991,6 +1163,50 @@ impl<A: App> Harness<A> {
                 self.dispatch(on_done(result))
             }
             other => panic!("resolve_login_item: not a login-item effect: {other:?}"),
+        }
+    }
+
+    pub fn resolve_open_url(&mut self, effect: Effect<A::Msg>, result: libra_core::OpenResult) {
+        match effect {
+            Effect::OpenUrl {
+                on_done: Some(ctor),
+                ..
+            } => self.dispatch(ctor(result)),
+            Effect::OpenUrl { on_done: None, .. } => {}
+            other => panic!("resolve_open_url: not an OpenUrl effect: {other:?}"),
+        }
+    }
+
+    pub fn resolve_dialog(&mut self, effect: Effect<A::Msg>, result: libra_core::DialogResult) {
+        match effect {
+            Effect::Dialog { on_done, .. } => self.dispatch(on_done(result)),
+            other => panic!("resolve_dialog: not a Dialog effect: {other:?}"),
+        }
+    }
+
+    /// The window chrome recorded from intercepted `WindowOp`s (N6).
+    pub fn chrome(&self) -> &WindowChrome {
+        &self.chrome
+    }
+
+    pub fn resolve_share(&mut self, effect: Effect<A::Msg>, result: libra_core::ShareResult) {
+        match effect {
+            Effect::Share {
+                on_done: Some(ctor),
+                ..
+            } => self.dispatch(ctor(result)),
+            Effect::Share { on_done: None, .. } => {}
+            other => panic!("resolve_share: not a Share effect: {other:?}"),
+        }
+    }
+
+    /// Ack an intercepted `PickFile` or `SaveFile`. No sheet is shown.
+    pub fn resolve_file_pick(&mut self, effect: Effect<A::Msg>, result: libra_core::FilePick) {
+        match effect {
+            Effect::PickFile { on_done, .. } | Effect::SaveFile { on_done, .. } => {
+                self.dispatch(on_done(result))
+            }
+            other => panic!("resolve_file_pick: not a file effect: {other:?}"),
         }
     }
 
@@ -1205,6 +1421,12 @@ impl<A: App> Harness<A> {
                 self.resolve_folder_pick(effect, p)
             }
             (Effect::Notify { .. }, Reply::Notify(r)) => self.resolve_notify(effect, r),
+            (Effect::OpenUrl { .. }, Reply::OpenUrl(r)) => self.resolve_open_url(effect, r),
+            (Effect::Dialog { .. }, Reply::Dialog(r)) => self.resolve_dialog(effect, r),
+            (Effect::Share { .. }, Reply::Share(r)) => self.resolve_share(effect, r),
+            (Effect::PickFile { .. } | Effect::SaveFile { .. }, Reply::FilePick(p)) => {
+                self.resolve_file_pick(effect, p)
+            }
             (Effect::Timer { .. }, Reply::Timer) => self.fire_timer(effect),
             (effect, reply) => panic!(
                 "responder answered {} with {reply:?} — wrong reply kind",
@@ -1388,6 +1610,23 @@ impl<'a> NodeRef<'a> {
     }
 }
 
+impl<A: App> Harness<A> {
+    fn rebuild(&self) -> LaidTree {
+        rebuild(
+            &self.app,
+            &self.ast,
+            &self.registry,
+            &self.renderer,
+            self.viewport,
+            &self.theme,
+            &self.scroll_state,
+            &self.insets,
+            self.menu_anchor,
+            self.osk,
+        )
+    }
+}
+
 fn rebuild<A: App>(
     app: &A,
     ast: &Node,
@@ -1395,6 +1634,10 @@ fn rebuild<A: App>(
     renderer: &Renderer,
     viewport: (u32, u32),
     theme: &Theme,
+    scroll: &ScrollState,
+    insets: &Insets,
+    menu_anchor: (f32, f32),
+    osk: Option<Keyboard>,
 ) -> LaidTree {
     let field = |p: &str| app.field(p);
     let has_action = |m: &str| A::Msg::action_by_name(m).is_some();
@@ -1417,11 +1660,19 @@ fn rebuild<A: App>(
     };
     let view = libra_interp::resolve(ast, &scope, registry)
         .unwrap_or_else(|e| panic!("interp error: {e}"));
-    libra_components::layout(
+    let mut laid = libra_components::layout_scrolled(
         &view,
         (viewport.0 as f32, viewport.1 as f32),
         renderer,
         theme,
+        scroll,
+        insets,
     )
-    .unwrap_or_else(|e| panic!("{e}"))
+    .unwrap_or_else(|e| panic!("{e}"));
+    laid.apply_scroll(scroll);
+    laid.apply_menu_anchor(menu_anchor);
+    if let Some(keyboard) = osk {
+        attach_osk(&mut laid, keyboard, theme);
+    }
+    laid
 }

@@ -61,7 +61,7 @@ The shell owns only the translation and the timing: `cursor_icon()` maps the clo
 
 Harness verbs: `cursor_over(sel)` / `cursor_at(x, y)` make it a component-level assertion ([[15.3-component-tests|§15.3]]) — the one interaction detail snapshots structurally cannot cover.
 
-**Staging:** effect wiring + SafeArea / share / open-URL — [[PLAN-NATIVE-INTEGRATIONS]] (under [[PLAN-UI-SURFACE]]). Notifications — [[PLAN-NOTIFY]]. Tray/menubar, close-to-tray, single instance, launch-at-login — [[PLAN-RESIDENCY]]. Global hotkeys remain unclaimed. Catalog components that need OS sheets return effects; they never call platform APIs from `update`.
+**Staging:** `OpenUrl`, OS alert/confirm, clipboard `Share`, file open/save, window title/fullscreen/resize, `<SafeArea>`, and native menus shipped ([[PLAN-NATIVE-INTEGRATIONS]] N1–N8). Linux menus stay a typed refusal. Notifications — [[PLAN-NOTIFY]]. Tray/menubar, close-to-tray, single instance, launch-at-login — [[PLAN-RESIDENCY]]. Global hotkeys remain unclaimed. Catalog components that need OS sheets return effects; they never call platform APIs from `update`.
 
 **Where native chrome meets the data flow:** OS-owned surfaces are outside the paint contract but *not* outside the one-way flow — their contents are declared as data (a pure `TrayDecl` projection, the [[19.2-keyboard-shortcuts-declarations-not-handlers|§19.2]] shortcut table) with action names validated at startup, and their clicks enter through the effects sink as ordinary actions, the same route AccessKit `Click`s already take ([[17-accessibility|§17]]).
 
